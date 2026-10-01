@@ -341,6 +341,41 @@ tests.trades_backbone = async () => {
   return 'off by default, ownership checked, only the receiver accepts, rosters swap';
 };
 
+tests.github_hiccups_are_safe = async () => {
+  const { a, tok } = await liveLeague(['Ann', 'Ben']);
+  await call('POST', '/api/pick', { token: tok.Ann, body: { player: 'G2_TOP' } });
+  await call('POST', '/api/pick', { token: tok.Ben, body: { player: 'FNC_TOP' } });
+  const orig = gh.handle;
+  // 1) the write LANDS but GitHub answers 502 -> undo must remove ONE pick, not two
+  let armed = true;
+  gh.handle = async (url, init) => {
+    const res = await orig(url, init);
+    if (armed && init && init.method === 'PUT') { armed = false; return new Response('bad gateway', { status: 502 }); }
+    return res;
+  };
+  let r = await call('POST', '/api/admin/op', { token: a, body: { op: 'undoPick' } });
+  assert(r.status === 200, 'undo reported success: ' + JSON.stringify(r.body));
+  assert(league().draft.picks.length === 1, `exactly one pick undone, ${league().draft.picks.length} left`);
+  // 2) the write does NOT land and GitHub answers 502 -> retried, applied once
+  armed = true;
+  gh.handle = async (url, init) => {
+    if (armed && init && init.method === 'PUT') { armed = false; return new Response('bad gateway', { status: 502 }); }
+    return orig(url, init);
+  };
+  r = await call('POST', '/api/pick', { token: tok.Ben, body: { player: 'FNC_MID' } });
+  assert(r.status === 200 && league().draft.picks.length === 2, 'pick retried after a lost write');
+  // 3) reads hiccup -> retried transparently
+  let fails = 2;
+  gh.handle = async (url, init) => {
+    if (fails > 0 && (!init || !init.method) && url.includes('/contents/')) { fails--; return new Response('busy', { status: 503 }); }
+    return orig(url, init);
+  };
+  r = await call('GET', '/api/state', { token: tok.Ann });
+  gh.handle = orig;
+  assert(r.status === 200, 'state survives two 503s in a row');
+  return '502-after-landing does not double-apply; 502-before-landing retries; 503 reads retried';
+};
+
 tests.health_and_tools = async () => {
   const a = await admin();
   const h = (await call('GET', '/api/admin/health', { token: a })).body.checks;

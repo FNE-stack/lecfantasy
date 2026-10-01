@@ -30,14 +30,24 @@ export function cfg(env) {
   };
 }
 
-function gh(env, url, init) {
-  return fetch(url, Object.assign({}, init, {
+// GitHub's API now and then answers 502/503/504 (or 429) for a moment. Reads
+// are safe to repeat, so they retry here with backoff. Writes are NOT retried
+// blindly - a 502 can arrive after the write landed - see writeLeague.
+async function gh(env, url, init) {
+  const req = () => fetch(url, Object.assign({}, init, {
     headers: Object.assign({
       Authorization: `Bearer ${env.GITHUB_TOKEN}`,
       Accept: 'application/vnd.github+json',
       'User-Agent': UA,
     }, (init && init.headers) || {}),
   }));
+  const isRead = !init || !init.method || init.method === 'GET';
+  let r = await req();
+  for (let i = 0; isRead && i < 3 && (r.status >= 500 || r.status === 429); i++) {
+    await new Promise(res => setTimeout(res, 300 * (i + 1) * (i + 1)));
+    r = await req();
+  }
+  return r;
 }
 
 function b64decodeUtf8(b64) {
@@ -67,6 +77,10 @@ export async function ghPutFile(env, repo, path, obj, sha, message) {
     method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
   });
   if (r.status === 409 || r.status === 422) { const e = new Error('conflict'); e.conflict = true; throw e; }
+  if (r.status >= 500 || r.status === 429) {
+    // ambiguous: the write may or may not have landed - the caller checks
+    const e = new HttpError(502, `GitHub PUT ${path} -> ${r.status}`); e.transient = true; throw e;
+  }
   if (!r.ok) throw new HttpError(502, `GitHub PUT ${path} -> ${r.status} ${(await r.text()).slice(0, 160)}`);
   return (await r.json()).content.sha;
 }
@@ -128,6 +142,17 @@ export async function writeLeague(env, mutate, message, opts) {
       await purgeLeague();
       return { league: next, sha: newSha, changed: true };
     } catch (e) {
+      if (e.transient) {
+        // GitHub said 5xx. Did our write land anyway? Then we are done - and
+        // must NOT apply the change again (an undo would undo two picks).
+        await new Promise(r => setTimeout(r, 500 + 400 * attempt));
+        const now = await readLeagueFresh(env).catch(() => null);
+        if (now && JSON.stringify(now.data) === JSON.stringify(next)) {
+          await purgeLeague();
+          return { league: next, sha: now.sha, changed: true };
+        }
+        continue;   // it did not land: apply again on the freshest version
+      }
       if (!e.conflict) throw e;
       await new Promise(r => setTimeout(r, 120 + 180 * attempt + Math.random() * 120));
     }
@@ -186,7 +211,16 @@ export async function writeSiteFile(env, path, mutate, message) {
     const next = await mutate(data ? JSON.parse(JSON.stringify(data)) : null);
     if (!next) return data;
     try { await ghPutFile(env, c.site, path, next, sha, message); return next; }
-    catch (e) { if (!e.conflict) throw e; await new Promise(r => setTimeout(r, 150 * (attempt + 1))); }
+    catch (e) {
+      if (e.transient) {
+        await new Promise(r => setTimeout(r, 500 * (attempt + 1)));
+        const now = await ghGetFile(env, c.site, path).catch(() => null);
+        if (now && JSON.stringify(now.data) === JSON.stringify(next)) return next;
+        continue;
+      }
+      if (!e.conflict) throw e;
+      await new Promise(r => setTimeout(r, 150 * (attempt + 1)));
+    }
   }
   throw new HttpError(503, 'Konflikt beim Schreiben — nochmal versuchen.');
 }
