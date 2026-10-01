@@ -24,7 +24,7 @@
   "managers": [
     {
       "id": "m1",
-      "name": "Manager 1"
+      "name": "QA Test"
     },
     {
       "id": "m2",
