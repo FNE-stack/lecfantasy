@@ -20,17 +20,9 @@
     "maxPerTeam": 2
   },
   "standingsMode": "points",
-  "managers": [
-    {
-      "id": "m7e517282",
-      "name": "QA Cem",
-      "joined": "2026-10-01T23:07:59.171Z"
-    }
-  ],
+  "managers": [],
   "draft": {
-    "order": [
-      "m7e517282"
-    ],
+    "order": [],
     "snake": true,
     "picks": [],
     "status": "lobby",
