@@ -44,13 +44,7 @@
       "m7e517282"
     ],
     "snake": true,
-    "picks": [
-      {
-        "manager": "m7eb82c19",
-        "player": "103536968833612789",
-        "at": "2026-10-01T23:11:16.428Z"
-      }
-    ],
+    "picks": [],
     "status": "live",
     "completed": false,
     "timer": {
