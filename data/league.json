@@ -162,7 +162,14 @@
     },
     "startedAt": "2026-10-01T23:08:02.068Z"
   },
-  "adjustments": [],
+  "adjustments": [
+    {
+      "manager": "m7eb82c19",
+      "pts": 12.5,
+      "reason": "QA Bonus",
+      "at": "2026-10-01T23:12:17.211Z"
+    }
+  ],
   "swaps": [],
   "trades": [],
   "tradeRules": {
