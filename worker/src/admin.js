@@ -68,8 +68,11 @@ const LEAGUE_OPS = {
     return { lobby: 'Anmeldung geöffnet', live: 'Draft gestartet', done: 'Draft gesperrt' }[op.status];
   },
   resetDraft(l) {
+    // swaps, trades and point corrections refer to the old rosters - a fresh
+    // draft without them is the only consistent state
     l.draft.picks = []; l.draft.status = 'lobby'; l.draft.completed = false; delete l.draft.startedAt;
-    return 'Draft zurückgesetzt (alle Picks gelöscht, Mitglieder bleiben)';
+    l.swaps = []; l.trades = []; l.adjustments = [];
+    return 'Draft zurückgesetzt (Picks, Wechsel, Trades und Punktekorrekturen gelöscht; Mitglieder und Einstellungen bleiben)';
   },
   setOrder(l, op) {
     const ids = (l.managers || []).map(m => m.id);

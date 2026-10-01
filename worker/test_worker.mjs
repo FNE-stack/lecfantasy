@@ -254,6 +254,9 @@ tests.admin_interventions = async () => {
   assert((await op({ op: 'announce', text: 'Draft 20 Uhr' })).status === 200 && league().announcement.text === 'Draft 20 Uhr', 'announce');
   assert((await op({ op: 'setOrder', order: [ids.Cem, ids.Ben, ids.Ann] })).status === 400, 'reorder after picks needs force');
   assert((await op({ op: 'bogus' })).status === 400, 'unknown op refused');
+  await op({ op: 'resetDraft' });
+  const after = league();
+  assert(!after.draft.picks.length && !after.adjustments.length && after.draft.status === 'lobby' && after.managers.length === 3, 'reset clears the season, keeps members');
   return 'pick-for, replace, undo, forced pick, guarded remove, adjust, rename, announce, guarded reorder';
 };
 

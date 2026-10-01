@@ -225,7 +225,7 @@ function draw() {
   const issues = A.validation.errors.length;
   const body = { overview: viewOverview, draft: viewDraft, members: viewMembers, points: viewPoints, stats: viewStats, league: viewLeague, history: viewHistory, raw: viewRaw, emergency: viewEmergency }[tab]();
   root.innerHTML = `<div class="row" style="justify-content:space-between;flex-wrap:wrap;gap:12px;margin-bottom:14px">
-      <div><div class="eyebrow">${esc(A.league.name || 'LEC Fantasy')} · ${esc(window.LECScoring.draftStatus(A.league))}</div><h1 style="font-size:40px">Admin</h1></div>
+      <div><div class="eyebrow">${esc(A.league.name || 'LEC Fantasy')} · ${{ lobby: 'Anmeldung', live: 'Draft läuft', done: 'Saison' }[window.LECScoring.draftStatus(A.league)]}</div><h1 style="font-size:40px">Admin</h1></div>
       <div class="row">${issues ? `<span class="pill live">${issues} Fehler</span>` : '<span class="pill teal">konsistent</span>'}${btn('Neu laden', 'reload')}${btn('Admin abmelden', 'alogout')}</div></div>
     <div class="chips" style="margin-bottom:16px">${TABS.map(([k, l]) => `<button class="chip ${tab === k ? 'on' : ''}" data-tab="${k}">${l}</button>`).join('')}</div>
     ${flash ? `<div class="msg ${flash.ok ? 'ok' : 'err'}">${esc(flash.text)}</div>` : ''}${body}`;
@@ -281,7 +281,7 @@ async function act(a, d, el) {
       return op({ op: 'pickFor', manager: val('pfMgr') || null, player, force }, `${pname(player)} für ${val('pfMgr') ? mname(val('pfMgr')) : 'wer am Zug ist'} picken?${force ? ' (Regeln ignoriert)' : ''}`);
     }
     case 'reset': {
-      const t = window.prompt('ALLE Picks löschen und zurück zur Anmeldung? Zum Bestätigen RESET eintippen.');
+      const t = window.prompt('Draft zurücksetzen: ALLE Picks, Wechsel, Trades und Punktekorrekturen werden gelöscht, zurück zur Anmeldung. Mitglieder bleiben. Zum Bestätigen RESET eintippen.');
       if (t === 'RESET') return op({ op: 'resetDraft' });
       return;
     }
