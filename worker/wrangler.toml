@@ -15,4 +15,4 @@ ALLOWED_ORIGIN = "https://fne-stack.github.io"
 # then paste the printed id here.
 [[kv_namespaces]]
 binding = "LEAGUE"
-id = "PASTE_KV_ID_HERE"
+id = "712b41b09d3b40ee96df8b84ff14769f"

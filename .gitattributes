@@ -1,2 +1,2 @@
-# bash breaks on CRLF ($'': command not found), so shell scripts stay LF on Windows too
+# bash breaks on CRLF line endings, so shell scripts stay LF on Windows too
 *.sh text eol=lf
