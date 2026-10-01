@@ -552,15 +552,33 @@ function stamp(ms) {
 }
 async function feedJson(url) {
   const r = await fetch(url).catch(() => null);
-  if (!r || !r.ok) return null;
+  if (!r || !r.ok) return null;          // 400 = "that time is not available yet"
   const t = await r.text();
-  return t ? JSON.parse(t) : null;
+  try { return t ? JSON.parse(t) : null; } catch (e) { return null; }
 }
+// The live feed lags behind the broadcast by a few minutes - measured
+// 2026-10-02 on a running match: startingTime 30-180 s back answered HTTP 400,
+// 300 s back worked and returned every frame up to the newest one. And a
+// request WITHOUT startingTime returns the first frames of the game (0 gold,
+// 0 kills) - useless for live. So: walk back until the feed answers, take the
+// last frame, and remember the lag that worked for the next refresh.
+const feedLag = {};
 async function gameFrame(gameId, atIso) {
-  let w = await feedJson(`${FEED}window/${gameId}?startingTime=${atIso || stamp(Date.now() - 60000)}`);
-  if (!w || !w.frames || !w.frames.length) w = await feedJson(`${FEED}window/${gameId}`);
-  if (!w || !w.frames || !w.frames.length) return null;
-  return { meta: w.gameMetadata, frame: w.frames[w.frames.length - 1] };
+  if (atIso) {
+    const w = await feedJson(`${FEED}window/${gameId}?startingTime=${atIso}`);
+    return w && w.frames && w.frames.length ? { meta: w.gameMetadata, frame: w.frames[w.frames.length - 1] } : null;
+  }
+  const ladder = [60, 120, 180, 240, 300, 420, 600, 900];
+  const start = Math.max(0, ladder.indexOf(feedLag[gameId] || 60) - 1);
+  for (const back of ladder.slice(start)) {
+    const w = await feedJson(`${FEED}window/${gameId}?startingTime=${stamp(Date.now() - back * 1000)}`);
+    if (w && w.frames && w.frames.length) {
+      feedLag[gameId] = back;
+      const frame = w.frames[w.frames.length - 1];
+      return { meta: w.gameMetadata, frame, lagMin: Math.max(0, Math.round((Date.now() - new Date(frame.rfc460Timestamp).getTime()) / 60000)) };
+    }
+  }
+  return null;
 }
 // all games in progress (LEC only unless ?all=1); ?game=<id>&at=<iso> replays one
 async function loadLive(params) {
@@ -592,7 +610,8 @@ function viewLive() {
   if (!live.data && !live.err) { refreshLive(true); return pageHead('Live', 'Live') + card('Live', '<div class="empty">lade Live-Daten …</div>'); }
   const own = loggedIn() ? S.ownership(L()) : new Map();
   const sc = scoring();
-  let h = pageHead('<span class="live-dot"></span>&nbsp; Live-Punkte', 'Live', `<span class="dim" style="font-size:12px">alle 20 s · ca. 1 min Verzögerung</span>`);
+  const lag = Math.max(0, ...(live.data || []).map(x => x.game.lagMin || 0));
+  let h = pageHead('<span class="live-dot"></span>&nbsp; Live-Punkte', 'Live', `<span class="dim" style="font-size:12px">alle 20 s · Stand vor ${lag || '<1'} min (die Live-Daten hängen dem Stream etwas hinterher)</span>`);
   if (live.err) h += `<div class="msg err">Live-Daten nicht ladbar: ${esc(live.err)}</div>`;
   if (!live.data || !live.data.length) return h + card('Gerade läuft nichts', `<div class="empty">Kein LEC-Spiel live.${upcomingEvents()[0] ? ' Nächstes: ' + esc(dt(upcomingEvents()[0].start)) : ''}</div>`) + seasonFeed();
   const byMgr = {};
