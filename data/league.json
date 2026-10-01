@@ -47,13 +47,7 @@
       "m4"
     ],
     "snake": true,
-    "picks": [
-      {
-        "manager": "m1",
-        "player": "103536968833612789",
-        "at": "2026-10-01T21:39:14.569Z"
-      }
-    ],
+    "picks": [],
     "completed": false
   },
   "lineups": {},
