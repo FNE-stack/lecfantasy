@@ -284,7 +284,6 @@ a.plink:hover .pname{color:var(--gold-hi)}
   .kpis>div:nth-child(-n+3){border-bottom:1px solid var(--line)}
 }
 @media (max-width:720px){
-  .nav{display:none}
   .topbar-in{height:54px;gap:12px;padding:0 14px}
   .wrap{padding:16px 12px 100px}
   .hero{padding:22px 18px}
@@ -298,16 +297,6 @@ a.plink:hover .pname{color:var(--gold-hi)}
   th,td{padding:9px 10px}
   .clock{flex-wrap:wrap}
   .clock .who{font-size:24px}
-  .toasts{left:12px;right:12px;bottom:76px}
-  .tabbar{display:flex;position:fixed;bottom:0;left:0;right:0;z-index:40;height:64px;
-    background:rgba(10,10,11,.95);backdrop-filter:blur(10px);border-top:1px solid var(--line);
-    padding-bottom:env(safe-area-inset-bottom)}
-  .tabbar a{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;
-    gap:3px;color:var(--dim);font-family:var(--display);font-weight:600;font-size:12px;
-    letter-spacing:.06em;text-transform:uppercase;position:relative}
-  .tabbar a.on{color:var(--gold)}
-  .tabbar svg{width:22px;height:22px}
-  .tabbar .live-dot{position:absolute;top:9px;right:calc(50% - 16px);width:7px;height:7px}
 }
 
 /* ── never let a long name push numbers off-screen ──────────────────────────
@@ -345,4 +334,26 @@ td.fill b{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:inli
   table.tight th,table.tight td{padding:9px 5px}
   table.tight th:first-child,table.tight td:first-child{padding-left:12px}
   table.tight th:last-child,table.tight td:last-child{padding-right:12px}
+}
+
+/* Under 900px the full top nav (7 entries + your name) no longer fits next to
+   the brand - measured: it overflowed by 43px at 768. Tablets therefore get the
+   same bottom tab bar as phones. */
+@media (max-width:900px){
+  .nav{display:none}
+  .wrap{padding-bottom:100px}
+  .toasts{left:12px;right:12px;bottom:76px}
+  .tabbar{display:flex;position:fixed;bottom:0;left:0;right:0;z-index:40;height:64px;
+    background:rgba(10,10,11,.95);backdrop-filter:blur(10px);border-top:1px solid var(--line);
+    padding-bottom:env(safe-area-inset-bottom)}
+  .tabbar a{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;
+    gap:3px;color:var(--dim);font-family:var(--display);font-weight:600;font-size:12px;
+    letter-spacing:.06em;text-transform:uppercase;position:relative}
+  .tabbar a.on{color:var(--gold)}
+  .tabbar svg{width:22px;height:22px}
+  .tabbar .live-dot{position:absolute;top:9px;right:calc(50% - 16px);width:7px;height:7px}
+}
+@media (max-width:420px){
+  .tabbar a{font-size:10.5px;letter-spacing:.02em}
+  .tabbar svg{width:21px;height:21px}
 }

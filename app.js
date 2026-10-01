@@ -683,7 +683,7 @@ function chrome() {
   if (!D) return;
   const p = path(), items = nav();
   $('nav').innerHTML = items.map(([h, l, , re]) => `<a href="${h}" class="${re.test(p) ? 'on' : ''}">${l}</a>`).join('');
-  $('tabbar').innerHTML = items.filter(n => n[2]).slice(0, 5).map(([h, l, ic, re]) => `<a href="${h}" class="${re.test(p) ? 'on' : ''}">${icon(ic)}${l}</a>`).join('');
+  $('tabbar').innerHTML = items.filter(n => n[2]).slice(0, 6).map(([h, l, ic, re]) => `<a href="${h}" class="${re.test(p) ? 'on' : ''}">${icon(ic)}${l}</a>`).join('');
   $('user').innerHTML = loggedIn()
     ? `<a class="userchip" href="#/mein-team"><span class="av">${esc(initials(LIVE.me.name))}</span><span class="hide-s">${esc(LIVE.me.name)}</span></a>`
     : (p === '/' ? '' : `<a class="btn sm" href="#/">Einloggen</a>`);
