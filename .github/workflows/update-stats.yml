@@ -1,0 +1,59 @@
+name: update-stats
+
+# Pulls LEC rosters + player stats from Leaguepedia and commits them.
+# Runs in Actions (not the browser) because lol.fandom.com sends no CORS headers
+# and rate-limits per IP; a runner gets a clean IP and we only call it a few
+# times a day.
+on:
+  schedule:
+    # 04:20 and 16:20 UTC — after EU match days finish
+    - cron: '20 4,16 * * *'
+  workflow_dispatch:
+    inputs:
+      split:
+        description: 'Leaguepedia split (blank = read from data/league.json)'
+        required: false
+        default: ''
+
+permissions:
+  contents: write
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      # Split comes from the workflow input if given, else from league.json.
+      # Kept as a one-liner so there is no heredoc indentation to get wrong.
+      - name: Resolve split
+        id: split
+        env:
+          INPUT_SPLIT: ${{ github.event.inputs.split }}
+        run: python scripts/resolve_split.py >> "$GITHUB_OUTPUT"
+
+      - name: Fetch from Leaguepedia
+        env:
+          # Optional but strongly recommended: anonymous cargoquery is limited to
+          # ~1 request/min with 500-row pages, which is impractical for a full
+          # split. A free bot password (lol.fandom.com → Special:BotPasswords)
+          # gives 5000-row pages and a usable rate.
+          LEAGUEPEDIA_USERNAME: ${{ secrets.LEAGUEPEDIA_USERNAME }}
+          LEAGUEPEDIA_PASSWORD: ${{ secrets.LEAGUEPEDIA_PASSWORD }}
+        run: python scripts/fetch_lec.py --split "${{ steps.split.outputs.value }}" --verify
+
+      - name: Commit if changed
+        run: |
+          git config user.name  'lec-fantasy-bot'
+          git config user.email 'actions@users.noreply.github.com'
+          git add data/players.json data/stats.json
+          if git diff --staged --quiet; then
+            echo "no changes"
+          else
+            git commit -m "stats: ${{ steps.split.outputs.value }} [skip ci]"
+            git push
+          fi

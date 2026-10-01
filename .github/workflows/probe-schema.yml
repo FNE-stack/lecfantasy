@@ -1,0 +1,37 @@
+name: probe-schema
+
+# Run this FIRST, before trusting update-stats. It confirms the Leaguepedia Cargo
+# field names fetch_lec.py depends on, and prints one real row of each table.
+# Writes nothing — safe to run any time.
+#
+# Actions → probe-schema → Run workflow
+on:
+  workflow_dispatch:
+    inputs:
+      split:
+        description: 'Leaguepedia split (blank = read from data/league.json)'
+        required: false
+        default: ''
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Resolve split
+        id: split
+        env:
+          INPUT_SPLIT: ${{ github.event.inputs.split }}
+        run: python scripts/resolve_split.py >> "$GITHUB_OUTPUT"
+
+      - name: Probe Cargo schema
+        env:
+          # Optional. Without them the probe still runs, just slowly.
+          LEAGUEPEDIA_USERNAME: ${{ secrets.LEAGUEPEDIA_USERNAME }}
+          LEAGUEPEDIA_PASSWORD: ${{ secrets.LEAGUEPEDIA_PASSWORD }}
+        run: python scripts/probe_schema.py --split "${{ steps.split.outputs.value }}"

@@ -1,0 +1,403 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>LEC Fantasy — Draft</title>
+<style>
+  :root{--bg:#0d1117;--panel:#161b22;--panel2:#1c2330;--line:#2a3340;
+    --fg:#e6edf3;--dim:#8b98a5;--gold:#e3b341;--blue:#4493f8;--up:#3fb950;--down:#f85149}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--fg);
+    font:14px/1.5 -apple-system,'Segoe UI',system-ui,sans-serif}
+  header{background:linear-gradient(180deg,#1c2330,#161b22);border-bottom:1px solid var(--line);
+    padding:14px 18px;display:flex;align-items:center;gap:14px;flex-wrap:wrap}
+  h1{margin:0;font-size:17px}h1 span{color:var(--gold)}
+  .grow{flex:1}
+  .wrap{max-width:1180px;margin:0 auto;padding:16px 18px 60px;display:grid;
+    grid-template-columns:1fr 340px;gap:16px}
+  @media(max-width:900px){.wrap{grid-template-columns:1fr}}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:8px;
+    margin-bottom:14px;overflow:hidden}
+  .card h2{margin:0;font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--dim);
+    padding:10px 13px;border-bottom:1px solid var(--line);background:var(--panel2);
+    display:flex;align-items:center;gap:8px}
+  .card h2 .grow{flex:1}
+  .body{padding:12px 13px}
+  table{width:100%;border-collapse:collapse;font-size:13px}
+  th{text-align:left;color:var(--dim);font-size:11px;text-transform:uppercase;
+    letter-spacing:.05em;padding:6px 9px;border-bottom:1px solid var(--line)}
+  td{padding:6px 9px;border-bottom:1px solid #212934}
+  .role{display:inline-block;min-width:34px;font-size:10px;padding:1px 5px;border-radius:3px;
+    background:#243040;color:var(--dim);text-align:center;font-weight:600}
+  .team{color:var(--dim);font-size:12px}
+  .num{text-align:right;font-variant-numeric:tabular-nums}
+  input,select,button{font-family:inherit;font-size:13px}
+  input[type=text],input[type=password],select{background:#0d1117;border:1px solid var(--line);
+    color:var(--fg);border-radius:5px;padding:6px 9px;width:100%}
+  .btn{background:var(--panel2);border:1px solid var(--line);color:var(--fg);
+    border-radius:5px;padding:6px 12px;cursor:pointer}
+  .btn:hover{border-color:var(--blue)}
+  .btn.p{background:#1f6feb;border-color:#1f6feb;color:#fff;font-weight:600}
+  .btn.p:hover{background:#388bfd}
+  .btn.d{border-color:#5c2b2b;color:#ff9b95}
+  .btn:disabled{opacity:.45;cursor:not-allowed}
+  .pick{cursor:pointer}
+  .pick:hover td{background:var(--panel2)}
+  .pick.bad{opacity:.38}
+  .pick.bad td{cursor:not-allowed}
+  .why{color:var(--down);font-size:11px}
+  .onclock{background:#132b18;border:1px solid #2d5a38;border-radius:6px;padding:10px 13px;
+    margin-bottom:12px;font-size:14px}
+  .onclock b{color:var(--up)}
+  .warn{background:#3a2a13;border:1px solid #7a5a1c;color:#f0c87a;border-radius:6px;
+    padding:9px 12px;font-size:12px;margin-bottom:12px}
+  .err{background:#3a1a17;border:1px solid #7a2b25;color:#ffb3ad;border-radius:6px;
+    padding:9px 12px;font-size:12px;margin-bottom:12px}
+  .ok{background:#12261a;border:1px solid #2d5a38;color:#8fd8a0;border-radius:6px;
+    padding:9px 12px;font-size:12px;margin-bottom:12px}
+  .filters{display:flex;gap:6px;margin-bottom:10px;flex-wrap:wrap}
+  .filters .btn{padding:4px 9px;font-size:12px}
+  .filters .btn.on{border-color:var(--blue);color:var(--blue)}
+  .mine td{background:#131d16}
+  .status{font-size:12px;color:var(--dim)}
+  .kv{display:flex;justify-content:space-between;padding:3px 0;font-size:12px}
+  .kv span:first-child{color:var(--dim)}
+  code{background:#0d1117;padding:1px 4px;border-radius:3px;font-size:12px}
+</style>
+</head>
+<body>
+<header>
+  <h1><span>Draft</span> — <span id="lname">…</span></h1>
+  <div class="grow"></div>
+  <span class="status" id="saved">—</span>
+  <button class="btn" id="setup">Verbindung…</button>
+</header>
+
+<div class="wrap">
+  <div>
+    <div id="msg"></div>
+    <div id="clock"></div>
+
+    <div class="card">
+      <h2><span class="grow">Verfügbare Spieler</span><span class="status" id="poolcount"></span></h2>
+      <div class="body">
+        <div class="filters" id="rolefilter"></div>
+        <input type="text" id="search" placeholder="Name oder Team suchen…">
+      </div>
+      <div id="pool"></div>
+    </div>
+  </div>
+
+  <div>
+    <div class="card">
+      <h2>Am Zug</h2>
+      <div class="body" id="turnbox"><span class="status">—</span></div>
+    </div>
+    <div class="card">
+      <h2><span class="grow">Kader</span></h2>
+      <div class="body" id="myros"><span class="status">—</span></div>
+    </div>
+    <div class="card">
+      <h2>Draft-Verlauf</h2>
+      <div id="hist"></div>
+    </div>
+    <div class="card">
+      <h2>Draft abschliessen</h2>
+      <div class="body">
+        <p class="status" style="margin:0 0 9px">Danach sind die Kader gesperrt;
+          nur noch <b id="swapn">1</b> Wechsel pro Woche.</p>
+        <button class="btn d" id="lock">Draft sperren</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- connection dialog -->
+<div id="dlg" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:99;
+     align-items:center;justify-content:center;padding:20px">
+  <div class="card" style="max-width:480px;width:100%;margin:0">
+    <h2>GitHub-Verbindung</h2>
+    <div class="body">
+      <p class="status" style="margin-top:0">Nur <b>du</b> brauchst das hier. Die Anderen
+        öffnen <code>league.html</code> und sehen alles read-only.</p>
+      <div style="margin-bottom:9px"><label class="status">Repo (owner/name)</label>
+        <input type="text" id="f_repo" placeholder="FNE-stack/lecfantasy"></div>
+      <div style="margin-bottom:9px"><label class="status">Branch</label>
+        <input type="text" id="f_branch" value="main"></div>
+      <div style="margin-bottom:9px"><label class="status">Token (fine-grained, Contents: read+write)</label>
+        <input type="password" id="f_tok" placeholder="github_pat_…"></div>
+      <p class="status" style="font-size:11px">Der Token bleibt in deinem
+        <code>localStorage</code> auf diesem Rechner und wird nie committed.</p>
+      <div style="display:flex;gap:7px;justify-content:flex-end">
+        <button class="btn" id="dlg_x">Abbrechen</button>
+        <button class="btn p" id="dlg_ok">Speichern &amp; testen</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="scoring.js"></script>
+<script>
+(function(){
+'use strict';
+const $=id=>document.getElementById(id);
+const esc=s=>String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const CFG='lecfantasy_cfg';
+
+let cfg={repo:'',branch:'main',tok:''};
+try{ cfg=Object.assign(cfg,JSON.parse(localStorage.getItem(CFG)||'{}')); }catch(e){}
+
+let LEAGUE=null, PLAYERS=null, PIDX=new Map(), SHA=null;
+let roleFilter=null, search='';
+
+function msg(kind,html){ $('msg').innerHTML='<div class="'+kind+'">'+html+'</div>'; }
+function clearMsg(){ $('msg').innerHTML=''; }
+
+// ── GitHub contents API ───────────────────────────────────────────────────
+function api(path){
+  return 'https://api.github.com/repos/'+cfg.repo+'/contents/'+path;
+}
+function b64enc(s){ return btoa(unescape(encodeURIComponent(s))); }
+function b64dec(s){ return decodeURIComponent(escape(atob(s.replace(/\n/g,'')))); }
+
+async function ghGet(path){
+  const r=await fetch(api(path)+'?ref='+encodeURIComponent(cfg.branch),{
+    headers:{Authorization:'token '+cfg.tok,Accept:'application/vnd.github.v3+json'},
+    cache:'no-store'});
+  if(!r.ok) throw new Error('GET '+path+' → '+r.status);
+  const j=await r.json();
+  return {data:JSON.parse(b64dec(j.content)), sha:j.sha};
+}
+async function ghPut(path,obj,sha,message){
+  const r=await fetch(api(path),{
+    method:'PUT',
+    headers:{Authorization:'token '+cfg.tok,'Content-Type':'application/json',
+             Accept:'application/vnd.github.v3+json'},
+    body:JSON.stringify({message:message||'draft update',
+      content:b64enc(JSON.stringify(obj,null,2)), branch:cfg.branch, sha:sha})});
+  if(r.status===409||r.status===422){ const e=new Error('conflict'); e.conflict=true; throw e; }
+  if(!r.ok) throw new Error('PUT '+path+' → '+r.status+' '+(await r.text()).slice(0,140));
+  return (await r.json()).content.sha;
+}
+
+// Re-read, apply, write — retries on SHA conflict so two tabs can't clobber.
+async function mutate(fn, message){
+  for(let i=0;i<4;i++){
+    const cur=await ghGet('data/league.json');
+    const next=fn(JSON.parse(JSON.stringify(cur.data)));
+    if(!next) return cur.data;
+    try{
+      SHA=await ghPut('data/league.json',next,cur.sha,message);
+      LEAGUE=next;
+      $('saved').textContent='gespeichert '+new Date().toLocaleTimeString('de-DE');
+      return next;
+    }catch(e){
+      if(!e.conflict) throw e;
+      await new Promise(r=>setTimeout(r,400+400*i));
+    }
+  }
+  throw new Error('zu viele Konflikte — nochmal versuchen');
+}
+
+// ── load ──────────────────────────────────────────────────────────────────
+async function loadLocal(){
+  // Always read the committed files for display, even without a token.
+  const bust='?t='+Date.now();
+  try{ LEAGUE=await (await fetch('data/league.json'+bust,{cache:'no-store'})).json(); }
+  catch(e){ msg('err','<b>data/league.json</b> nicht lesbar.'); return false; }
+  try{ PLAYERS=await (await fetch('data/players.json'+bust,{cache:'no-store'})).json(); }
+  catch(e){ PLAYERS=null; }
+  PIDX=new Map();
+  if(PLAYERS&&PLAYERS.players) for(const p of PLAYERS.players) PIDX.set(p.id,p);
+  $('lname').textContent=LEAGUE.name||'—';
+  $('swapn').textContent=LEAGUE.swapsPerWeek!=null?LEAGUE.swapsPerWeek:1;
+  return true;
+}
+
+function connected(){ return !!(cfg.repo&&cfg.tok); }
+
+// ── render ────────────────────────────────────────────────────────────────
+function render(){
+  if(!LEAGUE) return;
+  const done=LEAGUE.draft&&LEAGUE.draft.completed;
+  const next=LECScoring.currentPicker(LEAGUE);
+  const prog=LECScoring.draftProgress(LEAGUE);
+  const mgrName={}; for(const m of LEAGUE.managers||[]) mgrName[m.id]=m.name;
+
+  $('clock').innerHTML = done
+    ? '<div class="warn"><b>Draft ist gesperrt.</b> Kader stehen; Wechsel über '+
+      '<code>swaps</code> in league.json.</div>'
+    : (next?'<div class="onclock">Am Zug: <b>'+esc(mgrName[next]||next)+'</b>'+
+        ' <span class="status">· Runde '+prog.round+' · Pick '+(prog.done+1)+'/'+prog.total+'</span></div>'
+      :'<div class="warn">Alle Picks vergeben — Draft kann gesperrt werden.</div>');
+
+  $('turnbox').innerHTML = next
+    ? '<div class="kv"><span>Manager</span><b>'+esc(mgrName[next]||next)+'</b></div>'+
+      '<div class="kv"><span>Runde</span><span>'+prog.round+'</span></div>'+
+      '<div class="kv"><span>Pick</span><span>'+(prog.done+1)+' / '+prog.total+'</span></div>'
+    : '<span class="status">—</span>';
+
+  // roster of whoever is on the clock
+  const ros=LECScoring.rosters(LEAGUE);
+  const mine=(next&&ros[next])||[];
+  const slots=LEAGUE.roster.slots||[];
+  let rh='';
+  const used=new Set();
+  for(const s of slots){
+    const pid=mine.find(p=>{const mm=PIDX.get(p);return mm&&mm.role===s&&!used.has(p);});
+    if(pid) used.add(pid);
+    rh+='<div class="kv"><span><span class="role">'+s+'</span></span><span>'+
+        (pid?esc(pid):'<span class="status">frei</span>')+'</span></div>';
+  }
+  for(const pid of mine){ if(used.has(pid)) continue;
+    rh+='<div class="kv"><span><span class="role" style="background:#2a2333">BANK</span></span><span>'+esc(pid)+'</span></div>'; }
+  $('myros').innerHTML=rh||'<span class="status">—</span>';
+
+  // pool
+  if(!PLAYERS){
+    $('pool').innerHTML='<div class="body"><span class="status">Keine '+
+      '<code>data/players.json</code> — der GitHub-Action-Job muss erst laufen.</span></div>';
+    $('poolcount').textContent='';
+  } else {
+    const own=LECScoring.ownership(LEAGUE);
+    let list=PLAYERS.players.filter(p=>!own.has(p.id));
+    if(roleFilter) list=list.filter(p=>p.role===roleFilter);
+    if(search){
+      const q=search.toLowerCase();
+      list=list.filter(p=>p.name.toLowerCase().includes(q)||(p.team||'').toLowerCase().includes(q));
+    }
+    list.sort((a,b)=>(a.role||'').localeCompare(b.role||'')||a.name.localeCompare(b.name));
+    $('poolcount').textContent=list.length+' frei';
+    let h='<table><tr><th>Spieler</th><th>Team</th><th></th></tr>';
+    for(const p of list.slice(0,200)){
+      const why=(!done&&next)?LECScoring.pickError(LEAGUE,PIDX,next,p.id):'gesperrt';
+      h+='<tr class="pick'+(why?' bad':'')+'" data-p="'+esc(p.id)+'">'+
+         '<td><span class="role">'+esc(p.role)+'</span> '+esc(p.name)+'</td>'+
+         '<td class="team">'+esc(p.team)+'</td>'+
+         '<td class="num">'+(why?'<span class="why">'+esc(why)+'</span>':
+           '<button class="btn p" data-pick="'+esc(p.id)+'">Pick</button>')+'</td></tr>';
+    }
+    h+='</table>';
+    $('pool').innerHTML=h;
+    $('pool').querySelectorAll('button[data-pick]').forEach(function(b){
+      b.onclick=function(){ doPick(b.dataset.pick); };
+    });
+  }
+
+  // role filter buttons
+  if(!$('rolefilter').dataset.built){
+    const rs=['TOP','JNG','MID','BOT','SUP'];
+    $('rolefilter').innerHTML='<button class="btn on" data-r="">Alle</button>'+
+      rs.map(r=>'<button class="btn" data-r="'+r+'">'+r+'</button>').join('');
+    $('rolefilter').dataset.built='1';
+    $('rolefilter').querySelectorAll('button').forEach(function(b){
+      b.onclick=function(){
+        roleFilter=b.dataset.r||null;
+        $('rolefilter').querySelectorAll('button').forEach(x=>x.classList.toggle('on',x===b));
+        render();
+      };
+    });
+  }
+
+  // history
+  const picks=(LEAGUE.draft&&LEAGUE.draft.picks)||[];
+  if(picks.length){
+    let h='<table><tr><th>#</th><th>Manager</th><th>Spieler</th><th></th></tr>';
+    picks.slice().reverse().forEach(function(p,ri){
+      const i=picks.length-ri;
+      const mm=PIDX.get(p.player);
+      const last=(i===picks.length);
+      h+='<tr><td class="status">'+i+'</td><td>'+esc(mgrName[p.manager]||p.manager)+'</td>'+
+         '<td>'+(mm?'<span class="role">'+esc(mm.role)+'</span> ':'')+esc(p.player)+'</td>'+
+         '<td class="num">'+(last&&!done?'<button class="btn d" id="undo">↩</button>':'')+'</td></tr>';
+    });
+    h+='</table>';
+    $('hist').innerHTML=h;
+    const u=$('undo'); if(u) u.onclick=undoLast;
+  } else $('hist').innerHTML='<div class="body"><span class="status">noch keine Picks</span></div>';
+}
+
+// ── actions ───────────────────────────────────────────────────────────────
+async function doPick(playerId){
+  if(!connected()) return msg('warn','Erst <b>Verbindung…</b> einrichten (Repo + Token).');
+  clearMsg();
+  try{
+    await mutate(function(lg){
+      if(lg.draft.completed) throw new Error('Draft ist gesperrt');
+      const who=LECScoring.currentPicker(lg);
+      if(!who) throw new Error('Draft ist voll');
+      const err=LECScoring.pickError(lg,PIDX,who,playerId);
+      if(err) throw new Error(err);
+      lg.draft.picks.push({manager:who,player:playerId,at:Date.now()});
+      return lg;
+    },'draft: '+playerId);
+    render();
+  }catch(e){ msg('err',esc(e.message)); }
+}
+
+async function undoLast(){
+  if(!connected()) return msg('warn','Keine Verbindung.');
+  try{
+    await mutate(function(lg){
+      if(lg.draft.completed) throw new Error('Draft ist gesperrt');
+      if(!lg.draft.picks.length) return null;
+      lg.draft.picks.pop();
+      return lg;
+    },'draft: undo');
+    render();
+  }catch(e){ msg('err',esc(e.message)); }
+}
+
+$('lock').onclick=async function(){
+  if(!connected()) return msg('warn','Keine Verbindung.');
+  const prog=LECScoring.draftProgress(LEAGUE);
+  if(prog.done<prog.total &&
+     !confirm('Erst '+prog.done+' von '+prog.total+' Picks. Trotzdem sperren?')) return;
+  if(!confirm('Draft sperren? Danach keine Picks mehr.')) return;
+  try{
+    await mutate(function(lg){ lg.draft.completed=true; lg.phase='live'; return lg; },'draft: locked');
+    msg('ok','Draft gesperrt. Die Anderen sehen die Kader auf <code>league.html</code>.');
+    render();
+  }catch(e){ msg('err',esc(e.message)); }
+};
+
+// ── connection dialog ─────────────────────────────────────────────────────
+$('setup').onclick=function(){
+  $('f_repo').value=cfg.repo||''; $('f_branch').value=cfg.branch||'main';
+  $('f_tok').value=cfg.tok||'';
+  $('dlg').style.display='flex';
+};
+$('dlg_x').onclick=()=>{$('dlg').style.display='none';};
+$('dlg_ok').onclick=async function(){
+  cfg.repo=$('f_repo').value.trim();
+  cfg.branch=$('f_branch').value.trim()||'main';
+  cfg.tok=$('f_tok').value.trim();
+  try{ localStorage.setItem(CFG,JSON.stringify(cfg)); }catch(e){}
+  $('dlg').style.display='none';
+  clearMsg();
+  if(!connected()){ msg('warn','Repo oder Token fehlt.'); return; }
+  try{
+    const r=await ghGet('data/league.json');
+    LEAGUE=r.data; SHA=r.sha;
+    msg('ok','Verbunden mit <code>'+esc(cfg.repo)+'</code>.');
+    render();
+  }catch(e){ msg('err','Verbindung fehlgeschlagen: '+esc(e.message)); }
+};
+
+$('search').oninput=function(){ search=this.value; render(); };
+
+(async function boot(){
+  if(!await loadLocal()) return;
+  if(connected()){
+    try{ const r=await ghGet('data/league.json'); LEAGUE=r.data; SHA=r.sha; }
+    catch(e){ msg('warn','Token/Repo gesetzt, aber Lesen schlug fehl: '+esc(e.message)); }
+  } else {
+    msg('warn','Nur-Lesen-Modus. Für Picks: <b>Verbindung…</b> oben rechts.');
+  }
+  render();
+})();
+})();
+</script>
+</body>
+</html>
