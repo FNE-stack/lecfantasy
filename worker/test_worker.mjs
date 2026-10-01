@@ -1,358 +1,376 @@
 // ═══════════════════════════════════════════════════════════════════════════
-// test_worker.mjs — exercises the draft referee end to end in plain node.
+// test_worker.mjs — the Worker end to end, in plain node, no network.
 //
-// No wrangler, no network, no Cloudflare account needed: KV and the GitHub
-// contents API are stubbed in memory. The point is that the rules the Worker
-// enforces (whose turn, legal pick, password, concurrency) are verified here
-// BEFORE draft night, since that is the one evening where a bug is expensive.
+// KV (with list + metadata), the GitHub API (contents with real commit
+// history, commits, rate limit, repo perms, workflow runs) and the public
+// Pages data are simulated in memory. Covers the invite/join/login flow, the
+// draft referee, every admin intervention, restore-from-history, the
+// validation guard, the pick timer, trades, and that no secret ever leaks.
 //
 //     node worker/test_worker.mjs
 // ═══════════════════════════════════════════════════════════════════════════
-import fs from 'node:fs';
-import path from 'node:path';
-import { fileURLToPath } from 'node:url';
 
-const HERE = path.dirname(fileURLToPath(import.meta.url));
-const ROOT = path.dirname(HERE);
-
-// ── in-memory KV ───────────────────────────────────────────────────────────
+// ── stubs ──────────────────────────────────────────────────────────────────
 function makeKV() {
   const m = new Map();
   return {
     _m: m,
-    async get(k, type) {
-      const v = m.has(k) ? m.get(k) : null;
-      return type === 'json' && v !== null ? JSON.parse(v) : v;
+    async get(k, type) { const e = m.get(k); if (!e) return null; return type === 'json' ? JSON.parse(e.v) : e.v; },
+    async put(k, v, o) { m.set(k, { v, meta: (o && o.metadata) || null }); },
+    async delete(k) { m.delete(k); },
+    async list(o) {
+      const keys = [...m.entries()].filter(([k]) => k.startsWith((o && o.prefix) || '')).map(([name, e]) => ({ name, metadata: e.meta }));
+      return { keys, list_complete: true };
     },
-    async put(k, v) { m.set(k, v); },
   };
 }
 
-// ── in-memory GitHub contents API ──────────────────────────────────────────
-// Mirrors the parts the Worker uses: base64 content, a sha that changes on
-// every write, and 409 when the client PUTs against a stale sha.
-function makeGitHub(files) {
-  const store = new Map();
-  let counter = 0;
-  const shaOf = () => 'sha' + (++counter);
-  for (const [p, obj] of Object.entries(files)) {
-    store.set(p, { text: JSON.stringify(obj, null, 2) + '\n', sha: shaOf() });
-  }
-  const stats = { puts: 0, conflicts: 0 };
-
-  async function handler(url, init = {}) {
+function makeGitHub(seed) {
+  // per path: list of versions [{sha, text, message, date}] newest last
+  const files = new Map();
+  let n = 0;
+  const commit = (path, obj, message) => {
+    const v = { sha: 'c' + String(++n).padStart(39, '0'), text: JSON.stringify(obj, null, 2) + '\n', message, date: new Date(Date.now() + n * 1000).toISOString() };
+    if (!files.has(path)) files.set(path, []);
+    files.get(path).push(v);
+    return v;
+  };
+  for (const [p, o] of Object.entries(seed)) commit(p, o, 'seed');
+  const stats = { puts: 0, conflicts: 0, dispatched: 0 };
+  const latest = p => { const l = files.get(p); return l && l[l.length - 1]; };
+  async function handle(url, init = {}) {
     const u = new URL(url);
-    const p = decodeURIComponent(u.pathname.split('/contents/')[1]);
-    const rec = store.get(p);
-    if (!rec) return new Response('not found', { status: 404 });
-
-    if (!init.method || init.method === 'GET') {
-      const b64 = Buffer.from(rec.text, 'utf8').toString('base64');
-      // GitHub wraps base64 at 60 chars; the Worker must cope with that.
-      const wrapped = b64.replace(/(.{60})/g, '$1\n');
-      return new Response(JSON.stringify({ content: wrapped, sha: rec.sha }),
-        { status: 200, headers: { 'Content-Type': 'application/json' } });
+    const method = init.method || 'GET';
+    let m;
+    if (u.pathname === '/rate_limit') return J({ resources: { core: { remaining: 4900, limit: 5000, reset: 0 } } });
+    if ((m = u.pathname.match(/^\/repos\/([^/]+\/[^/]+)$/))) return J({ private: m[1].endsWith('-data'), permissions: { push: true } });
+    if (u.pathname.endsWith('/actions/workflows/update-stats.yml/runs')) return J({ workflow_runs: [{ status: 'completed', conclusion: 'success', created_at: new Date().toISOString() }] });
+    if (u.pathname.endsWith('/actions/workflows/update-stats.yml/dispatches')) { stats.dispatched++; return new Response(null, { status: 204 }); }
+    if ((m = u.pathname.match(/^\/repos\/[^/]+\/[^/]+\/commits$/))) {
+      const l = (files.get(u.searchParams.get('path')) || []).slice().reverse();
+      return J(l.map(v => ({ sha: v.sha, commit: { message: v.message, author: { name: 'bot', date: v.date } } })));
     }
-    if (init.method === 'PUT') {
-      stats.puts++;
-      const body = JSON.parse(init.body);
-      if (body.sha !== rec.sha) {
-        stats.conflicts++;
-        return new Response(JSON.stringify({ message: 'conflict' }), { status: 409 });
+    if ((m = u.pathname.match(/^\/repos\/[^/]+\/[^/]+\/contents\/(.+)$/))) {
+      const path = decodeURIComponent(m[1]);
+      if (method === 'GET') {
+        const ref = u.searchParams.get('ref');
+        const l = files.get(path) || [];
+        const v = ref && ref.startsWith('c') ? l.find(x => x.sha === ref) : l[l.length - 1];
+        if (!v) return new Response('{}', { status: 404 });
+        return J({ content: Buffer.from(v.text).toString('base64').replace(/(.{60})/g, '$1\n'), sha: v.sha });
       }
-      rec.text = Buffer.from(body.content, 'base64').toString('utf8');
-      rec.sha = shaOf();
-      return new Response(JSON.stringify({ content: { sha: rec.sha } }), { status: 200 });
+      if (method === 'PUT') {
+        stats.puts++;
+        const b = JSON.parse(init.body);
+        const cur = latest(path);
+        if ((cur && b.sha !== cur.sha) || (!cur && b.sha)) { stats.conflicts++; return new Response('{"message":"conflict"}', { status: 409 }); }
+        const v = commit(path, JSON.parse(Buffer.from(b.content, 'base64').toString('utf8')), b.message);
+        return J({ content: { sha: v.sha } });
+      }
     }
-    return new Response('bad', { status: 400 });
+    return new Response('not found ' + u.pathname, { status: 404 });
   }
-  return { handler, store, stats, current: p => JSON.parse(store.get(p).text) };
+  return { handle, files, stats, current: p => JSON.parse(latest(p).text), messages: p => files.get(p).map(v => v.message) };
 }
+const J = (o, s = 200) => new Response(JSON.stringify(o), { status: s, headers: { 'Content-Type': 'application/json' } });
 
 // ── fixtures ───────────────────────────────────────────────────────────────
-const baseLeague = JSON.parse(
-  fs.readFileSync(path.join(ROOT, 'data', 'league.json'), 'utf8'));
+const TEAMS = ['G2', 'FNC', 'KC', 'MKOI', 'VIT', 'TH'], ROLES = ['TOP', 'JNG', 'MID', 'BOT', 'SUP'];
+const PLAYERS = { players: TEAMS.flatMap(t => ROLES.map(r => ({ id: `${t}_${r}`, name: `${t} ${r}`, team: t, role: r }))) };
+// G2 players score most, so the auto-pick should go for G2 first
+const STATS = { updated: Math.floor(Date.now() / 1000), tournament: 't', games: PLAYERS.players.map((p, i) => ({ game: 'g' + i, match: 'x', player: p.id, ts: '2026-08-01', k: p.team === 'G2' ? 9 : 1, d: 0, a: 0, cs: 0, win: false })) };
+const LEAGUE = {
+  name: 'Test Liga', tournament: 'auto',
+  scoring: { kill: 3, death: -1, assist: 1.5, cs10: 0.02, win: 2 },
+  roster: { slots: ROLES, bench: 1, maxPerTeam: 2 },
+  managers: [], draft: { order: [], snake: true, picks: [], status: 'lobby', completed: false },
+  swaps: [], trades: [], adjustments: [],
+};
+const SECRET_TOKEN = 'ghp_SECRET_never_leaves', ADMIN_PW = 'admin-pass-123456';
 
-function freshLeague() {
-  const l = JSON.parse(JSON.stringify(baseLeague));
-  l.draft.picks = [];
-  l.draft.completed = false;
-  l.swaps = [];
-  return l;
-}
-
-// Enough players that a full snake draft is actually completable:
-// 6 teams x 5 roles, so role and maxPerTeam limits are reachable but not fatal.
-function makePlayers() {
-  const teams = ['G2', 'FNC', 'KC', 'MKOI', 'VIT', 'TH'];
-  const roles = ['TOP', 'JNG', 'MID', 'BOT', 'SUP'];
-  const players = [];
-  for (const t of teams) {
-    for (const r of roles) players.push({ id: `${t}_${r}`, name: `${t}_${r}`, team: t, role: r });
-  }
-  return { split: 'test', updated: 0, players };
-}
-
-let worker, env, gh;
-
+let worker, env, gh, realFetch = globalThis.fetch;
 async function setup() {
-  gh = makeGitHub({
-    'data/league.json': freshLeague(),
-    'data/players.json': makePlayers(),
-  });
-  globalThis.fetch = (url, init) => gh.handler(String(url), init);
+  gh = makeGitHub({ 'league.json': JSON.parse(JSON.stringify(LEAGUE)) });
+  globalThis.fetch = async (url, init) => {
+    const u = String(url);
+    if (u.startsWith('https://api.github.com/')) return gh.handle(u.replace('https://api.github.com', 'https://x'), init);
+    if (u.startsWith('https://pages.test/data/players.json')) return J(PLAYERS);
+    if (u.startsWith('https://pages.test/data/stats.json')) return J(STATS);
+    if (u.startsWith('https://pages.test/data/')) return J({ updated: Math.floor(Date.now() / 1000), tournament: 't' });
+    return new Response('unexpected fetch ' + u, { status: 599 });
+  };
   env = {
-    LEAGUE: makeKV(),
-    GITHUB_REPO: 'test/test',
-    GITHUB_BRANCH: 'main',
-    GITHUB_TOKEN: 'fake-token-never-leaves-here',
-    ALLOWED_ORIGIN: '*',
+    LEAGUE: makeKV(), GITHUB_TOKEN: SECRET_TOKEN, ADMIN_PASSWORD: ADMIN_PW,
+    GITHUB_REPO: 'me/site', DATA_REPO: 'me/site-data', GITHUB_BRANCH: 'main',
+    PAGES_URL: 'https://pages.test', ALLOWED_ORIGIN: 'https://fne-stack.github.io',
   };
   if (!worker) worker = (await import('./src/index.js')).default;
 }
-
-const call = (method, pathname, { body, token } = {}) => {
-  const headers = {};
+const bodies = [];
+async function call(method, path, { body, token } = {}) {
+  const headers = { Origin: 'https://fne-stack.github.io' };
   if (body) headers['Content-Type'] = 'application/json';
-  if (token) headers['Authorization'] = 'Bearer ' + token;
-  return worker.fetch(new Request('https://w.dev' + pathname, {
-    method, headers, body: body ? JSON.stringify(body) : undefined,
-  }), env);
-};
-const asJson = async r => ({ status: r.status, body: await r.json() });
+  if (token) headers.Authorization = 'Bearer ' + token;
+  const res = await worker.fetch(new Request('https://w.dev' + path, { method, headers, body: body ? JSON.stringify(body) : undefined }), env, { waitUntil() {} });
+  const text = await res.text();
+  bodies.push(text);
+  return { status: res.status, body: JSON.parse(text) };
+}
+const league = () => gh.current('league.json');
+
+// helpers to get a league going
+async function admin() { return (await call('POST', '/api/admin/login', { body: { password: ADMIN_PW } })).body.token; }
+async function invite(a) { return (await call('POST', '/api/admin/invite', { token: a })).body.invite.code; }
+async function join(code, name, pw = 'secret-' + name) {
+  const r = await call('POST', '/api/join', { body: { code, name, password: pw } });
+  if (r.status !== 200) throw new Error(`join ${name}: ${r.status} ${r.body.error}`);
+  return r.body.token;
+}
+async function liveLeague(names) {
+  const a = await admin(), code = await invite(a), tok = {};
+  for (const n of names) tok[n] = await join(code, n);
+  await call('POST', '/api/admin/op', { token: a, body: { op: 'setStatus', status: 'live' } });
+  const ids = Object.fromEntries(league().managers.map(m => [m.name, m.id]));
+  return { a, code, tok, ids };
+}
 
 // ── tests ──────────────────────────────────────────────────────────────────
 const tests = {};
 
-tests.state_is_public = async () => {
-  const { status, body } = await asJson(await call('GET', '/api/state'));
-  assert(status === 200, 'state should be readable without a login');
-  assert(body.onTheClock === 'm1', `m1 picks first, got ${body.onTheClock}`);
-  assert(body.claimed.m1 === false, 'nothing claimed yet');
-  assert(body.league.managers.length === 4, 'four managers');
-  return 'readable without auth, m1 on the clock';
-};
-
-tests.claim_then_login = async () => {
-  let r = await asJson(await call('POST', '/api/claim',
-    { body: { manager: 'm1', displayName: 'Fabi', password: 'hunter22' } }));
-  assert(r.status === 200 && r.body.token, 'claim should succeed');
-  const st = await (await call('GET', '/api/state')).json();
-  assert(st.claimed.m1 === true && st.claimed.m2 === false, 'state must show m1 claimed via the index');
-
-  // same slot cannot be taken twice
-  r = await asJson(await call('POST', '/api/claim',
-    { body: { manager: 'm1', password: 'somethingelse' } }));
-  assert(r.status === 409, `re-claim must be refused, got ${r.status}`);
-
-  r = await asJson(await call('POST', '/api/login',
-    { body: { manager: 'm1', password: 'wrong-one' } }));
-  assert(r.status === 401, `wrong password must 401, got ${r.status}`);
-
-  r = await asJson(await call('POST', '/api/login',
-    { body: { manager: 'm1', password: 'hunter22' } }));
-  assert(r.status === 200 && r.body.token, 'correct password should log in');
-
-  // short passwords refused
-  r = await asJson(await call('POST', '/api/claim',
-    { body: { manager: 'm2', password: 'abc' } }));
-  assert(r.status === 400, `short password must be refused, got ${r.status}`);
-  return 'claim once, re-claim refused, wrong password refused, login works';
-};
-
-tests.pick_requires_login_and_turn = async () => {
-  const m1 = (await (await call('POST', '/api/claim',
-    { body: { manager: 'm1', password: 'hunter22' } })).json()).token;
-  const m2 = (await (await call('POST', '/api/claim',
-    { body: { manager: 'm2', password: 'hunter22' } })).json()).token;
-
-  let r = await asJson(await call('POST', '/api/pick', { body: { player: 'G2_TOP' } }));
-  assert(r.status === 401, `no token must 401, got ${r.status}`);
-
-  r = await asJson(await call('POST', '/api/pick',
-    { body: { player: 'G2_TOP' }, token: 'not-a-real-session' }));
-  assert(r.status === 401, `bogus token must 401, got ${r.status}`);
-
-  // boy2 is not on the clock
-  r = await asJson(await call('POST', '/api/pick',
-    { body: { player: 'G2_TOP' }, token: m2 }));
-  assert(r.status === 409, `out-of-turn must 409, got ${r.status} ${r.body.error}`);
-
-  r = await asJson(await call('POST', '/api/pick',
-    { body: { player: 'G2_TOP' }, token: m1 }));
-  assert(r.status === 200, `m1's turn should work, got ${r.body.error}`);
-  assert(r.body.onTheClock === 'm2', 'clock should advance to m2');
-
-  // the same player cannot go twice
-  r = await asJson(await call('POST', '/api/pick',
-    { body: { player: 'G2_TOP' }, token: m2 }));
-  assert(r.status === 422, `duplicate player must 422, got ${r.status}`);
-
-  const committed = gh.current('data/league.json');
-  assert(committed.draft.picks.length === 1, 'exactly one pick committed');
-  assert(committed.draft.picks[0].manager === 'm1', 'pick attributed to m1');
-  return 'anonymous/bogus/out-of-turn/duplicate all refused, legal pick commits';
-};
-
-tests.team_limit_enforced = async () => {
-  const tok = {};
-  for (const m of ['m1', 'm2', 'm3', 'm4']) {
-    tok[m] = (await (await call('POST', '/api/claim',
-      { body: { manager: m, password: 'hunter22' } })).json()).token;
+tests.nothing_without_login = async () => {
+  for (const [m, p] of [['GET', '/api/state'], ['POST', '/api/pick'], ['GET', '/api/queue'], ['GET', '/api/admin/state'], ['POST', '/api/admin/op']]) {
+    const r = await call(m, p, { body: m === 'POST' ? {} : undefined });
+    assert(r.status === 401, `${m} ${p} without login -> ${r.status}`);
   }
-  // maxPerTeam is 2, so fabi taking a third G2 player must be refused.
-  const order = ['m1', 'm2', 'm3', 'm4', 'm4', 'm3', 'm2', 'm1'];
-  const picks = ['G2_TOP', 'FNC_TOP', 'KC_TOP', 'MKOI_TOP',
-                 'VIT_TOP', 'TH_TOP', 'FNC_JNG', 'G2_JNG'];
-  for (let i = 0; i < order.length; i++) {
-    const r = await asJson(await call('POST', '/api/pick',
-      { body: { player: picks[i] }, token: tok[order[i]] }));
-    assert(r.status === 200, `pick ${i} (${order[i]} -> ${picks[i]}) failed: ${r.body.error}`);
-  }
-  // round 3 starts with fabi again; he now has G2_TOP + G2_JNG
-  const r = await asJson(await call('POST', '/api/pick',
-    { body: { player: 'G2_MID' }, token: tok.m1 }));
-  assert(r.status === 422, `third G2 player must be refused, got ${r.status}`);
-  assert(/max\. 2 von G2/.test(r.body.error), `expected team-limit reason, got "${r.body.error}"`);
-  return 'maxPerTeam blocked a third G2 pick with the right reason';
+  const r = await call('POST', '/api/invite', { body: { code: 'nope' } });
+  assert(r.status === 404, 'bad invite code must 404');
+  return 'state, pick, queue, admin all 401; bad invite 404';
 };
 
-tests.full_draft_completes = async () => {
-  const tok = {};
-  for (const m of ['m1', 'm2', 'm3', 'm4']) {
-    tok[m] = (await (await call('POST', '/api/claim',
-      { body: { manager: m, password: 'hunter22' } })).json()).token;
-  }
-  const pool = makePlayers().players.map(p => p.id);
-  let picked = 0, guard = 0;
-  while (guard++ < 500) {
-    const st = await (await call('GET', '/api/state')).json();
-    const who = st.onTheClock;
-    if (who === null) break;
-    let took = false;
-    for (const pid of pool) {
-      const r = await call('POST', '/api/pick', { body: { player: pid }, token: tok[who] });
-      if (r.status === 200) { picked++; took = true; break; }
-    }
-    assert(took, `${who} had no legal pick left after ${picked} picks`);
-  }
-  const league = gh.current('data/league.json');
-  assert(picked === 24, `expected 24 picks, got ${picked}`);
-  assert(league.draft.completed === true, 'draft should auto-lock when full');
-
-  // and a pick after the lock is refused
-  const r = await asJson(await call('POST', '/api/pick',
-    { body: { player: pool[pool.length - 1] }, token: tok.m1 }));
-  assert(r.status === 409, `pick after lock must 409, got ${r.status}`);
-
-  // every manager ends with all five roles covered
-  const byMgr = {};
-  for (const p of league.draft.picks) (byMgr[p.manager] ||= []).push(p.player);
-  for (const [m, ids] of Object.entries(byMgr)) {
-    assert(ids.length === 6, `${m} should hold 6, holds ${ids.length}`);
-    const roles = new Set(ids.map(i => i.split('_')[1]));
-    for (const need of ['TOP', 'JNG', 'MID', 'BOT', 'SUP']) {
-      assert(roles.has(need), `${m} is missing ${need}`);
-    }
-  }
-  return '24 picks, auto-locked, all 5 roles per manager, locked draft rejects more';
+tests.invite_join_login = async () => {
+  const a = await admin(), code = await invite(a);
+  const info = await call('POST', '/api/invite', { body: { code } });
+  assert(info.status === 200 && info.body.members === 0 && !info.body.managers, 'invite check shows count, never names');
+  const t = await join(code, 'Fabi');
+  assert((await call('GET', '/api/state', { token: t })).body.me.name === 'Fabi', 'joined + logged in');
+  let r = await call('POST', '/api/join', { body: { code, name: 'fabi', password: 'whatever1' } });
+  assert(r.status === 409, 'duplicate name (case-insensitive) refused');
+  r = await call('POST', '/api/join', { body: { code, name: 'Tim', password: '123' } });
+  assert(r.status === 400, 'short password refused');
+  r = await call('POST', '/api/login', { body: { name: '  FABI ', password: 'secret-Fabi' } });
+  assert(r.status === 200 && r.body.token, 'login by name, case/space-insensitive');
+  r = await call('POST', '/api/login', { body: { name: 'Fabi', password: 'wrong-pass' } });
+  assert(r.status === 401 && /Name oder Passwort/.test(r.body.error), 'wrong password: generic message');
+  r = await call('POST', '/api/login', { body: { name: 'Nobody', password: 'x' } });
+  assert(r.status === 401 && /Name oder Passwort/.test(r.body.error), 'unknown name: same generic message');
+  const old = code, fresh = await invite(a);
+  r = await call('POST', '/api/join', { body: { code: old, name: 'Late', password: 'secret12' } });
+  assert(r.status === 404 && fresh !== old, 'rotating the invite kills the old link');
+  return 'invite check leaks no names, join, dup/short refused, login by name, generic errors, rotation';
 };
 
-tests.simultaneous_pick_has_one_winner = async () => {
-  const m1 = (await (await call('POST', '/api/claim',
-    { body: { manager: 'm1', password: 'hunter22' } })).json()).token;
-  const m2 = (await (await call('POST', '/api/claim',
-    { body: { manager: 'm2', password: 'hunter22' } })).json()).token;
-
-  // Both fire at once while fabi is on the clock. boy2 must lose - and must
-  // lose for the right reason, not by corrupting the file.
-  const [a, b] = await Promise.all([
-    call('POST', '/api/pick', { body: { player: 'G2_TOP' }, token: m1 }).then(asJson),
-    call('POST', '/api/pick', { body: { player: 'FNC_MID' }, token: m2 }).then(asJson),
-  ]);
-  const oks = [a, b].filter(r => r.status === 200);
-  assert(oks.length === 1, `exactly one should win, got ${oks.length}`);
-  assert(oks[0].body.picked === 'G2_TOP', 'm1 was on the clock, so m1 wins');
-
-  const league = gh.current('data/league.json');
-  assert(league.draft.picks.length === 1, `file must hold 1 pick, holds ${league.draft.picks.length}`);
-  return 'two simultaneous picks -> one commit, loser refused, file intact';
+tests.capacity_and_closed_lobby = async () => {
+  const a = await admin(), code = await invite(a);
+  // 30 players, roster 6 -> 80% rule allows 4
+  for (const n of ['Ann', 'Ben', 'Cem', 'Dan']) await join(code, n);
+  let r = await call('POST', '/api/join', { body: { code, name: 'Eva', password: 'secret12' } });
+  assert(r.status === 409 && /voll/.test(r.body.error), 'full league refused: ' + r.body.error);
+  await call('POST', '/api/admin/op', { token: a, body: { op: 'removeManager', manager: league().managers[3].id } });
+  await call('POST', '/api/admin/op', { token: a, body: { op: 'setStatus', status: 'live' } });
+  r = await call('POST', '/api/join', { body: { code, name: 'Finn', password: 'secret12' } });
+  assert(r.status === 409 && /geschlossen/.test(r.body.error), 'join after draft start refused');
+  r = await call('POST', '/api/admin/op', { token: a, body: { op: 'addManager', name: 'Late', password: 'secret12' } });
+  assert(r.status === 200 && league().managers.some(m => m.name === 'Late'), 'admin can still add someone late');
+  return 'cap from pool (4), closed after start, admin can add late';
 };
 
-// The retry loop above is the thing most likely to bite on draft night, and
-// the simultaneous-pick test does NOT reach it (the loser is refused on the
-// turn check before it ever PUTs). So force a real 409: slip an unrelated
-// write in between the Worker's read and its write, which is exactly what the
-// host editing league.json mid-draft would do.
-tests.recovers_from_a_lost_race = async () => {
-  const m1 = (await (await call('POST', '/api/claim',
-    { body: { manager: 'm1', password: 'hunter22' } })).json()).token;
+tests.draft_referee = async () => {
+  const { tok, ids } = await liveLeague(['Ann', 'Ben']);
+  let r = await call('POST', '/api/pick', { token: tok.Ben, body: { player: 'G2_TOP' } });
+  assert(r.status === 409, 'out of turn refused');
+  r = await call('POST', '/api/pick', { token: tok.Ann, body: { player: 'G2_TOP' } });
+  assert(r.status === 200 && r.body.onTheClock === ids.Ben, 'legal pick, clock moves');
+  r = await call('POST', '/api/pick', { token: tok.Ben, body: { player: 'G2_TOP' } });
+  assert(r.status === 422, 'taken player refused');
+  r = await call('POST', '/api/pick', { token: tok.Ben, body: { player: 'NOPE' } });
+  assert(r.status === 422, 'unknown player refused');
+  assert(/Ann pickt G2 TOP/.test(gh.messages('league.json').pop()), 'commit message names the manager and the player');
+  return 'turn, taken, unknown enforced; readable commit messages';
+};
 
-  const realFetch = globalThis.fetch;
-  let armed = true;
-  globalThis.fetch = async (url, init) => {
-    const res = await realFetch(url, init);
-    // after the Worker has read league.json once, bump it behind their back
-    if (armed && String(url).includes('league.json') && (!init || !init.method || init.method === 'GET')) {
+tests.simultaneous_and_race = async () => {
+  const { tok } = await liveLeague(['Ann', 'Ben']);
+  const [x, y] = await Promise.all([
+    call('POST', '/api/pick', { token: tok.Ann, body: { player: 'G2_TOP' } }),
+    call('POST', '/api/pick', { token: tok.Ann, body: { player: 'FNC_TOP' } })]);
+  assert([x, y].filter(r => r.status === 200).length === 1, 'double-click: exactly one pick');
+  assert(league().draft.picks.length === 1, 'file holds one pick');
+  // force a lost race: someone else writes between our read and our write
+  const orig = gh.handle; let armed = true;
+  gh.handle = async (url, init) => {
+    const res = await orig(url, init);
+    if (armed && url.includes('/contents/league.json') && (!init || !init.method)) {
       armed = false;
-      const rec = gh.store.get('data/league.json');
-      const obj = JSON.parse(rec.text);
-      obj.name = obj.name + ' (host edit)';
-      rec.text = JSON.stringify(obj, null, 2) + '\n';
-      rec.sha = 'sha-bumped-by-host';
+      const l = league(); l.name = 'edited meanwhile';
+      const cur = gh.files.get('league.json');
+      cur.push({ sha: 'c' + 'f'.repeat(39), text: JSON.stringify(l), message: 'meanwhile', date: new Date().toISOString() });
     }
     return res;
   };
-
-  const r = await asJson(await call('POST', '/api/pick',
-    { body: { player: 'G2_TOP' }, token: m1 }));
-  globalThis.fetch = realFetch;
-
-  assert(gh.stats.conflicts >= 1, 'this test is pointless unless a 409 actually happened');
-  assert(r.status === 200, `should recover and commit, got ${r.status} ${r.body.error}`);
-
-  const league = gh.current('data/league.json');
-  assert(league.draft.picks.length === 1, 'exactly one pick after recovery');
-  assert(/host edit/.test(league.name), 'the competing edit must survive, not be clobbered');
-  return `409 hit (${gh.stats.conflicts}x), retried, pick committed without losing the other edit`;
+  const r = await call('POST', '/api/pick', { token: tok.Ben, body: { player: 'FNC_MID' } });
+  gh.handle = orig;
+  assert(gh.stats.conflicts >= 1 && r.status === 200, 'recovered from a real 409');
+  assert(league().name === 'edited meanwhile' && league().draft.picks.length === 2, 'both edits survive');
+  return `one winner on double-click; real 409 (${gh.stats.conflicts}x) recovered without losing the other edit`;
 };
 
-tests.token_never_reaches_the_page = async () => {
-  const m1 = (await (await call('POST', '/api/claim',
-    { body: { manager: 'm1', password: 'hunter22' } })).json()).token;
-  const bodies = [];
-  bodies.push(await (await call('GET', '/api/state')).text());
-  bodies.push(await (await call('POST', '/api/login',
-    { body: { manager: 'm1', password: 'hunter22' } })).text());
-  bodies.push(await (await call('POST', '/api/pick',
-    { body: { player: 'G2_TOP' }, token: m1 })).text());
-  bodies.push(await (await call('POST', '/api/pick',
-    { body: { player: 'nope' }, token: m1 })).text());
-  for (const b of bodies) {
-    assert(!b.includes(env.GITHUB_TOKEN), 'a response leaked the GitHub token');
-    assert(!b.includes('hunter22'), 'a response echoed a password');
-  }
-  // and the stored credential is a hash, not the password
-  const rec = JSON.parse(await env.LEAGUE.get('mgr:m1'));
-  assert(!JSON.stringify(rec).includes('hunter22'), 'password stored in clear');
-  assert(rec.hash && rec.salt && rec.hash.length === 64, 'expected a salted sha-256 hash');
-  return 'no response leaks the token or a password; stored credential is salted+hashed';
+tests.admin_interventions = async () => {
+  const { a, tok, ids } = await liveLeague(['Ann', 'Ben', 'Cem']);
+  const op = body => call('POST', '/api/admin/op', { token: a, body });
+  await call('POST', '/api/pick', { token: tok.Ann, body: { player: 'G2_TOP' } });
+  // a member's pick "didn't work" -> admin picks for whoever is on the clock
+  let r = await op({ op: 'pickFor', player: 'FNC_TOP' });
+  assert(r.status === 200 && league().draft.picks[1].manager === ids.Ben && league().draft.picks[1].by === 'admin', 'pick for on-clock manager');
+  // wrong player picked -> replace it in place
+  r = await op({ op: 'replacePick', index: 1, player: 'FNC_MID' });
+  assert(r.status === 200 && league().draft.picks[1].player === 'FNC_MID', 'replace pick');
+  r = await op({ op: 'replacePick', index: 1, player: 'G2_TOP' });
+  assert(r.status === 400, 'cannot replace with a player someone owns');
+  // undo
+  r = await op({ op: 'undoPick' });
+  assert(r.status === 200 && league().draft.picks.length === 1, 'undo');
+  // out of turn only with force
+  r = await op({ op: 'pickFor', manager: ids.Cem, player: 'KC_TOP' });
+  assert(r.status === 409, 'out-of-turn admin pick needs force');
+  r = await op({ op: 'pickFor', manager: ids.Cem, player: 'KC_TOP', force: true });
+  assert(r.status === 200, 'forced out-of-turn pick');
+  // removing a manager with picks needs force
+  r = await op({ op: 'removeManager', manager: ids.Cem });
+  assert(r.status === 400, 'remove with picks needs force');
+  // points, names, order, announcement
+  assert((await op({ op: 'adjust', manager: ids.Ann, pts: -5, reason: 'zu spät' })).status === 200, 'adjust');
+  assert((await op({ op: 'renameManager', manager: ids.Ben, name: 'Bea' })).status === 200, 'rename');
+  assert((await op({ op: 'renameManager', manager: ids.Ben, name: 'a' })).status === 400, 'rename validates');
+  assert((await op({ op: 'announce', text: 'Draft 20 Uhr' })).status === 200 && league().announcement.text === 'Draft 20 Uhr', 'announce');
+  assert((await op({ op: 'setOrder', order: [ids.Cem, ids.Ben, ids.Ann] })).status === 400, 'reorder after picks needs force');
+  assert((await op({ op: 'bogus' })).status === 400, 'unknown op refused');
+  return 'pick-for, replace, undo, forced pick, guarded remove, adjust, rename, announce, guarded reorder';
+};
+
+tests.passwords_and_sessions = async () => {
+  const { a, tok, ids } = await liveLeague(['Ann', 'Ben']);
+  const op = body => call('POST', '/api/admin/op', { token: a, body });
+  // forgot password -> admin sets a new one, old sessions die
+  let r = await op({ op: 'setPassword', manager: ids.Ann, password: 'brand-new-pw' });
+  assert(r.status === 200, 'set password');
+  assert((await call('GET', '/api/state', { token: tok.Ann })).status === 401, 'old session revoked');
+  assert((await call('POST', '/api/login', { body: { name: 'Ann', password: 'secret-Ann' } })).status === 401, 'old password dead');
+  assert((await call('POST', '/api/login', { body: { name: 'Ann', password: 'brand-new-pw' } })).status === 200, 'new password works');
+  // kick
+  assert((await call('GET', '/api/state', { token: tok.Ben })).status === 200, 'B logged in');
+  await op({ op: 'kick', manager: ids.Ben });
+  assert((await call('GET', '/api/state', { token: tok.Ben })).status === 401, 'kick logs out');
+  // a member token is not an admin token
+  assert((await call('GET', '/api/admin/state', { token: tok.Ben })).status === 401, 'member cannot use admin api');
+  assert((await call('POST', '/api/admin/login', { body: { password: 'guess' } })).status === 401, 'wrong admin password');
+  return 'reset password revokes sessions, kick, member≠admin, admin password checked';
+};
+
+tests.validation_guard_and_restore = async () => {
+  const { a, tok } = await liveLeague(['Ann', 'Ben']);
+  await call('POST', '/api/pick', { token: tok.Ann, body: { player: 'G2_TOP' } });
+  const good = league();
+  const shaGood = (await call('GET', '/api/admin/history', { token: a })).body.commits[0].sha;
+  // a broken raw edit is refused...
+  const broken = JSON.parse(JSON.stringify(good)); broken.draft.picks.push({ manager: 'ghost', player: 'G2_TOP' });
+  let r = await call('POST', '/api/admin/op', { token: a, body: { op: 'setRaw', league: broken } });
+  assert(r.status === 400 && /Ungültig/.test(r.body.error), 'broken raw edit refused: ' + r.body.error);
+  // ...unless forced (last resort) - and then history brings it back
+  r = await call('POST', '/api/admin/op', { token: a, body: { op: 'setRaw', league: broken, force: true } });
+  assert(r.status === 200 && league().draft.picks.length === 2, 'forced broken edit written');
+  const st = (await call('GET', '/api/admin/state', { token: a })).body;
+  assert(st.validation.errors.length >= 1, 'admin state reports the breakage');
+  r = await call('POST', '/api/admin/op', { token: a, body: { op: 'restore', sha: shaGood } });
+  assert(r.status === 200 && JSON.stringify(league()) === JSON.stringify(good), 'restored exactly');
+  assert(/zurückgesetzt auf/.test(gh.messages('league.json').pop()), 'restore is itself a commit (undoable)');
+  // validator fixes can be applied directly
+  const l = league(); l.draft.order.push(l.draft.order[0]);
+  await call('POST', '/api/admin/op', { token: a, body: { op: 'setRaw', league: l, force: true } });
+  const fix = (await call('GET', '/api/admin/state', { token: a })).body.validation.errors.find(e => e.fix);
+  r = await call('POST', '/api/admin/op', { token: a, body: { op: 'fix', fix: Object.assign({ force: true }, fix.fix) } });
+  assert(r.status === 200 && !(await call('GET', '/api/admin/state', { token: a })).body.validation.errors.length, 'one-click fix: ' + JSON.stringify(r.body));
+  return 'broken writes refused, forced ones detected, exact restore from history, one-click fixes';
+};
+
+tests.timer_autopick = async () => {
+  const { a, tok, ids } = await liveLeague(['Ann', 'Ben']);
+  await call('POST', '/api/admin/op', { token: a, body: { op: 'setTimer', mode: 'auto', seconds: 30 } });
+  await env.LEAGUE.put(`queue:${ids.Ann}`, JSON.stringify(['TH_SUP']));
+  const realNow = Date.now;
+  Date.now = () => realNow() + 31000;               // A sleeps through the clock
+  let st = await call('GET', '/api/state', { token: tok.Ben });
+  assert(st.body.autoPicked && st.body.autoPicked.player === 'TH_SUP', 'auto-pick takes the queue first: ' + JSON.stringify(st.body.autoPicked));
+  Date.now = () => realNow() + 62000 + 31000;       // B sleeps too, empty queue
+  st = await call('GET', '/api/state', { token: tok.Ann });
+  Date.now = realNow;
+  const p = league().draft.picks;
+  assert(p.length === 2 && p[1].by === 'auto' && p[1].player.startsWith('G2_'), 'then best available by points: ' + (p[1] && p[1].player));
+  return 'timer runs out -> queue first, else best available; marked [auto]';
+};
+
+tests.trades_backbone = async () => {
+  const { a, tok, ids } = await liveLeague(['Ann', 'Ben']);
+  const pickFor = pl => call('POST', '/api/admin/op', { token: a, body: { op: 'pickFor', player: pl } });
+  // snake for two: Ann, Ben, Ben, Ann, Ann, Ben, ... - legal for both (≤2 per team)
+  const order = ['G2_TOP', 'FNC_TOP', 'FNC_JNG', 'G2_JNG', 'KC_MID', 'MKOI_MID', 'MKOI_BOT', 'KC_BOT', 'TH_SUP', 'VIT_SUP', 'TH_TOP', 'VIT_TOP'];
+  for (const p of order) { const r = await pickFor(p); assert(r.status === 200, 'draft ' + p + ': ' + r.body.error); }
+  assert(league().draft.completed, 'draft locked when full');
+  let r = await call('POST', '/api/trade', { token: tok.Ann, body: { action: 'propose', to: ids.Ben, give: ['G2_TOP'], get: ['FNC_TOP'] } });
+  assert(r.status === 403, 'trades off by default');
+  await call('POST', '/api/admin/op', { token: a, body: { op: 'setTradeRules', rules: { enabled: true } } });
+  r = await call('POST', '/api/trade', { token: tok.Ann, body: { action: 'propose', to: ids.Ben, give: ['FNC_TOP'], get: ['G2_TOP'] } });
+  assert(r.status === 400, 'cannot offer players you do not own');
+  r = await call('POST', '/api/trade', { token: tok.Ann, body: { action: 'propose', to: ids.Ben, give: ['G2_TOP'], get: ['FNC_TOP'] } });
+  const id = r.body.trade.id;
+  r = await call('POST', '/api/trade', { token: tok.Ann, body: { action: 'respond', id, accept: true } });
+  assert(r.status === 403, 'proposer cannot accept own trade');
+  r = await call('POST', '/api/trade', { token: tok.Ben, body: { action: 'respond', id, accept: true } });
+  assert(r.status === 200 && r.body.trade.status === 'accepted', 'accepted');
+  const ros = globalThis.LECScoring.rosters(league());
+  assert(ros[ids.Ann].includes('FNC_TOP') && ros[ids.Ben].includes('G2_TOP'), 'rosters swapped');
+  return 'off by default, ownership checked, only the receiver accepts, rosters swap';
+};
+
+tests.health_and_tools = async () => {
+  const a = await admin();
+  const h = (await call('GET', '/api/admin/health', { token: a })).body.checks;
+  const bad = h.filter(c => c.ok === false && c.name !== 'Push');
+  assert(!bad.length, 'health problems: ' + JSON.stringify(bad));
+  assert((await call('POST', '/api/admin/stats', { token: a, body: {} })).status === 200 && gh.stats.dispatched === 1, 'stats dispatch');
+  const r = await call('POST', '/api/admin/op', { token: a, body: { op: 'override', entry: { op: 'exclude', game: 'g1' } } });
+  assert(r.status === 200 && gh.current('data/overrides.json').rows.length === 1, 'stat correction written to the site repo');
+  const st = (await call('GET', '/api/admin/state', { token: a })).body;
+  assert(st.privateData === true && st.dataRepo === 'me/site-data', 'reports private data repo');
+  return `${h.length} health checks green, stats dispatch, stat corrections, private-repo mode`;
+};
+
+tests.no_secret_ever_leaks = async () => {
+  const joined = bodies.join('\n');
+  assert(!joined.includes(SECRET_TOKEN), 'GitHub token leaked');
+  assert(!joined.includes(ADMIN_PW), 'admin password leaked');
+  for (const pw of ['secret-Ann', 'secret-Fabi', 'brand-new-pw']) assert(!joined.includes(pw), 'member password leaked: ' + pw);
+  return `${bodies.length} responses checked: no token, no admin or member password`;
 };
 
 // ── runner ─────────────────────────────────────────────────────────────────
-function assert(cond, msg) { if (!cond) throw new Error(msg); }
-
+function assert(c, m) { if (!c) throw new Error(m); }
 let failed = 0;
 const names = Object.keys(tests);
 for (const name of names) {
-  await setup();                       // fresh repo + KV per test
-  try {
-    const msg = await tests[name]();
-    console.log(`  ok  ${name}: ${msg}`);
-  } catch (e) {
-    failed++;
-    console.log(`  FAIL ${name}: ${e.message}`);
-  }
+  await setup();
+  try { console.log(`  ok  ${name}: ${await tests[name]()}`); }
+  catch (e) { failed++; console.log(`  FAIL ${name}: ${e.message}`); }
 }
+globalThis.fetch = realFetch;
 console.log(`\n${names.length - failed}/${names.length} passed`);
 process.exit(failed ? 1 : 0);

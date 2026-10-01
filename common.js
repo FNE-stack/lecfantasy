@@ -26,23 +26,30 @@
     }
   }
 
-  // Everything a page needs, with lookup maps built once.
+  // Points table used wherever no league is loaded (logged-out pages).
+  const DEFAULT_SCORING = { kill: 3, death: -1, assist: 1.5, cs10: 0.02, win: 2 };
+
+  // All PUBLIC data (LEC teams, players, stats, schedule). The league itself -
+  // members, picks - is private and comes from the Worker after login, so it
+  // is not loaded here; the app sets D.league once it has it.
   async function load() {
-    const [league, players, teams, stats, champs, schedule] = await Promise.all([
-      getJson('data/league.json'),
+    const [players, teams, stats, champs, schedule, overrides] = await Promise.all([
       getJson('data/players.json', true),
       getJson('data/teams.json', true),
       getJson('data/stats.json', true),
       getJson('data/champions.json', true),
       getJson('data/schedule.json', true),
+      getJson('data/overrides.json', true),
     ]);
+    // admin stat corrections apply everywhere the stats are shown
+    if (stats && global.LECScoring) stats.games = global.LECScoring.applyOverrides(stats.games, overrides);
     const P = new Map(), T = new Map();
     for (const p of (players && players.players) || []) P.set(p.id, p);
     // players who left their team mid-season keep a name for their old points
     for (const p of (players && players.former) || []) if (!P.has(p.id)) P.set(p.id, p);
     for (const t of (teams && teams.teams) || []) T.set(t.code, t);
     return {
-      league, players: players || { players: [] }, teams: teams || { teams: [] },
+      league: null, overrides: overrides || { rows: [] }, players: players || { players: [] }, teams: teams || { teams: [] },
       stats: stats || { games: [] }, champs: champs || { names: {} },
       schedule: schedule || { events: [] }, P, T,
     };
@@ -92,7 +99,7 @@
 
   // Per-player season aggregates from the raw game rows.
   function playerSeason(D, id) {
-    const s = D.league.scoring;
+    const s = (D.league && D.league.scoring) || DEFAULT_SCORING;
     const rows = (D.stats.games || []).filter(g => g.player === id);
     const sum = { games: rows.length, wins: 0, k: 0, d: 0, a: 0, cs: 0, pts: 0 };
     for (const g of rows) {
@@ -107,6 +114,6 @@
   }
 
 
-  global.LECUI = { esc, fmt, getJson, load, teamLogo, champIcon, playerName,
+  global.LECUI = { DEFAULT_SCORING, esc, fmt, getJson, load, teamLogo, champIcon, playerName,
                    playerCell, playerSeason };
 })(typeof window !== 'undefined' ? window : globalThis);

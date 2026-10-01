@@ -38,9 +38,15 @@ if grep -q 'PASTE_KV_ID_HERE' wrangler.toml; then
   echo "  KV id $id written to wrangler.toml"
 fi
 
-# 2. secret (piped, so it never appears in argv or shell history)
-printf '%s' "$GITHUB_TOKEN" | npx wrangler secret put GITHUB_TOKEN >/dev/null
-echo "GITHUB_TOKEN secret set"
+# 2. secrets (piped, so they never appear in argv or shell history)
+for v in GITHUB_TOKEN ADMIN_PASSWORD VAPID_PUBLIC VAPID_PRIVATE; do
+  if [ -n "${!v:-}" ]; then
+    printf '%s' "${!v}" | npx wrangler secret put "$v" >/dev/null
+    echo "$v secret set"
+  else
+    echo "($v not in $ENV_FILE - skipped)"
+  fi
+done
 
 # 3. deploy
 out=$(npx wrangler deploy 2>&1) || { echo "$out"; exit 1; }
@@ -48,12 +54,9 @@ url=$(printf '%s' "$out" | grep -oE 'https://[a-z0-9.-]+\.workers\.dev' | head -
 [ -n "$url" ] || { echo "$out"; echo "deployed, but no workers.dev URL found - is a workers.dev subdomain set up?"; exit 1; }
 echo "deployed: $url"
 
-# 4. point the page at it
-if grep -q "const DEFAULT_WORKER = 'PASTE_WORKER_URL_HERE';" ../pick.html; then
-  sed -i "s#const DEFAULT_WORKER = 'PASTE_WORKER_URL_HERE';#const DEFAULT_WORKER = '$url';#" ../pick.html
-  echo "pick.html now talks to $url (commit + push to publish)"
-fi
+# 4. the site's Worker URL lives in app.js (WORKER constant)
+grep -q "$url" ../app.js || echo "NOTE: app.js WORKER is not $url - update it and push"
 
-# smoke test: the public endpoint must answer with league data
-curl -sf "$url/api/state" | grep -q '"onTheClock"' && echo "smoke test OK: $url/api/state" \
-  || { echo "smoke test FAILED: $url/api/state"; exit 1; }
+# smoke test: without a login the league must be refused (401), never served
+code=$(curl -s -o /dev/null -w '%{http_code}' "$url/api/state")
+[ "$code" = "401" ] && echo "smoke test OK: $url/api/state refuses anonymous access (401)"   || { echo "smoke test FAILED: $url/api/state returned $code"; exit 1; }

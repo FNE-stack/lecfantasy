@@ -1,7 +1,6 @@
 {
   "name": "LEC Fantasy",
   "tournament": "auto",
-  "phase": "draft",
   "scoring": {
     "kill": 3,
     "death": -1,
@@ -20,36 +19,27 @@
     "bench": 1,
     "maxPerTeam": 2
   },
-  "swapsPerWeek": 1,
-  "managers": [
-    {
-      "id": "m1",
-      "name": "Manager 1"
-    },
-    {
-      "id": "m2",
-      "name": "Manager 2"
-    },
-    {
-      "id": "m3",
-      "name": "Manager 3"
-    },
-    {
-      "id": "m4",
-      "name": "Manager 4"
-    }
-  ],
+  "standingsMode": "points",
+  "managers": [],
   "draft": {
-    "order": [
-      "m1",
-      "m2",
-      "m3",
-      "m4"
-    ],
+    "order": [],
     "snake": true,
     "picks": [],
-    "completed": false
+    "status": "lobby",
+    "completed": false,
+    "timer": {
+      "mode": "off",
+      "seconds": 90
+    }
   },
-  "lineups": {},
-  "swaps": []
+  "adjustments": [],
+  "swaps": [],
+  "trades": [],
+  "tradeRules": {
+    "enabled": false,
+    "adminApproval": false,
+    "equalCount": true,
+    "deadline": null
+  },
+  "announcement": null
 }

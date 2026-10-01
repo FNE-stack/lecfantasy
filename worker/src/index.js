@@ -1,308 +1,171 @@
 // ═══════════════════════════════════════════════════════════════════════════
-// LEC Fantasy draft referee.
+// LEC Fantasy Worker — the only thing that holds the GitHub token and the only
+// thing that writes. Static pages can't keep secrets, so every write and every
+// read of league data (members, picks) goes through here, behind a login.
 //
-// Exists for exactly one reason: GitHub Pages is static, so a page that can
-// write to the repo must contain the token, and a token in a public page is a
-// token everybody has. This Worker keeps the token private and is the only
-// thing that writes. Managers authenticate here; the page never sees a token.
-//
-// It is deliberately the *referee*, not a second rulebook: every legality
-// decision comes from the same scoring.js the pages use, so the server can
-// never disagree with what the boys saw on screen.
+//   public   POST /api/invite   check an invite code (no member data)
+//            POST /api/join     invite code + name + password -> member
+//            POST /api/login    name + password -> session
+//   member   GET  /api/state    league, me, clock (auto-pick runs here)
+//            POST /api/pick · /api/logout · /api/queue · /api/trade · /api/push
+//   admin    POST /api/admin/login, GET /api/admin/state|health|history,
+//            POST /api/admin/op|invite|stats|broadcast
 // ═══════════════════════════════════════════════════════════════════════════
-import '../../scoring.js';
+import { S, HttpError, readLeague, playerIndex } from './store.js';
+import { setMemberPassword, verifyMember, newSession, sessionManager, endSession, adminLogin, isAdmin,
+         safeEqual } from './auth.js';
+import { addMember, makePick, autoPickIfDue, deadline, tradeAction, nameKey } from './draft.js';
+import { runOp, adminState, rotateInvite, health, runStats, broadcast, leagueHistory } from './admin.js';
+import { subscribe, unsubscribe, notify } from './push.js';
 
-const S = globalThis.LECScoring;
-
-const LEAGUE_PATH = 'data/league.json';
-const PLAYERS_PATH = 'data/players.json';
-const SESSION_TTL = 60 * 60 * 12;      // 12h, comfortably longer than a draft
-const PBKDF2_ITERS = 100000;
-
-// ── small helpers ──────────────────────────────────────────────────────────
-const enc = new TextEncoder();
-
-function hex(buf) {
-  return [...new Uint8Array(buf)].map(b => b.toString(16).padStart(2, '0')).join('');
-}
-function unhex(s) {
-  const out = new Uint8Array(s.length / 2);
-  for (let i = 0; i < out.length; i++) out[i] = parseInt(s.substr(i * 2, 2), 16);
-  return out;
-}
-
-async function pbkdf2(password, salt) {
-  const key = await crypto.subtle.importKey(
-    'raw', enc.encode(password), 'PBKDF2', false, ['deriveBits']);
-  const bits = await crypto.subtle.deriveBits(
-    { name: 'PBKDF2', salt, iterations: PBKDF2_ITERS, hash: 'SHA-256' }, key, 256);
-  return hex(bits);
-}
-
-// Length-independent compare so a wrong password can't be timed character by
-// character. Overkill for four friends, but it costs one loop.
-function safeEqual(a, b) {
-  if (typeof a !== 'string' || typeof b !== 'string' || a.length !== b.length) return false;
-  let diff = 0;
-  for (let i = 0; i < a.length; i++) diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
-  return diff === 0;
-}
-
-function cors(env) {
+function cors(env, request) {
+  const allowed = (env.ALLOWED_ORIGIN || '*').split(',').map(s => s.trim());
+  const origin = request.headers.get('Origin') || '';
   return {
-    'Access-Control-Allow-Origin': env.ALLOWED_ORIGIN || '*',
-    'Access-Control-Allow-Methods': 'GET,POST,OPTIONS',
+    'Access-Control-Allow-Origin': allowed.includes('*') ? '*' : (allowed.includes(origin) ? origin : allowed[0]),
+    'Access-Control-Allow-Methods': 'GET,POST,PUT,DELETE,OPTIONS',
     'Access-Control-Allow-Headers': 'Content-Type,Authorization',
-    'Access-Control-Max-Age': '86400'
+    'Access-Control-Max-Age': '86400',
+    'Vary': 'Origin',
   };
 }
-function json(env, body, status = 200) {
-  return new Response(JSON.stringify(body), {
-    status,
-    headers: { 'Content-Type': 'application/json; charset=utf-8', ...cors(env) }
-  });
-}
-function fail(env, status, error) { return json(env, { error }, status); }
 
-// ── GitHub contents API (the only place the token is used) ─────────────────
-async function ghGet(env, path) {
-  const url = `https://api.github.com/repos/${env.GITHUB_REPO}/contents/${path}`
-            + `?ref=${encodeURIComponent(env.GITHUB_BRANCH || 'main')}`;
-  const r = await fetch(url, {
-    headers: {
-      Authorization: `Bearer ${env.GITHUB_TOKEN}`,
-      Accept: 'application/vnd.github+json',
-      'User-Agent': 'lec-fantasy-worker'
+// Tell whoever was just put on the clock (push; best effort, never blocks).
+function pingNext(env, ctx, league) {
+  const next = S.currentPicker(league);
+  if (!next || !ctx || !ctx.waitUntil) return;
+  ctx.waitUntil(notify(env, [next], {
+    title: 'Du bist dran!', body: `${league.name || 'LEC Fantasy'} — dein Pick im Draft.`, url: './#/draft', tag: 'turn',
+  }).catch(() => {}));
+}
+
+async function memberState(env, me) {
+  let { data: league } = await readLeague(env);
+  const auto = await autoPickIfDue(env, league).catch(() => null);
+  if (auto && auto.changed) league = auto.league;
+  const m = (league.managers || []).find(x => x.id === me);
+  if (!m) throw new HttpError(401, 'Dein Zugang existiert nicht mehr — frag den Admin.');
+  return {
+    league, me: { id: m.id, name: m.name },
+    status: S.draftStatus(league), onTheClock: S.currentPicker(league), progress: S.draftProgress(league),
+    deadline: deadline(league), serverTime: new Date().toISOString(),
+    autoPicked: auto && auto.changed ? { manager: auto.manager, player: auto.picked } : null,
+  };
+}
+
+async function checkInvite(env, code) {
+  const inv = await env.LEAGUE.get('invite', 'json');
+  if (!inv || !safeEqual(String(code || ''), inv.code)) throw new HttpError(404, 'Dieser Einladungslink ist ungültig oder abgelaufen.');
+}
+
+async function route(request, env, ctx) {
+  const url = new URL(request.url), p = url.pathname, method = request.method;
+  const body = method === 'POST' || method === 'PUT' || method === 'DELETE' ? await request.json().catch(() => ({})) : {};
+
+  // ── public ──────────────────────────────────────────────────────────────
+  if (p === '/api/invite' && method === 'POST') {
+    await checkInvite(env, body.code);
+    const { data: league } = await readLeague(env);
+    const players = await playerIndex(env);
+    return { ok: true, name: league.name, status: S.draftStatus(league),
+             members: (league.managers || []).length, capacity: S.capacity(league, players) };
+  }
+  if (p === '/api/join' && method === 'POST') {
+    await checkInvite(env, body.code);
+    if (typeof body.password !== 'string' || body.password.length < 6) throw new HttpError(400, 'Passwort zu kurz (min. 6 Zeichen)');
+    const m = await addMember(env, body.name);
+    try { await setMemberPassword(env, m.id, body.password); }
+    catch (e) {
+      // the league write succeeded but the password didn't: the admin can set one
+      throw new HttpError(500, 'Angemeldet, aber das Passwort konnte nicht gespeichert werden — gib dem Admin Bescheid.');
     }
-  });
-  if (!r.ok) throw new Error(`GitHub GET ${path} -> ${r.status}`);
-  const j = await r.json();
-  // base64 from GitHub is line-wrapped, and league.json may contain umlauts,
-  // so decode bytes properly rather than treating them as latin-1 characters.
-  const raw = Uint8Array.from(atob(j.content.replace(/\n/g, '')), c => c.charCodeAt(0));
-  return { data: JSON.parse(new TextDecoder().decode(raw)), sha: j.sha };
-}
-
-async function ghPut(env, path, obj, sha, message) {
-  const bytes = enc.encode(JSON.stringify(obj, null, 2) + '\n');
-  let bin = '';
-  for (const b of bytes) bin += String.fromCharCode(b);
-  const r = await fetch(
-    `https://api.github.com/repos/${env.GITHUB_REPO}/contents/${path}`, {
-      method: 'PUT',
-      headers: {
-        Authorization: `Bearer ${env.GITHUB_TOKEN}`,
-        Accept: 'application/vnd.github+json',
-        'Content-Type': 'application/json',
-        'User-Agent': 'lec-fantasy-worker'
-      },
-      body: JSON.stringify({
-        message, content: btoa(bin), sha, branch: env.GITHUB_BRANCH || 'main'
-      })
-    });
-  if (r.status === 409 || r.status === 422) {
-    const e = new Error('conflict'); e.conflict = true; throw e;
+    return { ok: true, token: await newSession(env, m.id), me: m };
   }
-  if (!r.ok) throw new Error(`GitHub PUT -> ${r.status} ${(await r.text()).slice(0, 200)}`);
-  return (await r.json()).content.sha;
-}
-
-function playerIndex(players) {
-  const m = new Map();
-  for (const p of (players && players.players) || []) m.set(p.id, p);
-  return m;
-}
-
-// ── sessions ───────────────────────────────────────────────────────────────
-async function newSession(env, managerId) {
-  const tok = hex(crypto.getRandomValues(new Uint8Array(32)));
-  await env.LEAGUE.put(`session:${tok}`, managerId, { expirationTtl: SESSION_TTL });
-  return tok;
-}
-async function whoIs(env, request) {
-  const auth = request.headers.get('Authorization') || '';
-  const tok = auth.startsWith('Bearer ') ? auth.slice(7) : '';
-  if (!tok) return null;
-  return await env.LEAGUE.get(`session:${tok}`);
-}
-
-// ── routes ─────────────────────────────────────────────────────────────────
-
-// Who exists, who has already claimed a slot, whose turn it is. No secrets.
-//
-// Every open tab polls this every few seconds during a draft. Uncached, each
-// call costs one GitHub API read (limit 5000/h) and one KV read per manager
-// (free tier 100k/day) - a few spectators leaving tabs open would exhaust
-// both. So: one KV key for all claims, and the whole response cached at the
-// edge for STATE_TTL seconds. Writes purge the cache so the writer's own
-// next poll is fresh.
-const STATE_TTL = 3;
-const STATE_KEY = 'https://state.lecfantasy.internal/v1';
-const edgeCache = () => (typeof caches !== 'undefined' ? caches.default : null);
-
-async function claimedSet(env) {
-  return new Set((await env.LEAGUE.get('claimed', 'json')) || []);
-}
-async function markClaimed(env, managerId) {
-  const set = await claimedSet(env);
-  if (!set.has(managerId)) {
-    set.add(managerId);
-    await env.LEAGUE.put('claimed', JSON.stringify([...set]));
-  }
-}
-async function purgeState() {
-  const c = edgeCache();
-  if (c) await c.delete(STATE_KEY);
-}
-
-async function handleState(env) {
-  const c = edgeCache();
-  if (c) {
-    const hit = await c.match(STATE_KEY);
-    if (hit) {
-      return new Response(hit.body, {
-        status: 200, headers: { 'Content-Type': 'application/json; charset=utf-8', ...cors(env) }
-      });
+  if (p === '/api/login' && method === 'POST') {
+    const { data: league } = await readLeague(env);
+    const m = (league.managers || []).find(x => nameKey(x.name) === nameKey(body.name));
+    if (!m || !(await verifyMember(env, m.id, String(body.password || '')))) {
+      await new Promise(r => setTimeout(r, 400));
+      throw new HttpError(401, 'Name oder Passwort falsch.');
     }
-  }
-  const { data: league } = await ghGet(env, LEAGUE_PATH);
-  const set = await claimedSet(env);
-  const claimed = {};
-  for (const m of league.managers || []) claimed[m.id] = set.has(m.id);
-  const body = JSON.stringify({
-    league,
-    claimed,
-    onTheClock: S.currentPicker(league),
-    progress: S.draftProgress(league),
-    serverTime: new Date().toISOString()
-  });
-  if (c) {
-    await c.put(STATE_KEY, new Response(body, {
-      headers: { 'Cache-Control': `public, max-age=${STATE_TTL}` }
-    }));
-  }
-  return new Response(body, {
-    status: 200, headers: { 'Content-Type': 'application/json; charset=utf-8', ...cors(env) }
-  });
-}
-
-// First visit: a manager slot is claimed by whoever sets a password first.
-// Deliberately first-come — the link is the invite — and re-claiming is
-// refused so nobody can take over a slot that is already in use.
-async function handleClaim(env, body) {
-  const { manager, displayName, password } = body;
-  if (!manager || !password) return fail(env, 400, 'manager und password nötig');
-  if (String(password).length < 6) return fail(env, 400, 'Passwort zu kurz (min. 6 Zeichen)');
-
-  const { data: league, sha } = await ghGet(env, LEAGUE_PATH);
-  const slot = (league.managers || []).find(m => m.id === manager);
-  if (!slot) return fail(env, 404, 'unbekannter Manager-Slot');
-  if (await env.LEAGUE.get(`mgr:${manager}`)) {
-    // two claims racing can lose one update to the index; heal it here
-    await markClaimed(env, manager);
-    await purgeState();
-    return fail(env, 409, 'Slot schon vergeben');
+    return { ok: true, token: await newSession(env, m.id), me: { id: m.id, name: m.name } };
   }
 
-  const salt = crypto.getRandomValues(new Uint8Array(16));
-  const hash = await pbkdf2(password, salt);
-  await env.LEAGUE.put(`mgr:${manager}`,
-    JSON.stringify({ salt: hex(salt), hash, iters: PBKDF2_ITERS }));
-  await markClaimed(env, manager);
-
-  // A chosen display name is cosmetic, so a failure writing it must not lose
-  // the claim that already succeeded above.
-  if (displayName && displayName !== slot.name) {
-    try {
-      slot.name = String(displayName).slice(0, 32);
-      await ghPut(env, LEAGUE_PATH, league, sha,
-        `draft: ${manager} heißt jetzt ${slot.name}`);
-    } catch (e) { /* name simply stays as configured */ }
-  }
-  await purgeState();
-  return json(env, { ok: true, token: await newSession(env, manager), manager });
-}
-
-async function handleLogin(env, body) {
-  const { manager, password } = body;
-  if (!manager || !password) return fail(env, 400, 'manager und password nötig');
-  const rec = await env.LEAGUE.get(`mgr:${manager}`, 'json');
-  if (!rec) return fail(env, 404, 'Slot noch nicht übernommen');
-  const hash = await pbkdf2(password, unhex(rec.salt));
-  if (!safeEqual(hash, rec.hash)) return fail(env, 401, 'falsches Passwort');
-  return json(env, { ok: true, token: await newSession(env, manager), manager });
-}
-
-// The actual referee. Re-reads league.json inside the retry loop so two
-// managers picking at the same instant cannot both pass the turn check: the
-// loser's PUT hits a stale sha, we re-read, and it is no longer their turn.
-async function handlePick(env, request, body) {
-  const me = await whoIs(env, request);
-  if (!me) return fail(env, 401, 'nicht eingeloggt');
-  const playerId = body.player;
-  if (!playerId) return fail(env, 400, 'kein Spieler angegeben');
-
-  const { data: players } = await ghGet(env, PLAYERS_PATH);
-  const idx = playerIndex(players);
-
-  for (let attempt = 0; attempt < 5; attempt++) {
-    const { data: league, sha } = await ghGet(env, LEAGUE_PATH);
-
-    if (league.draft && league.draft.completed) return fail(env, 409, 'Draft ist gesperrt');
-    const turn = S.currentPicker(league);
-    if (turn === null) return fail(env, 409, 'Draft ist vorbei');
-    if (turn !== me) {
-      const m = (league.managers || []).find(x => x.id === turn);
-      return fail(env, 409, `nicht dein Zug — ${m ? m.name : turn} ist dran`);
+  // ── admin ───────────────────────────────────────────────────────────────
+  if (p === '/api/admin/login' && method === 'POST') return adminLogin(env, body.password);
+  if (p.startsWith('/api/admin/')) {
+    if (!(await isAdmin(env, request))) throw new HttpError(401, 'Admin-Login nötig');
+    if (p === '/api/admin/state') return adminState(env);
+    if (p === '/api/admin/health') return { checks: await health(env) };
+    if (p === '/api/admin/history') return { commits: await leagueHistory(env, 50) };
+    if (p === '/api/admin/invite' && method === 'POST') return { invite: await rotateInvite(env) };
+    if (p === '/api/admin/stats' && method === 'POST') return runStats(env, body.tournament);
+    if (p === '/api/admin/broadcast' && method === 'POST') return broadcast(env, body.text || '');
+    if (p === '/api/admin/op' && method === 'POST') {
+      const r = await runOp(env, body);
+      if (r.league) pingNext(env, ctx, r.league);
+      return r;
     }
-
-    const why = S.pickError(league, idx, me, playerId);
-    if (why) return fail(env, 422, why);
-
-    league.draft.picks.push({
-      manager: me, player: playerId, at: new Date().toISOString()
-    });
-    if (S.currentPicker(league) === null) league.draft.completed = true;
-
-    try {
-      const meta = idx.get(playerId) || {};
-      await ghPut(env, LEAGUE_PATH, league, sha,
-        `draft: ${me} picks ${meta.name || playerId} (${meta.team || '?'} ${meta.role || ''})`.trim());
-      await purgeState();
-      return json(env, {
-        ok: true, picked: playerId,
-        onTheClock: S.currentPicker(league),
-        progress: S.draftProgress(league)
-      });
-    } catch (e) {
-      if (!e.conflict) throw e;
-      await new Promise(r => setTimeout(r, 150 + 200 * attempt));
-    }
+    throw new HttpError(404, 'unbekannter Admin-Endpunkt');
   }
-  return fail(env, 503, 'zu viele gleichzeitige Picks — nochmal versuchen');
+
+  // ── member ──────────────────────────────────────────────────────────────
+  const me = await sessionManager(env, request);
+  if (!me) throw new HttpError(401, 'Bitte einloggen.');
+
+  if (p === '/api/state' && method === 'GET') {
+    const st = await memberState(env, me);
+    if (st.autoPicked) pingNext(env, ctx, st.league);
+    return st;
+  }
+  if (p === '/api/pick' && method === 'POST') {
+    if (!body.player) throw new HttpError(400, 'Kein Spieler angegeben');
+    const r = await makePick(env, me, body.player, { by: 'member' });
+    pingNext(env, ctx, r.league);
+    return { ok: true, picked: r.picked, onTheClock: S.currentPicker(r.league), progress: S.draftProgress(r.league) };
+  }
+  if (p === '/api/logout' && method === 'POST') { await endSession(env, request); return { ok: true }; }
+  if (p === '/api/queue') {
+    if (method === 'PUT') {
+      const q = Array.isArray(body.queue) ? body.queue.filter(x => typeof x === 'string').slice(0, 60) : [];
+      await env.LEAGUE.put(`queue:${me}`, JSON.stringify(q));
+      return { queue: q };
+    }
+    return { queue: (await env.LEAGUE.get(`queue:${me}`, 'json')) || [] };
+  }
+  if (p === '/api/trade' && method === 'POST') return { trade: await tradeAction(env, me, body) };
+  if (p === '/api/push/key' && method === 'GET') return { key: env.VAPID_PUBLIC || null };
+  if (p === '/api/push' && method === 'POST') return { devices: await subscribe(env, me, body.subscription) };
+  if (p === '/api/push' && method === 'DELETE') { await unsubscribe(env, me, body.endpoint); return { ok: true }; }
+  if (p === '/api/push/test' && method === 'POST') {
+    return notify(env, [me], { title: 'LEC Fantasy', body: 'Benachrichtigungen funktionieren ✓', url: './#/', tag: 'test' });
+  }
+  throw new HttpError(404, 'unbekannter Endpunkt');
 }
 
 export default {
-  async fetch(request, env) {
-    const url = new URL(request.url);
-    if (request.method === 'OPTIONS') {
-      return new Response(null, { status: 204, headers: cors(env) });
-    }
+  async fetch(request, env, ctx) {
+    const headers = cors(env, request);
+    if (request.method === 'OPTIONS') return new Response(null, { status: 204, headers });
     try {
-      if (url.pathname === '/api/state' && request.method === 'GET') {
-        return await handleState(env);
-      }
-      if (request.method === 'POST') {
-        const body = await request.json().catch(() => ({}));
-        if (url.pathname === '/api/claim') return await handleClaim(env, body);
-        if (url.pathname === '/api/login') return await handleLogin(env, body);
-        if (url.pathname === '/api/pick') return await handlePick(env, request, body);
-      }
-      return fail(env, 404, 'unbekannter Endpunkt');
+      const out = await route(request, env, ctx);
+      return new Response(JSON.stringify(out), { status: 200, headers: { 'Content-Type': 'application/json; charset=utf-8', ...headers } });
     } catch (e) {
-      // Never leak the token or GitHub internals to the page.
-      console.error((e && e.stack) || String(e));
-      return fail(env, 500, 'Serverfehler — siehe Worker-Log');
+      const status = e instanceof HttpError ? e.status : 500;
+      if (status >= 500) console.error((e && e.stack) || String(e));
+      // never leak the token or GitHub internals for unexpected errors
+      const error = e instanceof HttpError ? e.message : 'Serverfehler — der Admin sieht Details im Worker-Log.';
+      return new Response(JSON.stringify(Object.assign({ error }, e instanceof HttpError && e.extra ? e.extra : {})),
+        { status, headers: { 'Content-Type': 'application/json; charset=utf-8', ...headers } });
     }
-  }
+  },
+  // Backstop for the pick timer: even with nobody's page open, an overdue
+  // auto-pick happens within a minute.
+  async scheduled(event, env, ctx) {
+    try {
+      const { data } = await readLeague(env);
+      const r = await autoPickIfDue(env, data);
+      if (r && r.changed) pingNext(env, ctx, r.league);
+    } catch (e) { console.error('cron', e && e.message); }
+  },
 };

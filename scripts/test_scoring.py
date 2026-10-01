@@ -15,7 +15,14 @@ ROOT = os.path.dirname(HERE)
 
 def load_league():
     with open(os.path.join(ROOT, "data", "league.json"), encoding="utf-8") as f:
-        return json.load(f)
+        lg = json.load(f)
+    # a fresh season starts in the lobby with nobody in it - the rule tests
+    # need a draft to run, so give them four managers of their own
+    if not lg["draft"].get("order"):
+        lg["managers"] = [{"id": f"m{i}", "name": f"M{i}"} for i in range(1, 5)]
+        lg["draft"]["order"] = [m["id"] for m in lg["managers"]]
+    lg["draft"]["status"] = "live"
+    return lg
 
 
 # ── Python mirror of scoring.js (kept deliberately literal) ─────────────────

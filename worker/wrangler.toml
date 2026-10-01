@@ -9,6 +9,12 @@ compatibility_date = "2026-09-01"
 GITHUB_REPO = "FNE-stack/lecfantasy"
 GITHUB_BRANCH = "main"
 ALLOWED_ORIGIN = "https://fne-stack.github.io"
+PAGES_URL = "https://fne-stack.github.io/lecfantasy"
+# push sender id seen by Google/Apple push services - the site, not a person
+VAPID_SUBJECT = "https://fne-stack.github.io/lecfantasy"
+# where the league lives. Unset = data/league.json in GITHUB_REPO (public).
+# For private data: create FNE-stack/lecfantasy-data, then uncomment:
+# DATA_REPO = "FNE-stack/lecfantasy-data"
 
 # Holds manager password hashes and login sessions.
 # Create with:  npx wrangler kv namespace create LEAGUE
@@ -16,3 +22,7 @@ ALLOWED_ORIGIN = "https://fne-stack.github.io"
 [[kv_namespaces]]
 binding = "LEAGUE"
 id = "712b41b09d3b40ee96df8b84ff14769f"
+
+# backstop for the pick timer: auto-picks even when nobody has the page open
+[triggers]
+crons = ["* * * * *"]
