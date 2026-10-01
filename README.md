@@ -25,15 +25,17 @@ JSON-Dateien. Deshalb kann niemand die Liga kaputtmachen, aber jeder sieht alles
 
 ## Einrichten
 
-### 1. Repo + Pages
+### 1. Repo + Pages — erledigt
 
-1. Repo anlegen (z. B. `lecfantasy`), diesen Ordner reinpushen.
-2. **Settings → Pages → Source: Deploy from a branch**, Branch `main`, Ordner `/`.
-3. Nach ~1 Minute liegt die Liga auf
-   `https://<user>.github.io/lecfantasy/`.
+Läuft schon:
 
-> Das Repo darf **public** sein: es enthält keine Secrets. Der Token wird nie
-> committed, er lebt nur im `localStorage` des Hosts.
+- Repo: <https://github.com/FNE-stack/lecfantasy>
+- Liga: <https://fne-stack.github.io/lecfantasy/league.html>
+- Draft: <https://fne-stack.github.io/lecfantasy/draft.html>
+
+> Das Repo ist **public**, weil Pages im Free-Plan nur öffentliche Repos
+> ausliefert. Es enthält keine Secrets — der Token wird nie committed, er lebt
+> nur im `localStorage` des Hosts.
 
 ### 2. Liga konfigurieren — `data/league.json`
 

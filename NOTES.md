@@ -99,8 +99,8 @@ Feld, nur in `fetch_lec.py` korrigieren.
 
 ## Setup-Reihenfolge
 
-1. **Repo anlegen** (`lecfantasy`), diesen Ordner pushen (Befehle unten).
-2. **Pages aktivieren**: Settings → Pages → Branch `main`, Ordner `/`.
+1. ~~Repo anlegen + pushen~~ — **erledigt**, siehe unten.
+2. ~~Pages aktivieren~~ — **erledigt**.
 3. **Manager umbenennen** in `data/league.json` (`fabi`, `boy2`, … sind
    Platzhalter). `id` wird intern benutzt, `name` wird angezeigt.
 4. **Leaguepedia-Bot-Passwort** anlegen (lol.fandom.com → `Special:BotPasswords`)
@@ -177,22 +177,27 @@ schlimmer als ein offensichtlicher Platzhalter.
 
 ---
 
-## Push-Befehle
+## Repo / Deployment — ist LIVE
 
-Repo `lecfantasy` auf GitHub anlegen (leer, ohne README), dann:
+Am 01.10.2026 angelegt und gepusht:
+
+- **Repo:** <https://github.com/FNE-stack/lecfantasy> (public)
+- **Liga-Seite:** <https://fne-stack.github.io/lecfantasy/league.html>
+- **Draft-Seite:** <https://fne-stack.github.io/lecfantasy/draft.html>
+- Die nackte URL `.../lecfantasy/` leitet per Stub auf `league.html`.
+
+Public, weil GitHub Pages im Free-Plan nur öffentliche Repos ausliefert. Das ist
+unkritisch: das Repo enthält **keine** Secrets (wurde gegen Token-Muster
+geprüft). Der GitHub-Token des Hosts liegt nur im Browser-`localStorage`, die
+Leaguepedia-Zugangsdaten nur in den Actions-Secrets.
+
+Auf einem neuen PC einfach klonen:
 
 ```bash
-cd /c/Users/Administrator/OneDrive/lecfantasy
-git init -b main
-git add -A
-git commit -m "LEC Fantasy: snake draft league for GitHub Pages"
-git remote add origin https://github.com/FNE-stack/lecfantasy.git
-git push -u origin main
+git clone https://github.com/FNE-stack/lecfantasy.git
+cd lecfantasy
+python scripts/test_scoring.py        # 4/4 erwartet
 ```
 
-Danach Pages aktivieren. URL wird:
-`https://FNE-stack.github.io/lecfantasy/` → leitet auf `league.html`.
-
-> Das Repo darf public sein — es enthält **keine** Secrets. Der GitHub-Token des
-> Hosts liegt nur im Browser-`localStorage`, die Leaguepedia-Zugangsdaten nur in
-> den Actions-Secrets.
+Beide Workflows (`probe-schema`, `update-stats`) sind im Repo registriert und
+`active`, aber **noch nie gelaufen**.
