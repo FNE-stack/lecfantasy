@@ -744,7 +744,7 @@ function yourTurn() {
     if (document.hidden && 'Notification' in window && Notification.permission === 'granted') {
       new Notification('LEC Fantasy — du bist dran!', { body: 'Dein Pick im Draft.', icon: 'icon-192.png', tag: 'turn' });
     }
-    if (navigator.vibrate) navigator.vibrate([120, 60, 120]);
+    if (navigator.vibrate && (!navigator.userActivation || navigator.userActivation.hasBeenActive)) navigator.vibrate([120, 60, 120]);
   } catch (e) {}
 }
 function tickElapsed() {

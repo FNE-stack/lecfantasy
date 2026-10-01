@@ -24,7 +24,7 @@
   "managers": [
     {
       "id": "m1",
-      "name": "QA Test"
+      "name": "Manager 1"
     },
     {
       "id": "m2",
@@ -47,13 +47,7 @@
       "m4"
     ],
     "snake": true,
-    "picks": [
-      {
-        "manager": "m1",
-        "player": "103536968833612789",
-        "at": "2026-10-01T22:03:52.151Z"
-      }
-    ],
+    "picks": [],
     "completed": false
   },
   "lineups": {},
