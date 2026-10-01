@@ -5,17 +5,16 @@ Punkte, Entscheidungen samt Begründung.
 
 ## Stand
 
-- Seiten, Worker, Datenpipeline, Tests: **fertig und lokal verifiziert.**
-- **Noch nicht online**, weil zwei Zugangsdaten fehlen, die nur Fabian anlegen
-  kann (siehe README → „Online bringen"):
-  1. GitHub fine-grained Token (Contents + Workflows: read/write). Ohne ihn
-     scheitert auch `git push` — der gespeicherte Windows-Credential ist der
-     richtige Account, hat aber kein Schreibrecht (`403 ... denied to FNE-stack`).
-  2. Cloudflare API-Token + Account ID.
-- Lokale Commits sind noch nicht gepusht.
+**LIVE seit 01.10.2026.**
 
-Sobald `~/lecfantasy.env` existiert: `bash worker/deploy.sh`, dann pushen, dann
-die Live-URLs im Browser prüfen.
+- Liga: <https://fne-stack.github.io/lecfantasy/league.html>
+- Draft: <https://fne-stack.github.io/lecfantasy/pick.html>
+- Worker: <https://lecfantasy-draft.fabian-neidl.workers.dev> (Cloudflare, KV `LEAGUE`)
+- Zugangsdaten in `~/lecfantasy.env` (außerhalb des Repos). Redeploy: `bash worker/deploy.sh`.
+- Live End-to-End getestet: echter Browser auf github.io → Worker → Commit auf
+  GitHub. Testpick und Test-Login danach wieder entfernt.
+- Der GitHub-Token hat kein *Actions*-Recht, kann `update-stats` also nicht per
+  API starten — läuft per Zeitplan oder über den Actions-Tab.
 
 ## Dateien
 
@@ -68,8 +67,7 @@ wird neu geprüft (Test `recovers_from_a_lost_race` erzwingt einen echten 409).
 - `league.html`, `pick.html`, `draft.html` headless mit echten Daten: 0 Konsolenfehler.
 - Worker-Bundle baut (`wrangler deploy --dry-run`, 14 KB).
 
-**Nicht getestet:** der echte Cloudflare-Deploy und der echte GitHub-Schreibpfad —
-beides braucht die fehlenden Zugangsdaten.
+Live: Deploy, CORS github.io → workers.dev und Worker → GitHub-Commit verifiziert.
 
 ## Ideen für später
 
