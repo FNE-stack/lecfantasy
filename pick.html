@@ -1,0 +1,421 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>LEC Fantasy — Draft</title>
+<style>
+  :root{
+    --bg:#0d1117; --panel:#161b22; --panel2:#1c2330; --line:#2a3340;
+    --fg:#e6edf3; --dim:#8b98a5; --gold:#e3b341; --blue:#4493f8;
+    --up:#3fb950; --down:#f85149;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--fg);
+    font:14px/1.5 -apple-system,'Segoe UI',system-ui,sans-serif}
+  header{background:linear-gradient(180deg,#1c2330,#161b22);
+    border-bottom:1px solid var(--line);padding:14px 18px;
+    position:sticky;top:0;z-index:5}
+  h1{margin:0;font-size:17px;letter-spacing:.02em}
+  h1 span{color:var(--gold)}
+  header .meta{color:var(--dim);font-size:12px;margin-top:3px}
+  .wrap{max-width:860px;margin:0 auto;padding:16px 18px 70px}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:8px;
+    margin-bottom:14px;overflow:hidden}
+  .card h2{margin:0;font-size:12px;letter-spacing:.08em;text-transform:uppercase;
+    color:var(--dim);padding:11px 14px;border-bottom:1px solid var(--line);
+    background:var(--panel2)}
+  .card .body{padding:12px 14px}
+  .role{display:inline-block;min-width:36px;font-size:10px;padding:2px 6px;
+    border-radius:3px;background:#243040;color:var(--dim);text-align:center;
+    font-weight:600;letter-spacing:.03em}
+  .team{color:var(--dim);font-size:12px}
+  button{font:inherit;cursor:pointer;border-radius:6px;border:1px solid var(--line);
+    background:var(--panel2);color:var(--fg);padding:8px 14px}
+  button:hover:not(:disabled){border-color:var(--blue)}
+  button:disabled{opacity:.4;cursor:not-allowed}
+  button.go{background:#1f6feb;border-color:#1f6feb;color:#fff;font-weight:600}
+  button.go:hover:not(:disabled){background:#2a7cf7}
+  input{font:inherit;background:#0d1117;border:1px solid var(--line);
+    color:var(--fg);border-radius:6px;padding:9px 11px;width:100%}
+  input:focus{outline:none;border-color:var(--blue)}
+  label{display:block;font-size:12px;color:var(--dim);margin:10px 0 4px}
+  .turn{border-radius:8px;padding:13px 15px;margin-bottom:14px;font-weight:600}
+  .turn.you{background:#132b17;border:1px solid #2ea043;color:#5ddc7a}
+  .turn.wait{background:var(--panel);border:1px solid var(--line);color:var(--dim);
+    font-weight:400}
+  .turn.done{background:#2b2113;border:1px solid var(--gold);color:var(--gold)}
+  .slot{display:flex;align-items:center;gap:10px;padding:9px 0;
+    border-bottom:1px solid #212934}
+  .slot:last-child{border-bottom:none}
+  .slot .who{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;
+    white-space:nowrap}
+  .slot .who.none{color:var(--dim);font-style:italic}
+  .tools{display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap}
+  .tools input{flex:1;min-width:150px}
+  .chips{display:flex;gap:5px;flex-wrap:wrap;margin-bottom:10px}
+  .chip{font-size:11px;padding:4px 10px;border-radius:12px;background:var(--panel2);
+    border:1px solid var(--line);color:var(--dim);cursor:pointer}
+  .chip.on{border-color:var(--blue);color:var(--fg)}
+  .plist{max-height:50vh;overflow-y:auto;margin:0 -14px -12px;
+    border-top:1px solid var(--line)}
+  .prow{display:flex;align-items:center;gap:10px;padding:9px 14px;
+    border-bottom:1px solid #212934}
+  .prow:last-child{border-bottom:none}
+  .prow .nm{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;
+    white-space:nowrap}
+  .prow.gone{opacity:.38}
+  .prow .why{font-size:11px;color:var(--down)}
+  .msg{border-radius:6px;padding:10px 13px;font-size:13px;margin-bottom:12px}
+  .msg.err{background:#2d1618;border:1px solid #6e2c30;color:#ff9b96}
+  .msg.ok{background:#132b17;border:1px solid #2ea043;color:#5ddc7a}
+  .note{background:#1a2332;border:1px solid #2d4159;border-radius:6px;
+    padding:10px 13px;font-size:12px;color:#a9c4e0;margin-bottom:14px}
+  .log{font-size:12px;color:var(--dim);max-height:170px;overflow-y:auto}
+  .log div{padding:3px 0;border-bottom:1px solid #212934}
+  .log div:last-child{border-bottom:none}
+  .pts{font-weight:700;font-variant-numeric:tabular-nums}
+  .foot{color:var(--dim);font-size:11px;text-align:center;margin-top:18px}
+  .foot a{color:var(--blue)}
+  @media(max-width:620px){ .wrap{padding:13px} .plist{max-height:44vh} }
+</style>
+</head>
+<body>
+<header>
+  <h1><span id="lname">LEC Fantasy</span> — Draft</h1>
+  <div class="meta" id="meta">lädt …</div>
+</header>
+<div class="wrap">
+  <div id="setup" hidden class="note"></div>
+  <div id="msg"></div>
+  <div id="main"></div>
+  <div class="foot">
+    Tabelle und Kader aller Manager: <a href="league.html">league.html</a>
+    · <span id="whoami"></span>
+  </div>
+</div>
+
+<script src="scoring.js"></script>
+<script>
+// ══════════════════════════════════════════════════════════════════════════
+// pick.html — the page each manager opens. Talks only to the Worker, which
+// is the one thing holding the GitHub token. Nothing here can write to the
+// repo on its own, which is the entire point: this file is public.
+//
+// The rules below are only for showing *why* a pick is greyed out. The Worker
+// re-checks every one of them before committing, so a tampered page gains
+// nothing beyond a misleading display on the tamperer's own screen.
+// ══════════════════════════════════════════════════════════════════════════
+'use strict';
+const S = window.LECScoring;
+
+// Set once after `wrangler deploy` prints your URL. ?worker=... overrides it
+// and is remembered, which is handy while testing.
+const DEFAULT_WORKER = 'PASTE_WORKER_URL_HERE';
+
+const qsWorker = new URLSearchParams(location.search).get('worker');
+if (qsWorker) localStorage.setItem('lecfantasy.worker', qsWorker.replace(/\/+$/, ''));
+const WORKER = (localStorage.getItem('lecfantasy.worker') || DEFAULT_WORKER).replace(/\/+$/, '');
+
+const TOKKEY = 'lecfantasy.session';
+let session = localStorage.getItem(TOKKEY) || '';
+let me = localStorage.getItem('lecfantasy.manager') || '';
+let STATE = null, PLAYERS = null, STATS = null, PIDX = new Map();
+let roleFilter = '', search = '', timer = null, busy = false;
+let lastSig = null;
+
+// Everything that changes what the page shows. The 5s poll rebuilds the DOM,
+// which resets your scroll position in the player list and can swap a row out
+// from under a tap — so only re-render when one of these actually moved.
+function sigOf(st) {
+  if (!st) return null;
+  const d = st.league.draft || {};
+  return JSON.stringify([(d.picks || []).length, st.onTheClock,
+                         !!d.completed, st.claimed,
+                         (st.league.managers || []).map(m => m.name)]);
+}
+
+const $ = id => document.getElementById(id);
+const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g,
+  c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+
+function say(kind, text) {
+  $('msg').innerHTML = text ? `<div class="msg ${kind}">${esc(text)}</div>` : '';
+}
+
+async function api(path, { method = 'GET', body } = {}) {
+  const headers = {};
+  if (body) headers['Content-Type'] = 'application/json';
+  if (session) headers['Authorization'] = 'Bearer ' + session;
+  let r;
+  try {
+    r = await fetch(WORKER + path, {
+      method, headers, body: body ? JSON.stringify(body) : undefined
+    });
+  } catch (e) {
+    throw new Error('Worker nicht erreichbar — läuft er, und stimmt die URL?');
+  }
+  const data = await r.json().catch(() => ({}));
+  if (!r.ok) {
+    // An expired or revoked session should send you back to the login, not
+    // leave you staring at a dead page.
+    if (r.status === 401 && session) { signOut(false); }
+    throw new Error(data.error || `Fehler ${r.status}`);
+  }
+  return data;
+}
+
+function signOut(reload) {
+  session = ''; me = '';
+  localStorage.removeItem(TOKKEY);
+  localStorage.removeItem('lecfantasy.manager');
+  if (reload !== false) { say('', ''); render(); }
+}
+
+// ── loading ───────────────────────────────────────────────────────────────
+async function loadStatic() {
+  const bust = '?t=' + Date.now();
+  try { PLAYERS = await (await fetch('data/players.json' + bust, { cache: 'no-store' })).json(); }
+  catch (e) { PLAYERS = { players: [] }; }
+  try { STATS = await (await fetch('data/stats.json' + bust, { cache: 'no-store' })).json(); }
+  catch (e) { STATS = { games: [] }; }
+  PIDX = new Map((PLAYERS.players || []).map(p => [p.id, p]));
+}
+
+async function refresh(force) {
+  try {
+    const next = await api('/api/state');
+    const changed = sigOf(next) !== lastSig;
+    STATE = next;
+    if (force || changed) render();
+  } catch (e) {
+    say('err', e.message);
+  }
+}
+
+// ── views ─────────────────────────────────────────────────────────────────
+function renderLogin() {
+  const mgrs = STATE.league.managers || [];
+  const rows = mgrs.map(m => {
+    const taken = STATE.claimed[m.id];
+    return `<div class="slot">
+      <div class="who${taken ? '' : ' none'}">${esc(m.name)}${taken ? '' : ' — frei'}</div>
+      <button data-slot="${esc(m.id)}" data-taken="${taken ? 1 : 0}">
+        ${taken ? 'Einloggen' : 'Das bin ich'}</button>
+    </div>`;
+  }).join('');
+  $('main').innerHTML = `
+    <div class="card"><h2>Wer bist du?</h2><div class="body">${rows}</div></div>
+    <div id="auth"></div>`;
+  $('main').querySelectorAll('button[data-slot]').forEach(b => {
+    b.onclick = () => authForm(b.dataset.slot, b.dataset.taken === '1');
+  });
+}
+
+function authForm(slot, taken) {
+  const m = (STATE.league.managers || []).find(x => x.id === slot);
+  $('auth').innerHTML = `
+    <div class="card">
+      <h2>${taken ? 'Einloggen als ' + esc(m.name) : 'Slot übernehmen'}</h2>
+      <div class="body">
+        ${taken ? '' : `<label>Dein Name (wird allen angezeigt)</label>
+          <input id="dn" maxlength="32" value="${esc(m.name)}">`}
+        <label>Passwort${taken ? '' : ' (min. 6 Zeichen — merk es dir, es gibt kein Zurücksetzen)'}</label>
+        <input id="pw" type="password" autocomplete="${taken ? 'current' : 'new'}-password">
+        <div style="margin-top:12px"><button class="go" id="doAuth">
+          ${taken ? 'Einloggen' : 'Übernehmen'}</button></div>
+      </div>
+    </div>`;
+  $('pw').onkeydown = e => { if (e.key === 'Enter') $('doAuth').click(); };
+  $('pw').focus();
+  $('doAuth').onclick = async () => {
+    const pw = $('pw').value;
+    if (!pw) return say('err', 'Passwort fehlt');
+    $('doAuth').disabled = true;
+    try {
+      const body = { manager: slot, password: pw };
+      if (!taken) body.displayName = ($('dn').value || '').trim() || m.name;
+      const res = await api(taken ? '/api/login' : '/api/claim', { method: 'POST', body });
+      session = res.token; me = res.manager;
+      localStorage.setItem(TOKKEY, session);
+      localStorage.setItem('lecfantasy.manager', me);
+      say('ok', 'Eingeloggt. Viel Glück.');
+      await refresh();
+    } catch (e) {
+      say('err', e.message);
+      $('doAuth').disabled = false;
+    }
+  };
+}
+
+function myRoster() {
+  const ros = S.rosters(STATE.league)[me] || [];
+  const slots = STATE.league.roster.slots || [];
+  const bench = STATE.league.roster.bench || 0;
+  const gp = S.byPlayer(STATS && STATS.games);
+  const sc = STATE.league.scoring;
+  const used = new Set();
+  const lines = [];
+  for (const slot of slots) {
+    const pid = ros.find(p => !used.has(p) && PIDX.get(p) && PIDX.get(p).role === slot);
+    if (pid) used.add(pid);
+    const pts = pid ? S.playerTotal(gp.get(pid) || [], sc) : null;
+    lines.push(`<div class="slot">
+      <span class="role">${esc(slot)}</span>
+      <div class="who${pid ? '' : ' none'}">${pid ? esc(pid) : 'offen'}</div>
+      ${pid ? `<span class="team">${esc((PIDX.get(pid) || {}).team || '')}</span>
+               <span class="pts">${pts}</span>` : ''}
+    </div>`);
+  }
+  for (let i = 0; i < bench; i++) {
+    const pid = ros.find(p => !used.has(p));
+    if (pid) used.add(pid);
+    const pts = pid ? S.playerTotal(gp.get(pid) || [], sc) : null;
+    lines.push(`<div class="slot">
+      <span class="role" style="background:#1d2530">BANK</span>
+      <div class="who${pid ? '' : ' none'}">${pid ? esc(pid) : 'offen'}</div>
+      ${pid ? `<span class="team">${esc((PIDX.get(pid) || {}).team || '')}</span>
+               <span class="pts">${pts}</span>` : ''}
+    </div>`);
+  }
+  const total = ros.reduce((t, p) => t + S.playerTotal(gp.get(p) || [], sc), 0);
+  return `<div class="card"><h2>Dein Kader — ${Math.round(total * 100) / 100} Punkte</h2>
+    <div class="body">${lines.join('')}</div></div>`;
+}
+
+function pool() {
+  const mine = STATE.onTheClock === me;
+  const all = (PLAYERS.players || []).slice()
+    .sort((a, b) => a.role.localeCompare(b.role) || a.id.localeCompare(b.id));
+  const q = search.toLowerCase();
+  const shown = all.filter(p =>
+    (!roleFilter || p.role === roleFilter) &&
+    (!q || p.id.toLowerCase().includes(q) || (p.team || '').toLowerCase().includes(q)));
+
+  const rows = shown.map(p => {
+    const why = S.pickError(STATE.league, PIDX, me || '_', p.id);
+    const can = mine && !why && !busy;
+    return `<div class="prow${why ? ' gone' : ''}">
+      <span class="role">${esc(p.role)}</span>
+      <div class="nm">${esc(p.id)} <span class="team">${esc(p.team)}</span></div>
+      ${why ? `<span class="why">${esc(why)}</span>`
+            : `<button class="go" data-pick="${esc(p.id)}" ${can ? '' : 'disabled'}>Pick</button>`}
+    </div>`;
+  }).join('') || '<div class="prow"><div class="nm">nichts gefunden</div></div>';
+
+  const roles = ['', ...(STATE.league.roster.slots || [])];
+  const chips = roles.map(r =>
+    `<span class="chip${roleFilter === r ? ' on' : ''}" data-role="${esc(r)}">${r || 'Alle'}</span>`
+  ).join('');
+
+  return `<div class="card"><h2>Spieler</h2><div class="body">
+    <div class="tools"><input id="q" placeholder="Name oder Team suchen" value="${esc(search)}"></div>
+    <div class="chips">${chips}</div>
+    <div class="plist">${rows}</div>
+  </div></div>`;
+}
+
+function draftLog() {
+  const picks = ((STATE.league.draft || {}).picks || []).slice().reverse();
+  const nameOf = id => {
+    const m = (STATE.league.managers || []).find(x => x.id === id);
+    return m ? m.name : id;
+  };
+  const rows = picks.length
+    ? picks.map((p, i) => `<div>#${picks.length - i} <b>${esc(nameOf(p.manager))}</b>
+        → ${esc(p.player)}</div>`).join('')
+    : '<div>noch keine Picks</div>';
+  return `<div class="card"><h2>Verlauf</h2><div class="body"><div class="log">${rows}</div></div></div>`;
+}
+
+function render() {
+  if (!STATE) return;
+  const lg = STATE.league;
+  $('lname').textContent = lg.name || 'LEC Fantasy';
+  const prog = STATE.progress || { done: 0, total: 0, round: 1 };
+  $('meta').textContent = `Pick ${prog.done}/${prog.total} · Runde ${prog.round}`;
+  $('whoami').innerHTML = me
+    ? `eingeloggt als <b>${esc(me)}</b> · <a href="#" id="out">abmelden</a>`
+    : 'nicht eingeloggt';
+  if ($('out')) $('out').onclick = e => { e.preventDefault(); signOut(); };
+
+  if (!session || !me) { renderLogin(); return; }
+
+  const clock = STATE.onTheClock;
+  let banner;
+  if (lg.draft && lg.draft.completed) {
+    banner = '<div class="turn done">Draft ist abgeschlossen. Kader stehen.</div>';
+  } else if (clock === me) {
+    banner = '<div class="turn you">Du bist dran — pick!</div>';
+  } else {
+    const m = (lg.managers || []).find(x => x.id === clock);
+    banner = `<div class="turn wait">${clock ? esc(m ? m.name : clock) + ' ist dran …'
+      : 'warten …'}</div>`;
+  }
+
+  const keepScroll = (document.querySelector('.plist') || {}).scrollTop || 0;
+  $('main').innerHTML = banner + myRoster() + pool() + draftLog();
+  const list = document.querySelector('.plist');
+  if (list && keepScroll) list.scrollTop = keepScroll;
+  lastSig = sigOf(STATE);
+
+  const q = $('q');
+  if (q) {
+    q.oninput = () => {
+      search = q.value;
+      const at = q.selectionStart;
+      render();
+      const nq = $('q');
+      if (nq) { nq.focus(); nq.setSelectionRange(at, at); }
+    };
+  }
+  document.querySelectorAll('.chip[data-role]').forEach(c => {
+    c.onclick = () => { roleFilter = c.dataset.role; render(); };
+  });
+  document.querySelectorAll('button[data-pick]').forEach(b => {
+    b.onclick = () => doPick(b.dataset.pick);
+  });
+}
+
+async function doPick(playerId) {
+  if (busy) return;
+  busy = true;
+  say('', '');
+  document.querySelectorAll('button[data-pick]').forEach(b => b.disabled = true);
+  try {
+    const res = await api('/api/pick', { method: 'POST', body: { player: playerId } });
+    say('ok', `${playerId} gehört dir.`);
+    STATE = await api('/api/state');
+    lastSig = null;
+  } catch (e) {
+    say('err', e.message);
+    // Whatever went wrong, the Worker is the truth — resync rather than guess.
+    try { STATE = await api('/api/state'); } catch (_) {}
+  } finally {
+    busy = false;
+    render();
+  }
+}
+
+// ── boot ──────────────────────────────────────────────────────────────────
+(async function () {
+  if (!WORKER || WORKER === 'PASTE_WORKER_URL_HERE') {
+    $('setup').hidden = false;
+    $('setup').innerHTML = 'Worker-URL fehlt. Nach <code>wrangler deploy</code> die '
+      + 'URL in <code>pick.html</code> bei <code>DEFAULT_WORKER</code> eintragen — '
+      + 'oder zum Testen <code>?worker=https://…workers.dev</code> an diese Seite hängen.';
+    $('meta').textContent = 'nicht konfiguriert';
+    return;
+  }
+  await loadStatic();
+  await refresh();
+  // Poll so everyone sees the clock move without refreshing. Cheap: the
+  // Worker only reads two small files, and a draft lasts an hour.
+  timer = setInterval(() => { if (!busy) refresh(); }, 5000);
+  document.addEventListener('visibilitychange', () => {
+    if (!document.hidden && !busy) refresh();
+  });
+})();
+</script>
+</body>
+</html>

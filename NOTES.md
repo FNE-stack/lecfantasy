@@ -22,7 +22,11 @@ Saison 2026 endete am 20.09.2026, es gibt also gerade keinen laufenden Split.
 | `league.html` | Öffentliche Liga-Seite. Tabelle/Kader/Spieler/Draft. Kein Login. |
 | `draft.html` | Draft-Oberfläche. **Nur Host**, braucht GitHub-Token. |
 | `index.html` | **Nur Redirect-Stub** auf `league.html` (siehe Entscheidung 1). |
-| `scoring.js` | Punkte + Draft-Regeln. Einzige Rechenstelle, von beiden Seiten genutzt. |
+| `pick.html` | Draft-Seite **für die Boys**. Login, eigener Kader, selbst picken. |
+| `worker/src/index.js` | Cloudflare Worker. Einzige Stelle mit GitHub-Token. Schiedsrichter. |
+| `worker/test_worker.mjs` | Worker-Tests, komplett offline (KV + GitHub nachgebaut). |
+| `worker/devserver.mjs` | Alles lokal durchklicken, ohne Cloudflare und ohne GitHub. |
+| `scoring.js` | Punkte + Draft-Regeln. Einzige Rechenstelle — Seiten **und** Worker. |
 | `data/league.json` | Liga-Config, Manager, Draft-Picks, Swaps. **Die einzige Datei, die die Draft-Seite schreibt.** |
 | `data/players.json` | Draft-Pool. Wird von der Action überschrieben. |
 | `data/stats.json` | Spielerstatistiken. Wird von der Action überschrieben. |
@@ -41,13 +45,30 @@ hier nur ein 8-Zeilen-Redirect, weil GitHub Pages bei einer nackten Verzeichnis-
 sonst 404 liefert. Falls das störend ist: `index.html` löschen, dann muss die URL
 immer `/league.html` enthalten.
 
-**2. Nur der Host kann schreiben.**
-Gefordert war: „niemand soll jederzeit editieren können, aber Daten immer
-sichtbar". Deshalb: Schreibzugriff ausschließlich über die GitHub-API mit einem
-fine-grained Token, den nur der Host im `localStorage` hat. Alle anderen lesen
-die committeten JSON-Dateien. Eine Variante mit geteiltem Token wurde verworfen —
-eine statische Seite kann kein Geheimnis bewahren, jeder mit der URL hätte
-schreiben können.
+**2. ~~Nur der Host kann schreiben.~~ → GEÄNDERT am 01.10.2026.**
+
+*Alte Entscheidung:* „niemand soll jederzeit editieren können, aber Daten immer
+sichtbar" → Schreibzugriff nur per Host-Token im `localStorage`.
+
+*Neu gefordert:* jeder soll sich einloggen, seinen Kader sehen und **selbst
+picken**. Das ist die Umkehrung der alten Anforderung, bewusst so entschieden.
+
+Der Grund, warum die alte Lösung nicht einfach erweitert werden konnte, bleibt
+richtig und ist jetzt der Kern des Designs: **eine statische Seite kann kein
+Geheimnis bewahren.** Gäbe man `pick.html` einen Token, hätte ihn jeder Besucher
+und könnte jeden Kader umschreiben — schlechter als der Host-only-Zustand.
+
+*Lösung:* ein Cloudflare Worker (`worker/src/index.js`) als einzige Stelle mit
+Token. Die Seite schickt nur „ich will Spieler X", der Worker prüft Session, Zug
+und Regeln und committet. Verworfen wurden:
+
+- **Supabase** — könnte alles, hätte aber „das Repo ist die Datenbank" ersetzt
+  und deutlich mehr Umbau bedeutet.
+- **Alle als GitHub-Collaborator mit eigenem Token** — null Infrastruktur, aber
+  GitHub-Rechte gelten nicht pro Datei: jeder hätte jeden Kader ändern können,
+  und drei Leute hätten GitHub-Tokens basteln müssen.
+
+`draft.html` bleibt unverändert als Host-Notnagel.
 
 **3. Daten-Fetch läuft in GitHub Actions, nicht im Browser.**
 Drei Gründe: (a) `lol.fandom.com` sendet keine CORS-Header, der Browser kann die
@@ -128,14 +149,23 @@ ob der `split`-String auf eine echte `OverviewPage` passt und ob Zeilen da sind.
   Doppel-Picks, gleich große Kader, bei jedem Manager alle 5 Rollen besetzt,
   Team-Limit (`maxPerTeam: 2`) eingehalten. Tabelle ergab 1279,6 → 1099,7.
 - Beide Workflow-YAMLs parsen (mit `pyyaml` geprüft).
+- **Worker: 8/8** (`node worker/test_worker.mjs`) — Slot übernehmen, zweite
+  Übernahme abgelehnt, falsches Passwort, Pick ohne Login, Pick wenn man nicht
+  dran ist, Doppelpick, Team-Limit, kompletter 24-Pick-Draft mit Auto-Sperre,
+  zwei gleichzeitige Picks (genau einer gewinnt), echter 409 mit Recovery, und
+  dass weder Token noch Passwort je in einer Antwort auftauchen.
+- **`pick.html` im echten Browser** (headless Chromium): Login, Kader, Pool,
+  Pick committet, Uhr rückt weiter, 0 Konsolenfehler.
 - `resolve_split.py` in beiden Pfaden (aus `league.json` und per `INPUT_SPLIT`).
 
 **Nicht getestet:**
 - Die Leaguepedia-*Abfragen* selbst — die Feldnamen sind verifiziert (siehe oben),
   ein echter `cargoquery`-Durchlauf braucht aber den Bot-Account.
-- Der GitHub-Schreibpfad in `draft.html` — die Conflict-Retry-Logik ist aus
-  `warhub.user.js` übernommen und dort bewährt, hier aber nie gegen ein echtes
-  Repo gelaufen. **Beim ersten Pick darauf achten, dass der Commit erscheint.**
+- Der GitHub-Schreibpfad gegen ein **echtes** Repo. Die Conflict-Retry-Logik ist
+  gegen einen nachgebauten GitHub getestet (inkl. erzwungenem 409), aber noch nie
+  gegen api.github.com gelaufen. **Beim ersten echten Pick prüfen, dass der
+  Commit erscheint.**
+- Der Worker **deployed** bei Cloudflare — bisher nur lokal (`devserver.mjs`).
 - ~~`scoring.js` gegen die Python-Referenz~~ — **erledigt 01.10.2026**: node 22
   ist hier da, `test_js_engine_agrees` läuft mit und stimmt überein, inkl. der
   neuen Pentakill-Wertung.

@@ -5,7 +5,10 @@ Eine kleine Fantasy-Liga für eine feste Gruppe. Läuft komplett auf **GitHub Pa
 
 - **`league.html`** — die öffentliche Liga-Seite. Tabelle, Kader, Spieler, Draft-Verlauf.
   Braucht **keinen Login**, für alle immer erreichbar.
-- **`draft.html`** — die Draft-Seite. **Nur der Host** benutzt sie (braucht Token).
+- **`pick.html`** — die Draft-Seite **für die Boys**. Jeder setzt sich beim ersten
+  Besuch Name + Passwort und pickt dann selbst, vom eigenen Handy.
+- **`draft.html`** — Host-Werkzeug. Schreibt direkt mit eigenem Token, als
+  Notnagel wenn beim Draft etwas klemmt.
 - Daten liegen als JSON im Repo. Ein GitHub-Action-Job zieht die LEC-Stats.
 
 ## Wie es funktioniert
@@ -14,14 +17,25 @@ Eine kleine Fantasy-Liga für eine feste Gruppe. Läuft komplett auf **GitHub Pa
 Leaguepedia  --(GitHub Action, 2x/Tag)-->  data/stats.json
                                            data/players.json
                                                   |
-Host  --(draft.html + Token)-->  data/league.json  |
-                                                  v
-Die Boys  --(league.html, read-only)-->  Tabelle & Kader
+Die Boys --(pick.html)--> Worker --(Token)--> data/league.json
+                          ^ prüft Zug + Regeln              |
+                                                            v
+Alle  --(league.html, read-only)-->  Tabelle & Kader
 ```
 
-Der Trick: **das Repo ist die Datenbank.** Schreiben geht nur über die GitHub-API
-mit einem Token — und den hat nur der Host. Alle anderen lesen die committeten
-JSON-Dateien. Deshalb kann niemand die Liga kaputtmachen, aber jeder sieht alles.
+Der Trick: **das Repo ist die Datenbank.** Geschrieben wird ausschließlich über
+die GitHub-API mit einem Token — und der liegt **im Worker**, nicht in der Seite.
+
+Warum überhaupt ein Worker: GitHub Pages liefert nur statische Dateien aus. Eine
+Seite, die selbst ins Repo schreiben kann, müsste den Token enthalten — und ein
+Token in einer öffentlichen Seite ist ein Token, den **alle** haben. Dann könnte
+jeder jeden Kader umschreiben. Der Worker ist die einzige Stelle mit dem Token,
+prüft bei jedem Pick, ob der Absender wirklich dran ist und ob der Pick erlaubt
+ist, und committet erst dann.
+
+Wichtig: der Worker hat **keine eigene Regelkopie**. Er benutzt dasselbe
+`scoring.js` wie die Seiten, kann also nie etwas anderes erlauben, als auf dem
+Bildschirm stand.
 
 ## Einrichten
 
@@ -34,8 +48,9 @@ Läuft schon:
 - Draft: <https://fne-stack.github.io/lecfantasy/draft.html>
 
 > Das Repo ist **public**, weil Pages im Free-Plan nur öffentliche Repos
-> ausliefert. Es enthält keine Secrets — der Token wird nie committed, er lebt
-> nur im `localStorage` des Hosts.
+> ausliefert. Es enthält keine Secrets — der GitHub-Token liegt als Worker-Secret
+> bei Cloudflare, die Leaguepedia-Zugangsdaten als Actions-Secrets. Beides wird
+> nie committed.
 
 ### 2. Liga konfigurieren — `data/league.json`
 
@@ -101,19 +116,78 @@ Danach läuft sie 2x täglich (04:20 / 16:20 UTC).
 Sie schreibt `data/players.json` (Draft-Pool) und `data/stats.json` (Punkte).
 Bei Problemen bricht sie **ab, ohne die alten Daten zu überschreiben**.
 
-### 6. Draften
+### 6. Worker aufsetzen — einmalig, ~10 Minuten
 
-1. `draft.html` öffnen → **Verbindung…**
-2. Repo (`user/lecfantasy`), Branch, und einen **fine-grained Token** mit
-   *Contents: read and write* nur auf dieses Repo eintragen.
-3. Reihum picken. Die Seite zeigt, wer am Zug ist, und **blockt illegale Picks**
-   (schon gedraftet, Rolle fehlt noch, Team-Limit).
-4. Am Ende **Draft sperren**. Danach sind die Kader fest.
+Der Worker ist der Schiedsrichter beim Draft. Ohne ihn kann `pick.html` nichts
+schreiben (und das ist Absicht).
 
-Die Anderen öffnen währenddessen `league.html` → Tab **Draft** und sehen die Picks
-live (Auto-Refresh alle 2 Minuten).
+**a) Fine-grained Token bauen**
+GitHub → Settings → Developer settings → Fine-grained tokens → *Generate new*:
+
+- **Repository access:** *Only select repositories* → nur `FNE-stack/lecfantasy`
+- **Permissions → Repository permissions → Contents:** *Read and write*
+- Ablaufdatum ruhig kurz halten; nach der Saison einfach löschen.
+
+**b) Cloudflare**
+
+```bash
+cd worker
+npm install
+npx wrangler login                       # öffnet den Browser
+npx wrangler kv namespace create LEAGUE  # gibt eine id aus
+```
+
+Die ausgegebene `id` in `worker/wrangler.toml` bei `kv_namespaces` eintragen.
+Dort stehen auch `GITHUB_REPO`, `GITHUB_BRANCH` und `ALLOWED_ORIGIN` — die sind
+schon richtig gesetzt, solange Repo und Pages-URL gleich bleiben.
+
+```bash
+npx wrangler secret put GITHUB_TOKEN     # Token aus (a) einfügen
+npx wrangler deploy
+```
+
+`deploy` gibt eine URL aus, etwa `https://lecfantasy-draft.<dein-name>.workers.dev`.
+Die in `pick.html` oben bei `DEFAULT_WORKER` eintragen, committen, fertig.
+
+**c) Link verteilen**
+Alle bekommen denselben Link: `https://fne-stack.github.io/lecfantasy/pick.html`.
+Jeder wählt einmal seinen Slot und setzt Name + Passwort. **Wer zuerst kommt,
+nimmt den Slot** — ein bereits übernommener Slot lässt sich nicht kapern. Es gibt
+bewusst kein Passwort-Zurücksetzen; falls doch nötig, den Key `mgr:<id>` im
+KV-Namespace löschen, dann ist der Slot wieder frei.
+
+> **Kosten:** keine. Der Free-Plan von Workers erlaubt 100.000 Requests/Tag,
+> ein Draft braucht ein paar hundert. Kreditkarte wird nicht verlangt.
+
+**Vorher ausprobieren — ohne Cloudflare, ohne GitHub:**
+
+```bash
+node worker/devserver.mjs
+# -> http://localhost:8787/pick.html?worker=http://localhost:8787
+```
+
+Das startet den echten Worker-Code lokal mit nachgebautem KV und GitHub. Picks
+landen im Arbeitsspeicher, `data/` wird nicht angefasst, Neustart setzt alles
+zurück. Damit lässt sich ein kompletter Draft durchklicken, bevor irgendwas live
+geht.
+
+### 7. Draften
+
+1. Alle öffnen `pick.html`, loggen sich ein und sehen, wer dran ist
+   (aktualisiert sich von selbst).
+2. Wer dran ist, pickt. Illegale Picks sind ausgegraut **und** werden vom Worker
+   nochmal abgelehnt: schon gedraftet, falsche Rolle, Team-Limit, nicht am Zug.
+3. Nach dem letzten Pick sperrt sich der Draft **automatisch** (`completed`).
+
+Die Picks landen als ganz normale Commits in `data/league.json` — man kann also
+hinterher genau nachsehen, wer wann was genommen hat, und im Notfall
+zurückrollen.
+
+Wenn der Worker klemmt, bleibt `draft.html` als Host-Notnagel: eigener Token,
+schreibt direkt, kennt dieselben Regeln.
 
 ## Punkte
+
 
 | | Punkte |
 |---|---|
@@ -148,7 +222,8 @@ sofort ausprobieren kann. Der erste Action-Lauf überschreibt sie mit echten Dat
 Logik-Tests:
 
 ```bash
-python scripts/test_scoring.py
+python scripts/test_scoring.py     # Punkte + Snake-Reihenfolge
+node   worker/test_worker.mjs     # Draft-Schiedsrichter (braucht kein Cloudflare)
 ```
 
 Prüft Snake-Reihenfolge, Draft-Abschluss und Punkteberechnung. Wenn `node`

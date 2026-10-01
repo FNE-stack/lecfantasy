@@ -1,0 +1,18 @@
+name = "lecfantasy-draft"
+main = "src/index.js"
+compatibility_date = "2026-09-01"
+
+# Public, non-secret settings. The token is NOT here - it is set with
+#   npx wrangler secret put GITHUB_TOKEN
+# so it never lands in the repo.
+[vars]
+GITHUB_REPO = "FNE-stack/lecfantasy"
+GITHUB_BRANCH = "main"
+ALLOWED_ORIGIN = "https://fne-stack.github.io"
+
+# Holds manager password hashes and login sessions.
+# Create with:  npx wrangler kv namespace create LEAGUE
+# then paste the printed id here.
+[[kv_namespaces]]
+binding = "LEAGUE"
+id = "PASTE_KV_ID_HERE"

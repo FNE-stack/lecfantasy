@@ -170,4 +170,7 @@
     gamePoints, byPlayer, playerTotal, ownership, rosters, standings,
     pickError, currentPicker, draftProgress
   };
-})(typeof window !== 'undefined' ? window : this);
+// `this` is undefined in an ES module, so a Cloudflare Worker importing this
+// file would crash on the line above. globalThis works in every one of the
+// three places these rules now run: browser, node test harness, Worker.
+})(typeof window !== 'undefined' ? window : globalThis);

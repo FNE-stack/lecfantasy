@@ -1,0 +1,13 @@
+{
+  "name": "lecfantasy-worker",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node test_worker.mjs",
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy"
+  },
+  "devDependencies": {
+    "wrangler": "^4"
+  }
+}
