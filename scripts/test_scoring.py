@@ -24,6 +24,7 @@ def game_points(g, s):
         + g.get("a", 0) * s["assist"] + g.get("cs", 0) * s.get("cs10", 0)
     if g.get("win"):
         p += s["win"]
+    p += g.get("penta", 0) * s.get("pentaKill", 0)
     return round(p, 2)
 
 
@@ -83,7 +84,12 @@ def test_points():
     assert game_points({"k": 0, "d": 0, "a": 0, "cs": 0, "win": False}, s) == 0
     # deaths can go negative
     assert game_points({"k": 0, "d": 5, "a": 0, "cs": 0, "win": False}, s) == -5
-    return "31.1 / 0 / -5 as expected"
+    # Pentakills ARE delivered by ScoreboardPlayers (field "Pentakills"),
+    # so they must score: same game as above + 1 penta = 31.1 + 10.
+    got = game_points({"k": 5, "d": 2, "a": 7, "cs": 280, "win": True,
+                       "penta": 1}, s)
+    assert abs(got - 41.1) < 1e-9, f"expected 41.1 with a penta, got {got}"
+    return "31.1 / 0 / -5 / 41.1-with-penta as expected"
 
 
 def test_js_engine_agrees():
@@ -102,6 +108,7 @@ def test_js_engine_agrees():
       p1: S.gamePoints({k:5,d:2,a:7,cs:280,win:true}, s),
       p2: S.gamePoints({k:0,d:0,a:0,cs:0,win:false}, s),
       p3: S.gamePoints({k:0,d:5,a:0,cs:0,win:false}, s),
+      p4: S.gamePoints({k:5,d:2,a:7,cs:280,win:true,penta:1}, s),
       order: []
     };
     const l2 = JSON.parse(JSON.stringify(lg));
@@ -119,9 +126,10 @@ def test_js_engine_agrees():
     got = json.loads(r.stdout.strip().splitlines()[-1])
     assert abs(got["p1"] - 31.1) < 1e-9, f"js p1={got['p1']}"
     assert got["p2"] == 0 and got["p3"] == -5, f"js p2/p3={got['p2']}/{got['p3']}"
+    assert abs(got["p4"] - 41.1) < 1e-9, f"js penta p4={got['p4']}"
     expect = lg["draft"]["order"] + lg["draft"]["order"][::-1]
     assert got["order"] == expect, f"js snake order {got['order']} != {expect}"
-    return "node agrees with python on points + snake order"
+    return "node agrees with python on points (incl. penta) + snake order"
 
 
 if __name__ == "__main__":

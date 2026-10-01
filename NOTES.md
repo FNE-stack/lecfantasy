@@ -60,9 +60,9 @@ Nebeneffekt: einfacher, kein Preis-Modell nötig.
 
 ---
 
-## ⚠️ Der eine offene Punkt: Leaguepedia-Schema ist UNVERIFIZIERT
+## ✅ ERLEDIGT (01.10.2026): Leaguepedia-Schema ist verifiziert
 
-Das ist das Wichtigste in dieser Datei.
+*War der wichtigste offene Punkt. Ergebnis: `SCHEMA OK`, nichts zu reparieren.*
 
 `fetch_lec.py` benutzt diese Tabellen/Felder:
 
@@ -72,28 +72,29 @@ ScoreboardPlayers : Link, Team, Champion, Kills, Deaths, Assists, CS,
                     DateTime_UTC, PlayerWin, Role
 ```
 
-Die Namen stammen aus Leaguepedias öffentlichen Cargo-Definitionen
-(`Module:CargoDeclare/ScoreboardPlayers`), **wurden aber nie gegen eine echte
-API-Antwort geprüft.** Grund: Die IP des Entwicklungsrechners war für
-`cargoquery` dauerhaft gesperrt — auch mit 70 s Abstand kam immer
-`{"error":{"code":"ratelimited"}}`. Diagnose dazu:
+Alle 14 Felder sind geprüft und **existieren** — plus `Pentakills`, siehe unten.
 
-- `action=query&meta=siteinfo` lief **einwandfrei** → die API an sich ist erreichbar.
-- `action=cargoquery` lieferte **immer** `ratelimited` → es ist cargo-spezifisch.
-- Ursache laut mediawiki-api-Mailingliste: anonymer Cargo-Zugriff bei Fandom ist
-  auf **ca. 1 Anfrage/Minute** begrenzt, Seiten max. 500 Zeilen.
+**Die alte Diagnose war falsch.** Es lag nicht an der IP des Entwicklungsrechners.
+Derselbe Test von einem anderen PC, anderer IP, ohne jeden vorherigen Request:
 
-**Erste Aufgabe auf dem neuen PC:**
+- `action=query&meta=siteinfo` → **HTTP 200**, sauber.
+- allererstes `action=cargoquery` → sofort `{"error":{"code":"ratelimited"}}`.
+
+Fandom lehnt anonymes `cargoquery` also schlicht **generell** ab. Kein Limit, das
+man aussitzen kann → der Bot-Account ist **Pflicht**, nicht „empfohlen", und der
+Actions-Runner läuft ohne Secrets in exakt dieselbe Wand.
+
+**Wie es trotzdem verifiziert wurde:** Cargo-Tabellen werden auf ganz normalen
+Wiki-Seiten deklariert (`Module:CargoDeclare/<Tabelle>`), und die liest
+`action=query` ohne Login. `probe_schema.py` macht das jetzt als Stufe 1:
 
 ```bash
-# lokal, falls die IP dort nicht gesperrt ist:
 python scripts/probe_schema.py --split "LEC/2026 Season/Summer Season"
-
-# oder im Repo: Actions -> probe-schema -> Run workflow
+# -> SCHEMA OK - every field fetch_lec.py reads is declared upstream
 ```
 
-Ergebnis `SCHEMA OK` → alles gut. `SCHEMA DRIFT` → das Log nennt das falsche
-Feld, nur in `fetch_lec.py` korrigieren.
+Noch **nicht** verifiziert (braucht den Bot-Account, Stufe 2 des Probes):
+ob der `split`-String auf eine echte `OverviewPage` passt und ob Zeilen da sind.
 
 ---
 
@@ -130,13 +131,14 @@ Feld, nur in `fetch_lec.py` korrigieren.
 - `resolve_split.py` in beiden Pfaden (aus `league.json` und per `INPUT_SPLIT`).
 
 **Nicht getestet:**
-- Die Leaguepedia-Abfragen selbst (siehe offener Punkt oben).
+- Die Leaguepedia-*Abfragen* selbst — die Feldnamen sind verifiziert (siehe oben),
+  ein echter `cargoquery`-Durchlauf braucht aber den Bot-Account.
 - Der GitHub-Schreibpfad in `draft.html` — die Conflict-Retry-Logik ist aus
   `warhub.user.js` übernommen und dort bewährt, hier aber nie gegen ein echtes
   Repo gelaufen. **Beim ersten Pick darauf achten, dass der Commit erscheint.**
-- `scoring.js` im Browser gegen die Python-Referenz — `node` war auf dem
-  Entwicklungsrechner nicht installiert, der Vergleichstest wurde übersprungen.
-  Auf einem PC mit node läuft er automatisch mit.
+- ~~`scoring.js` gegen die Python-Referenz~~ — **erledigt 01.10.2026**: node 22
+  ist hier da, `test_js_engine_agrees` läuft mit und stimmt überein, inkl. der
+  neuen Pentakill-Wertung.
 
 ---
 
@@ -157,9 +159,9 @@ schlimmer als ein offensichtlicher Platzhalter.
 
 ## Bekannte Grenzen
 
-- **Multikills** (Triple/Quadra/Penta) stehen in der Punktetabelle, werden von
-  `ScoreboardPlayers` aber nicht geliefert → zählen aktuell nie. Entweder manuell
-  in `stats.json` ergänzen oder aus `scoring` entfernen.
+- **Multikills**: `ScoreboardPlayers` hat `Pentakills` (Integer) — wird jetzt
+  geholt und verrechnet, mit Test in beiden Engines. **Triple/Quadra existieren
+  dort nicht** und sind aus `scoring` raus, statt still 0 zu zählen.
 - **`swapsPerWeek`** wird nicht erzwungen. Der Host trägt Swaps in `league.json`
   ein; das ist die Kontrolle.
 - **Lineups pro Spieltag** gibt es nicht. Alle gedrafteten Spieler zählen immer,

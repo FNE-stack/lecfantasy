@@ -1,91 +1,144 @@
 #!/usr/bin/env python3
 """
-probe_schema.py — confirms the Leaguepedia Cargo tables/fields this project
-depends on actually exist, and prints one real row of each.
+probe_schema.py - confirms the Leaguepedia Cargo tables/fields this project
+depends on actually exist.
 
-WHY THIS EXISTS: the field names in fetch_lec.py come from Leaguepedia's public
-Cargo table definitions, but they were never confirmed against a live response
-while this was built — the author's IP was hard-blocked for `cargoquery`
-(anonymous cargo access is ~1 request/minute and this IP stayed blocked even at
-70s spacing, while plain `action=query` worked fine). So rather than trust the
-docs, run this once from somewhere that can reach the API — a GitHub Actions
-runner, or your own machine — and it will either confirm the schema or name the
-exact field that moved.
+It checks in two layers:
+
+  1. DECLARATIONS (always, no login needed). Every Cargo table is declared by a
+     normal wiki page, Module:CargoDeclare/<Table>, which plain `action=query`
+     can read. Anonymous `cargoquery` is refused outright by Fandom, but this
+     path is not, so the field names can be verified from anywhere. This is the
+     check that catches schema drift - a renamed or removed field.
+
+  2. LIVE ROWS (only with bot credentials). Actually runs the query and prints
+     a real row, which additionally proves the --split string matches a real
+     OverviewPage and that rows are populated. Needs LEAGUEPEDIA_USERNAME /
+     LEAGUEPEDIA_PASSWORD because anonymous cargoquery returns 'ratelimited'
+     on the very first request (verified 2026-10-01 from a clean IP, while
+     plain action=query returned 200 - it is not a throttle you can wait out).
 
     python scripts/probe_schema.py --split "LEC/2026 Season/Summer Season"
 
-Exit code 0 = schema matches what fetch_lec.py expects. Non-zero = drift, and
-the output says which field is missing.
+Exit 0 = declared schema matches fetch_lec.py. Exit 1 = drift, and the output
+names the exact field that moved.
 """
-import argparse, json, os, sys, time
+import argparse, json, os, re, sys, urllib.parse, urllib.request
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import fetch_lec as F
+
+for _stream in (sys.stdout, sys.stderr):
+    if hasattr(_stream, "reconfigure"):
+        _stream.reconfigure(encoding="utf-8", errors="replace")
 
 # (table, [fields fetch_lec.py relies on])
 EXPECT = [
     ("TournamentPlayers",  ["Player", "Team", "Role"]),
     ("ScoreboardPlayers",  ["Link", "Team", "Champion", "Kills", "Deaths",
-                            "Assists", "CS", "PlayerWin"]),
+                            "Assists", "CS", "DateTime_UTC", "PlayerWin",
+                            "Role", "Pentakills"]),
 ]
 
 
-def probe(table, fields, split):
-    print(f"\n── {table} " + "─" * (58 - len(table)))
+def declared_fields(table):
+    """Field names from Module:CargoDeclare/<table>. Works without a login."""
+    url = F.API + "?" + urllib.parse.urlencode({
+        "action": "query", "prop": "revisions", "rvprop": "content",
+        "rvslots": "main", "titles": "Module:CargoDeclare/" + table,
+        "format": "json"})
+    req = urllib.request.Request(url, headers={"User-Agent": F.UA})
+    with urllib.request.urlopen(req, timeout=40) as r:
+        payload = json.loads(r.read().decode("utf-8"))
+    page = next(iter(payload["query"]["pages"].values()))
+    if "revisions" not in page:
+        return None
+    body = page["revisions"][0]["slots"]["main"]["*"]
+    return re.findall(r'field\s*=\s*"([^"]+)"', body)
+
+
+def probe_declaration(table, fields):
+    print("\n-- %s (declaration) %s" % (table, "-" * max(0, 40 - len(table))))
+    try:
+        found = declared_fields(table)
+    except Exception as e:
+        print("  FAILED to read declaration: %s" % e)
+        return False, []
+    if found is None:
+        print("  Module:CargoDeclare/%s does not exist - table renamed?" % table)
+        return False, []
+    missing = [f for f in fields if f not in found]
+    if missing:
+        print("  ! MISSING: %s" % missing)
+        print("    declared fields: %s" % sorted(found))
+        return False, missing
+    print("  OK - all %d expected fields declared (of %d total)"
+          % (len(fields), len(found)))
+    return True, []
+
+
+def probe_rows(table, fields, split):
+    """Live query. Only reachable with credentials."""
+    print("\n-- %s (live rows) %s" % (table, "-" * max(0, 40 - len(table))))
     try:
         rows = F.cargo(table, ",".join(fields),
-                       where=f'{table}.OverviewPage="{split}"', limit=3)
+                       where='%s.OverviewPage="%s"' % (table, split), limit=3)
     except SystemExit as e:
-        print(f"  FAILED: {e}")
-        return False, []
+        print("  FAILED: %s" % e)
+        return False
     if not rows:
-        print("  no rows returned — either the split name is wrong, or the "
-              "table/OverviewPage filter changed.")
-        return False, []
-    print(f"  {len(rows)} row(s). first row verbatim:")
+        print("  no rows - the --split string probably does not match the "
+              "Leaguepedia page title.")
+        return False
+    print("  %d row(s). first row verbatim:" % len(rows))
     print("    " + json.dumps(rows[0], ensure_ascii=False))
-    got = set(rows[0].keys())
-    # Cargo returns spaces where the query used underscores
-    norm = {k.replace(" ", "_") for k in got}
-    missing = [f for f in fields
-               if f not in got and f.replace("_", " ") not in got
-               and f not in norm]
-    if missing:
-        print(f"  ⚠ MISSING: {missing}")
-        print(f"    fields actually present: {sorted(got)}")
-        return False, missing
-    print("  ✓ all expected fields present")
-    return True, []
+    return True
 
 
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--split", required=True)
     a = ap.parse_args()
-    print(f"probing schema for split: {a.split}")
-    F.login()
-    print(f"mode: {'bot' if F._authed else 'anonymous (slow)'}")
+    print("probing schema for split: %s" % a.split)
 
-    ok = True
-    problems = {}
-    for i, (table, fields) in enumerate(EXPECT):
-        if i and not F._authed:
-            print("\n  (waiting 65s — anonymous cargo limit)")
-            time.sleep(65)
-        good, missing = probe(table, fields, a.split)
+    ok, problems = True, {}
+    for table, fields in EXPECT:
+        good, missing = probe_declaration(table, fields)
         ok &= good
         if missing:
             problems[table] = missing
 
     print("\n" + "=" * 62)
-    if ok:
-        print("SCHEMA OK — fetch_lec.py field names match the live API.")
+    if not ok:
+        print("SCHEMA DRIFT - the declared fields no longer match fetch_lec.py.")
+        for t, m in problems.items():
+            print("  %s: fix these field names in fetch_lec.py -> %s" % (t, m))
+        return 1
+
+    print("SCHEMA OK - every field fetch_lec.py reads is declared upstream.")
+
+    F.login()
+    if not F._authed:
+        print("\nSkipped the live-row check (needs bot credentials).")
+        print("  Still UNVERIFIED by this run:")
+        print("    - that --split matches a real OverviewPage")
+        print("    - that the split actually has rows")
+        print("  To check those too, create a login at")
+        print("  lol.fandom.com -> Special:BotPasswords, then set")
+        print("  LEAGUEPEDIA_USERNAME / LEAGUEPEDIA_PASSWORD (env vars locally,")
+        print("  repo secrets for the Action) and run this again.")
         return 0
-    print("SCHEMA DRIFT or bad split name.")
-    for t, m in problems.items():
-        print(f"  {t}: fix these field names in fetch_lec.py -> {m}")
-    print("\nIf every table returned zero rows, check the --split string against\n"
-          "the Leaguepedia page title, e.g. 'LEC/2026 Season/Summer Season'.")
-    return 1
+
+    print("\nbot credentials present - checking live rows too")
+    live = True
+    for table, fields in EXPECT:
+        live &= probe_rows(table, fields, a.split)
+    print("\n" + "=" * 62)
+    if not live:
+        print("Declared schema is fine, but the live query returned nothing.")
+        print("  Check the --split string against the Leaguepedia page title.")
+        return 1
+    print("LIVE OK - split name resolves and rows are populated.")
+    return 0
 
 
 if __name__ == "__main__":

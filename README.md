@@ -50,11 +50,13 @@ Läuft schon:
 Namen und IDs der Manager anpassen. `order` ist die Draft-Reihenfolge in Runde 1;
 bei `snake: true` dreht sie sich jede Runde.
 
-### 3. Leaguepedia-Bot-Account (dringend empfohlen)
+### 3. Leaguepedia-Bot-Account — PFLICHT
 
-Anonymer Zugriff auf `cargoquery` ist auf **ca. 1 Anfrage pro Minute** begrenzt
-und liefert nur 500 Zeilen pro Seite. Ein ganzer Split hat mehrere Tausend
-Scoreboard-Zeilen — anonym also unbrauchbar.
+Ohne Login geht gar nichts: Fandom lehnt anonymes `cargoquery` **komplett** ab.
+Nachgemessen am 01.10.2026 von einer frischen IP ohne jeden vorherigen Request —
+die allererste Anfrage kommt schon mit `{"error":{"code":"ratelimited"}}` zurück,
+während normales `action=query` sauber mit 200 antwortet. Das ist also kein
+Limit, das man aussitzen kann, sondern eine geschlossene Tür.
 
 1. Auf <https://lol.fandom.com> einloggen (Fandom-Account reicht).
 2. **Special:BotPasswords** → neuen Bot anlegen, Recht *Basic rights* / read.
@@ -62,27 +64,34 @@ Scoreboard-Zeilen — anonym also unbrauchbar.
    - `LEAGUEPEDIA_USERNAME` = `DeinUser@DeinBotName`
    - `LEAGUEPEDIA_PASSWORD` = das generierte Bot-Passwort
 
-Damit gibt es 5000-Zeilen-Seiten und eine brauchbare Rate. Ohne die Secrets läuft
-alles trotzdem, nur sehr langsam (das Skript pausiert dann selbst 62 s pro Seite).
+Damit gibt es 5000-Zeilen-Seiten und eine brauchbare Rate. **Ohne die Secrets
+bricht `update-stats` sofort ab** — mit einer Meldung, die genau das sagt. Die
+alten Daten bleiben dabei unangetastet.
 
 ### 4. Schema prüfen — VOR dem ersten echten Lauf
 
 **Actions → probe-schema → Run workflow**
 
-Der Job schreibt nichts. Er prüft nur, ob die Cargo-Felder, auf die
-`fetch_lec.py` zugreift, wirklich existieren, und gibt je Tabelle eine echte
-Zeile aus. Ergebnis:
+Der Job schreibt nichts. Er prüft in zwei Stufen:
 
-- `SCHEMA OK` → weiter zu Schritt 5.
+1. **Deklarationen** — immer, *ohne Login*. Jede Cargo-Tabelle wird auf einer
+   ganz normalen Wiki-Seite deklariert (`Module:CargoDeclare/<Tabelle>`), und
+   die liest `action=query` problemlos. Genau das fängt Schema-Drift ab.
+2. **Echte Zeilen** — nur mit Bot-Zugangsdaten. Beweist zusätzlich, dass der
+   `split`-String auf eine echte `OverviewPage` passt und Zeilen da sind.
+
+Ergebnis:
+
+- `SCHEMA OK` → die Feldnamen stimmen.
 - `SCHEMA DRIFT` → im Log steht, **welches Feld** sich geändert hat; nur in
   `fetch_lec.py` anpassen.
-- *keine Zeilen* → der `split`-String passt nicht zum Leaguepedia-Seitentitel.
+- *keine Zeilen* (nur Stufe 2) → der `split`-String passt nicht zum
+  Leaguepedia-Seitentitel.
 
-> Warum dieser Extra-Schritt: die Feldnamen stammen aus Leaguepedias
-> öffentlichen Cargo-Definitionen, konnten beim Bauen aber **nicht** gegen die
-> echte API geprüft werden — die IP des Autors war für `cargoquery` dauerhaft
-> gesperrt (auch mit 70 s Abstand), während normales `action=query` lief. Der
-> Probe-Job ist die Verifikation, die hier nicht möglich war.
+> **Stufe 1 ist am 01.10.2026 gelaufen: `SCHEMA OK`.** Alle 14 Felder, die
+> `fetch_lec.py` liest, sind upstream deklariert — die Verifikation, die beim
+> Bauen nicht möglich war, ist damit erledigt. Stufe 2 steht noch aus, weil
+> dafür der Bot-Account nötig ist.
 
 ### 5. Stats holen
 
@@ -113,6 +122,7 @@ live (Auto-Refresh alle 2 Minuten).
 | Assist | 1,5 |
 | CS | 0,02 (= 2 pro 100) |
 | Sieg | 2 |
+| Pentakill | 10 |
 
 Anpassbar unter `scoring` in `league.json`. `scoring.js` ist die **einzige**
 Stelle, an der gerechnet wird — beide Seiten benutzen sie, also können Draft und
@@ -158,7 +168,7 @@ Split-Namen ändern, `picks` leeren und `completed` auf `false` setzen.
 - **Leaguepedia-Schema** ist nicht offiziell garantiert. Ändert sich ein Feldname,
   bricht der Fetch — deshalb bricht das Skript laut ab und lässt die alten Daten
   stehen, statt sie mit Müll zu überschreiben.
-- **Pentakills/Multikills** sind in der Punktetabelle vorgesehen, werden aber von
-  `ScoreboardPlayers` nicht geliefert. Sie zählen erst, wenn sie manuell in
-  `stats.json` ergänzt werden.
+- **Pentakills zählen** — `ScoreboardPlayers` hat ein Feld `Pentakills`, es wird
+  geholt und verrechnet. **Triple- und Quadrakills gibt es dort nicht**, deshalb
+  sind sie aus `scoring` entfernt, statt still auf 0 zu stehen.
 - **`swapsPerWeek`** ist eine Absprache, keine erzwungene Regel.

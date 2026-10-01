@@ -23,6 +23,14 @@ API actually returned so a schema drift is obvious in the Action log.
 import argparse, http.cookiejar, json, os, sys, time
 import urllib.error, urllib.parse, urllib.request
 
+# Windows terminals default to cp1252, which cannot encode the box-drawing and
+# check marks used in the output below — a local run would die inside print().
+# Force UTF-8 on both streams; harmless on the Actions runner, which is already
+# UTF-8. `errors="replace"` so an odd player name can never abort a fetch.
+for _stream in (sys.stdout, sys.stderr):
+    if hasattr(_stream, "reconfigure"):
+        _stream.reconfigure(encoding="utf-8", errors="replace")
+
 API = "https://lol.fandom.com/api.php"
 UA = "LEC-Fantasy-Group-Tool/1.0 (private league; contact via repo issues)"
 
@@ -54,8 +62,9 @@ def login():
     """Log in with a bot password. Returns True on success."""
     global _authed
     if not (USERNAME and PASSWORD):
-        print("  (no LEAGUEPEDIA_USERNAME/PASSWORD — anonymous mode: ~1 req/min, "
-              "500-row pages)", file=sys.stderr)
+        print("  (no LEAGUEPEDIA_USERNAME/PASSWORD — anonymous mode. "
+              "Leaguepedia currently refuses anonymous cargoquery outright, so "
+              "this will abort at the first query.)", file=sys.stderr)
         return False
     try:
         tok = _post({"action": "query", "meta": "tokens", "type": "login",
@@ -111,6 +120,20 @@ def cargo(tables, fields, where="", limit=500, offset=0, join_on="", retries=4):
             continue
         if "error" in payload:
             code = payload["error"].get("code", "?")
+            if code == "ratelimited" and not _authed:
+                # Measured 2026-10-01 from a clean IP with no prior traffic:
+                # the very first anonymous cargoquery already returns
+                # 'ratelimited', while plain action=query returns 200. So this
+                # is not a throttle we can wait out — anonymous Cargo access is
+                # closed. Retrying just burns ~8 minutes and then reports the
+                # wrong cause, so fail now and say what actually fixes it.
+                raise SystemExit(
+                    "Leaguepedia refuses anonymous cargoquery (error "
+                    "'ratelimited' on the first request).\n"
+                    "  Set LEAGUEPEDIA_USERNAME and LEAGUEPEDIA_PASSWORD "
+                    "(lol.fandom.com -> Special:BotPasswords).\n"
+                    "  In Actions these are repo secrets; locally, export them "
+                    "before running this script.")
             print(f"  ! API error {code}; retry in {delay}s", file=sys.stderr)
             if code == "ratelimited":
                 time.sleep(delay); delay *= 2
@@ -158,7 +181,8 @@ def fetch_stats(split):
     """Per-game player scoreboards for the split."""
     rows = paged(
         "ScoreboardPlayers",
-        "Link,Team,Champion,Kills,Deaths,Assists,CS,DateTime_UTC,PlayerWin,Role",
+        "Link,Team,Champion,Kills,Deaths,Assists,CS,DateTime_UTC,PlayerWin,"
+        "Role,Pentakills",
         where=f'ScoreboardPlayers.OverviewPage="{split}"',
     )
     games = []
@@ -178,6 +202,9 @@ def fetch_stats(split):
             "champ": (r.get("Champion") or "").strip(),
             "k": num("Kills"), "d": num("Deaths"), "a": num("Assists"),
             "cs": num("CS"),
+            # Verified present in Module:CargoDeclare/ScoreboardPlayers.
+            # Triple/quadra kills have no field there, so they are not scored.
+            "penta": num("Pentakills"),
             "win": win in ("yes", "1", "true"),
             "ts": (r.get("DateTime UTC") or r.get("DateTime_UTC") or "").strip(),
         })

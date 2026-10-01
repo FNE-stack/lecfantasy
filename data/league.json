@@ -8,8 +8,6 @@
     "assist": 1.5,
     "cs10": 0.02,
     "win": 2,
-    "tripleKill": 2,
-    "quadraKill": 5,
     "pentaKill": 10
   },
   "roster": {
