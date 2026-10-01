@@ -30,21 +30,28 @@
       "id": "m3bad6e80",
       "name": "QA Ben",
       "joined": "2026-10-01T23:05:24.056Z"
+    },
+    {
+      "id": "m7e517282",
+      "name": "QA Cem",
+      "joined": "2026-10-01T23:07:59.171Z"
     }
   ],
   "draft": {
     "order": [
       "m7eb82c19",
-      "m3bad6e80"
+      "m3bad6e80",
+      "m7e517282"
     ],
     "snake": true,
     "picks": [],
-    "status": "lobby",
+    "status": "live",
     "completed": false,
     "timer": {
       "mode": "off",
       "seconds": 90
-    }
+    },
+    "startedAt": "2026-10-01T23:08:02.068Z"
   },
   "adjustments": [],
   "swaps": [],
