@@ -268,6 +268,53 @@ def fetch_games(tournament_id, known_games):
     return rows, fresh, skipped
 
 
+# ── schedule ───────────────────────────────────────────────────────────────
+def fetch_schedule(league_id, tour):
+    """Every LEC match from the tournament start onwards, past and upcoming.
+
+    Feeds "next game" on the manager pages and the "Week N" grouping of
+    points. getSchedule pages outward from now: 'older' pages go back until we
+    pass the tournament start, 'newer' pages hold everything not yet played.
+    """
+    def page(token=None):
+        p = {"leagueId": league_id}
+        if token:
+            p["pageToken"] = token
+        return gw("getSchedule", **p)["schedule"]
+
+    first = page()
+    events = list(first["events"])
+    tok = (first.get("pages") or {}).get("older")
+    while tok and events and events[0]["startTime"][:10] >= tour["startDate"]:
+        s = page(tok)
+        events = s["events"] + events
+        tok = (s.get("pages") or {}).get("older")
+    tok = (first.get("pages") or {}).get("newer")
+    while tok:
+        s = page(tok)
+        events += s["events"]
+        tok = (s.get("pages") or {}).get("newer")
+
+    out, seen = [], set()
+    for e in events:
+        if e.get("type") != "match" or e["startTime"][:10] < tour["startDate"]:
+            continue
+        m = e["match"]
+        if m["id"] in seen:
+            continue
+        seen.add(m["id"])
+        out.append({
+            "match": m["id"], "start": e["startTime"], "state": e["state"],
+            "block": e.get("blockName", ""),
+            "bestOf": (m.get("strategy") or {}).get("count", 1),
+            "teams": [{"code": t.get("code", "TBD"),
+                       "wins": (t.get("result") or {}).get("gameWins"),
+                       "outcome": (t.get("result") or {}).get("outcome")}
+                      for t in m.get("teams", [])],
+        })
+    return sorted(out, key=lambda x: x["start"])
+
+
 # ── champions ──────────────────────────────────────────────────────────────
 def fetch_champions():
     """Data Dragon version + display names, for champion icons on the pages.
@@ -350,6 +397,11 @@ def main():
         "stats.json": {"tournament": tour["slug"], "updated": now,
                        "source": "lolesports", "games": rows},
     }
+    sched = fetch_schedule(lec["id"], tour)
+    upcoming = sum(1 for e in sched if e["state"] != "completed")
+    print(f"  schedule: {len(sched)} matches, {upcoming} not yet played")
+    out["schedule.json"] = {"tournament": tour["slug"], "updated": now, "events": sched}
+
     champs = fetch_champions()
     if champs:
         out["champions.json"] = {"updated": now, **champs}

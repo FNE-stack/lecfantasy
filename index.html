@@ -1,14 +1,43 @@
 <!doctype html>
+<html lang="de">
+<head>
 <meta charset="utf-8">
-<!--
-  Stub only. GitHub Pages serves index.html for a bare directory URL, so without
-  this the repo root would 404. The actual league page is league.html — it was
-  deliberately NOT named index.html.
--->
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>LEC Fantasy</title>
-<meta http-equiv="refresh" content="0; url=league.html">
-<link rel="canonical" href="league.html">
-<body style="background:#0d1117;color:#e6edf3;font:14px/1.6 system-ui,sans-serif;
-             margin:0;display:grid;place-items:center;height:100vh">
-  <p>→ <a href="league.html" style="color:#4493f8">LEC Fantasy</a></p>
+<meta name="description" content="Private LEC Fantasy League — Snake Draft, Live-Stats, eigene Manager-Seite.">
+<meta name="theme-color" content="#070708">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="icon-192.png">
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700;800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="theme.css">
+</head>
+<body>
+<div class="turnbar" id="turnbar"></div>
+<header class="topbar">
+  <div class="topbar-in">
+    <a class="brand" href="#/"><img id="brandlogo" alt="" hidden><span class="word">LEC <b>FANTASY</b></span></a>
+    <nav class="nav" id="nav"></nav>
+    <div class="topbar-right" id="user"></div>
+  </div>
+</header>
+<main class="wrap" id="view"><div class="empty">lädt …</div></main>
+<footer class="footer">
+  <div class="footer-in">
+    <div>LEC Fantasy ist ein privates Fanprojekt und steht in keiner Verbindung zu Riot Games oder der LEC.
+      League of Legends und LEC sind Marken von Riot Games, Inc.</div>
+    <div id="footmeta"></div>
+  </div>
+</footer>
+<nav class="tabbar" id="tabbar"></nav>
+<div class="toasts" id="toasts"></div>
+
+<script src="scoring.js"></script>
+<script src="common.js"></script>
+<script src="app.js"></script>
 </body>
+</html>

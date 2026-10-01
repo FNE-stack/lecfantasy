@@ -7,8 +7,7 @@ Punkte, Entscheidungen samt Begründung.
 
 **LIVE seit 01.10.2026.**
 
-- Liga: <https://fne-stack.github.io/lecfantasy/league.html>
-- Draft: <https://fne-stack.github.io/lecfantasy/pick.html>
+- Seite: <https://fne-stack.github.io/lecfantasy/> (alte `league.html`/`pick.html` leiten weiter)
 - Worker: <https://lecfantasy-draft.fabian-neidl.workers.dev> (Cloudflare, KV `LEAGUE`)
 - Zugangsdaten in `~/lecfantasy.env` (außerhalb des Repos). Redeploy: `bash worker/deploy.sh`.
 - Live End-to-End getestet: echter Browser auf github.io → Worker → Commit auf
@@ -20,10 +19,10 @@ Punkte, Entscheidungen samt Begründung.
 
 | Datei | Zweck |
 |---|---|
-| `league.html` | Öffentlich. Tabelle, Kader, Spieler, Teams, Draft, Spielerkarte. |
-| `pick.html` | Manager-Draftseite. Spricht nur mit dem Worker. |
+| `index.html` + `app.js` | Die ganze Seite als eine App mit Hash-Routen. |
+| `theme.css` | Design (lolesports-Palette), gilt für alle Seiten. |
+| `league.html`, `pick.html` | Nur noch Weiterleitungen. |
 | `draft.html` | Host-Notfallwerkzeug (direkter GitHub-Token): Undo, Sperren. |
-| `index.html` | Redirect-Stub auf `league.html`. |
 | `scoring.js` | Regeln + Punkte. Von allen Seiten **und** dem Worker importiert. |
 | `common.js` | Daten laden + Anzeige (Namen, Logos, Fotos, Champion-Icons). |
 | `worker/src/index.js` | Draft-Schiedsrichter: Login, Zugprüfung, Commit. |
@@ -68,6 +67,14 @@ wird neu geprüft (Test `recovers_from_a_lost_race` erzwingt einen echten 409).
 - Worker-Bundle baut (`wrangler deploy --dry-run`, 14 KB).
 
 Live: Deploy, CORS github.io → workers.dev und Worker → GitHub-Commit verifiziert.
+
+**6. Responsive geprüft, nicht geschätzt.** Automatischer Check über 360/390/768/
+1366/1920 px × alle Seiten: kein horizontales Scrollen, keine umgebrochenen oder
+abgeschnittenen Zahlen. Lange Namen kürzen sich mit „…", Zahlen nie.
+
+**7. Worker-State gecacht.** Jeder offene Tab pollt beim Draft. Ohne Cache:
+1 GitHub-Read (5000/h) + 1 KV-Read pro Manager (100k/Tag) pro Abfrage. Jetzt
+3 s Edge-Cache und ein einziger `claimed`-Key.
 
 ## Ideen für später
 

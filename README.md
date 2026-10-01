@@ -4,11 +4,21 @@ Fantasy-Liga für eine feste Gruppe. Läuft komplett online und kostenlos:
 **GitHub Pages** für die Seiten, ein **Cloudflare Worker** als Draft-Schiedsrichter,
 eine **GitHub Action** für die Daten.
 
-| Seite | Für wen | Was |
-|---|---|---|
-| `league.html` | alle, ohne Login | Tabelle, Kader, alle Spieler, Teams, Draft-Verlauf, Spielerkarte mit Game-Log |
-| `pick.html` | jeder Manager | Slot übernehmen (Name + Passwort), eigenen Kader sehen, selbst picken |
-| `draft.html` | nur Host | Notfall-Werkzeug mit GitHub-Token: Pick rückgängig, Draft sperren |
+Alles ist **eine Seite** mit echten Links (`#/spieler/<id>`, `#/team/G2`, `#/manager/m1` …),
+gemeinsamer Navigation, Zurück-Taste und Handy-Ansicht mit Tab-Leiste. Installierbar
+als App („Zum Startbildschirm hinzufügen").
+
+| Bereich | Was |
+|---|---|
+| **Übersicht** `#/` | Tabelle der Manager, Top-Spieler, letzte Ergebnisse |
+| **Mein Team** `#/mein-team` | eigener Bereich: Platz, Punkte, Ø/Woche, Kader mit nächstem Spiel und Form, Punkte pro Woche, nächste Spiele, letzte Spiele der eigenen Spieler |
+| **Draft** `#/draft` | Login, Uhr („wer ist dran"), Spieler-Pool nach Punkten, Watchlist, bester Verfügbarer pro Rolle, Draft Board, Ton/Benachrichtigung wenn man dran ist |
+| **Spieler** `#/spieler` | alle Spieler sortierbar; Spielerseite mit Form-Chart, Champion-Pool, Game-Log |
+| **Teams** `#/teams` | alle LEC-Teams mit Bilanz, Kader, Ergebnissen |
+| **Regeln** `#/regeln` | Punkte, Kader, Draft, Daten |
+| `draft.html` | nur Host: Notfall-Werkzeug mit GitHub-Token (Undo, Sperren) |
+
+`league.html` und `pick.html` leiten auf die neue Seite weiter — alte Links funktionieren.
 
 ## Wie es funktioniert
 
@@ -17,9 +27,10 @@ lolesports API --(Action, 2x täglich)--> data/teams.json      Teams, Kürzel, L
                                          data/players.json    Spieler, echte Namen, Fotos
                                          data/stats.json      K/D/A/CS/Sieg pro Spiel
                                          data/champions.json  Champion-Namen + Icons
+                                         data/schedule.json   Spielplan + Ergebnisse ("nächstes Spiel")
 
-Manager --(pick.html)--> Worker --(GitHub-Token)--> data/league.json   Picks
-alle    --(league.html, nur lesen)-------------------> alles oben
+Manager --(#/draft)--> Worker --(GitHub-Token)--> data/league.json   Picks
+alle    --(Seite, nur lesen)-----------------------> alles oben
 ```
 
 **Das Repo ist die Datenbank.** Schreiben darf nur der Worker; er hält den
@@ -63,12 +74,11 @@ LEC-Turnier, das schon begonnen hat; oder fest, z. B. `"lec_split_3_2026"`.
 4. `bash worker/deploy.sh` — legt den KV-Speicher an, hinterlegt den Token als
    Worker-Secret, deployt und trägt die Worker-URL in `pick.html` ein.
 5. Committen und pushen. Danach ist alles live:
-   - Liga: <https://fne-stack.github.io/lecfantasy/league.html>
-   - Draft: <https://fne-stack.github.io/lecfantasy/pick.html>
+   - <https://fne-stack.github.io/lecfantasy/>
 
 ## Draft-Abend
 
-Jeder öffnet `pick.html`, klickt auf einen freien Slot, wählt Namen und Passwort.
+Jeder öffnet die Seite → **Draft**, klickt auf einen freien Slot, wählt Namen und Passwort.
 Wer zuerst kommt, hat den Slot — der Link ist die Einladung. Danach pickt jeder auf
 dem eigenen Handy; die Seite zeigt, wer dran ist, sortiert die Spieler nach Punkten
 im letzten Split und graut ab, was nicht erlaubt ist. Nach dem letzten Pick sperrt

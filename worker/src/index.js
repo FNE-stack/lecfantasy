@@ -129,17 +129,60 @@ async function whoIs(env, request) {
 // ── routes ─────────────────────────────────────────────────────────────────
 
 // Who exists, who has already claimed a slot, whose turn it is. No secrets.
-async function handleState(env) {
-  const { data: league } = await ghGet(env, LEAGUE_PATH);
-  const claimed = {};
-  for (const m of league.managers || []) {
-    claimed[m.id] = (await env.LEAGUE.get(`mgr:${m.id}`)) !== null;
+//
+// Every open tab polls this every few seconds during a draft. Uncached, each
+// call costs one GitHub API read (limit 5000/h) and one KV read per manager
+// (free tier 100k/day) - a few spectators leaving tabs open would exhaust
+// both. So: one KV key for all claims, and the whole response cached at the
+// edge for STATE_TTL seconds. Writes purge the cache so the writer's own
+// next poll is fresh.
+const STATE_TTL = 3;
+const STATE_KEY = 'https://state.lecfantasy.internal/v1';
+const edgeCache = () => (typeof caches !== 'undefined' ? caches.default : null);
+
+async function claimedSet(env) {
+  return new Set((await env.LEAGUE.get('claimed', 'json')) || []);
+}
+async function markClaimed(env, managerId) {
+  const set = await claimedSet(env);
+  if (!set.has(managerId)) {
+    set.add(managerId);
+    await env.LEAGUE.put('claimed', JSON.stringify([...set]));
   }
-  return json(env, {
+}
+async function purgeState() {
+  const c = edgeCache();
+  if (c) await c.delete(STATE_KEY);
+}
+
+async function handleState(env) {
+  const c = edgeCache();
+  if (c) {
+    const hit = await c.match(STATE_KEY);
+    if (hit) {
+      return new Response(hit.body, {
+        status: 200, headers: { 'Content-Type': 'application/json; charset=utf-8', ...cors(env) }
+      });
+    }
+  }
+  const { data: league } = await ghGet(env, LEAGUE_PATH);
+  const set = await claimedSet(env);
+  const claimed = {};
+  for (const m of league.managers || []) claimed[m.id] = set.has(m.id);
+  const body = JSON.stringify({
     league,
     claimed,
     onTheClock: S.currentPicker(league),
-    progress: S.draftProgress(league)
+    progress: S.draftProgress(league),
+    serverTime: new Date().toISOString()
+  });
+  if (c) {
+    await c.put(STATE_KEY, new Response(body, {
+      headers: { 'Cache-Control': `public, max-age=${STATE_TTL}` }
+    }));
+  }
+  return new Response(body, {
+    status: 200, headers: { 'Content-Type': 'application/json; charset=utf-8', ...cors(env) }
   });
 }
 
@@ -154,12 +197,18 @@ async function handleClaim(env, body) {
   const { data: league, sha } = await ghGet(env, LEAGUE_PATH);
   const slot = (league.managers || []).find(m => m.id === manager);
   if (!slot) return fail(env, 404, 'unbekannter Manager-Slot');
-  if (await env.LEAGUE.get(`mgr:${manager}`)) return fail(env, 409, 'Slot schon vergeben');
+  if (await env.LEAGUE.get(`mgr:${manager}`)) {
+    // two claims racing can lose one update to the index; heal it here
+    await markClaimed(env, manager);
+    await purgeState();
+    return fail(env, 409, 'Slot schon vergeben');
+  }
 
   const salt = crypto.getRandomValues(new Uint8Array(16));
   const hash = await pbkdf2(password, salt);
   await env.LEAGUE.put(`mgr:${manager}`,
     JSON.stringify({ salt: hex(salt), hash, iters: PBKDF2_ITERS }));
+  await markClaimed(env, manager);
 
   // A chosen display name is cosmetic, so a failure writing it must not lose
   // the claim that already succeeded above.
@@ -170,6 +219,7 @@ async function handleClaim(env, body) {
         `draft: ${manager} heißt jetzt ${slot.name}`);
     } catch (e) { /* name simply stays as configured */ }
   }
+  await purgeState();
   return json(env, { ok: true, token: await newSession(env, manager), manager });
 }
 
@@ -201,7 +251,10 @@ async function handlePick(env, request, body) {
     if (league.draft && league.draft.completed) return fail(env, 409, 'Draft ist gesperrt');
     const turn = S.currentPicker(league);
     if (turn === null) return fail(env, 409, 'Draft ist vorbei');
-    if (turn !== me) return fail(env, 409, `nicht dein Zug — ${turn} ist dran`);
+    if (turn !== me) {
+      const m = (league.managers || []).find(x => x.id === turn);
+      return fail(env, 409, `nicht dein Zug — ${m ? m.name : turn} ist dran`);
+    }
 
     const why = S.pickError(league, idx, me, playerId);
     if (why) return fail(env, 422, why);
@@ -215,6 +268,7 @@ async function handlePick(env, request, body) {
       const meta = idx.get(playerId) || {};
       await ghPut(env, LEAGUE_PATH, league, sha,
         `draft: ${me} picks ${meta.name || playerId} (${meta.team || '?'} ${meta.role || ''})`.trim());
+      await purgeState();
       return json(env, {
         ok: true, picked: playerId,
         onTheClock: S.currentPicker(league),

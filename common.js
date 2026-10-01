@@ -28,12 +28,13 @@
 
   // Everything a page needs, with lookup maps built once.
   async function load() {
-    const [league, players, teams, stats, champs] = await Promise.all([
+    const [league, players, teams, stats, champs, schedule] = await Promise.all([
       getJson('data/league.json'),
       getJson('data/players.json', true),
       getJson('data/teams.json', true),
       getJson('data/stats.json', true),
       getJson('data/champions.json', true),
+      getJson('data/schedule.json', true),
     ]);
     const P = new Map(), T = new Map();
     for (const p of (players && players.players) || []) P.set(p.id, p);
@@ -42,7 +43,8 @@
     for (const t of (teams && teams.teams) || []) T.set(t.code, t);
     return {
       league, players: players || { players: [] }, teams: teams || { teams: [] },
-      stats: stats || { games: [] }, champs: champs || { names: {} }, P, T,
+      stats: stats || { games: [] }, champs: champs || { names: {} },
+      schedule: schedule || { events: [] }, P, T,
     };
   }
 
@@ -104,24 +106,6 @@
     return sum;
   }
 
-  // Styles for the pieces above, injected once so each page needn't repeat them.
-  const css = `
-    .tlogo{vertical-align:middle;object-fit:contain;margin-right:2px}
-    .tcode{display:inline-block;min-width:30px;font-size:10px;color:var(--dim,#8b98a5)}
-    .cicon{vertical-align:middle;border-radius:4px}
-    .ph{width:30px;height:30px;border-radius:50%;object-fit:cover;object-position:top;
-        vertical-align:middle;margin-right:6px;background:#243040;display:inline-block}
-    .pcell{white-space:nowrap}
-    .pname{font-weight:600}
-    .real{color:var(--dim,#8b98a5);font-size:12px;margin-left:3px}
-    a.plink{color:inherit;text-decoration:none;border-bottom:1px dotted #4a5868}
-    a.plink:hover{color:var(--blue,#4493f8)}
-  `;
-  if (global.document) {
-    const st = document.createElement('style');
-    st.textContent = css;
-    document.head.appendChild(st);
-  }
 
   global.LECUI = { esc, fmt, getJson, load, teamLogo, champIcon, playerName,
                    playerCell, playerSeason };

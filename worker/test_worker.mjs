@@ -137,6 +137,8 @@ tests.claim_then_login = async () => {
   let r = await asJson(await call('POST', '/api/claim',
     { body: { manager: 'm1', displayName: 'Fabi', password: 'hunter22' } }));
   assert(r.status === 200 && r.body.token, 'claim should succeed');
+  const st = await (await call('GET', '/api/state')).json();
+  assert(st.claimed.m1 === true && st.claimed.m2 === false, 'state must show m1 claimed via the index');
 
   // same slot cannot be taken twice
   r = await asJson(await call('POST', '/api/claim',
