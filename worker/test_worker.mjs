@@ -127,42 +127,42 @@ const tests = {};
 tests.state_is_public = async () => {
   const { status, body } = await asJson(await call('GET', '/api/state'));
   assert(status === 200, 'state should be readable without a login');
-  assert(body.onTheClock === 'fabi', `fabi picks first, got ${body.onTheClock}`);
-  assert(body.claimed.fabi === false, 'nothing claimed yet');
+  assert(body.onTheClock === 'm1', `m1 picks first, got ${body.onTheClock}`);
+  assert(body.claimed.m1 === false, 'nothing claimed yet');
   assert(body.league.managers.length === 4, 'four managers');
-  return 'readable without auth, fabi on the clock';
+  return 'readable without auth, m1 on the clock';
 };
 
 tests.claim_then_login = async () => {
   let r = await asJson(await call('POST', '/api/claim',
-    { body: { manager: 'fabi', displayName: 'Fabi', password: 'hunter22' } }));
+    { body: { manager: 'm1', displayName: 'Fabi', password: 'hunter22' } }));
   assert(r.status === 200 && r.body.token, 'claim should succeed');
 
   // same slot cannot be taken twice
   r = await asJson(await call('POST', '/api/claim',
-    { body: { manager: 'fabi', password: 'somethingelse' } }));
+    { body: { manager: 'm1', password: 'somethingelse' } }));
   assert(r.status === 409, `re-claim must be refused, got ${r.status}`);
 
   r = await asJson(await call('POST', '/api/login',
-    { body: { manager: 'fabi', password: 'wrong-one' } }));
+    { body: { manager: 'm1', password: 'wrong-one' } }));
   assert(r.status === 401, `wrong password must 401, got ${r.status}`);
 
   r = await asJson(await call('POST', '/api/login',
-    { body: { manager: 'fabi', password: 'hunter22' } }));
+    { body: { manager: 'm1', password: 'hunter22' } }));
   assert(r.status === 200 && r.body.token, 'correct password should log in');
 
   // short passwords refused
   r = await asJson(await call('POST', '/api/claim',
-    { body: { manager: 'boy2', password: 'abc' } }));
+    { body: { manager: 'm2', password: 'abc' } }));
   assert(r.status === 400, `short password must be refused, got ${r.status}`);
   return 'claim once, re-claim refused, wrong password refused, login works';
 };
 
 tests.pick_requires_login_and_turn = async () => {
-  const fabi = (await (await call('POST', '/api/claim',
-    { body: { manager: 'fabi', password: 'hunter22' } })).json()).token;
-  const boy2 = (await (await call('POST', '/api/claim',
-    { body: { manager: 'boy2', password: 'hunter22' } })).json()).token;
+  const m1 = (await (await call('POST', '/api/claim',
+    { body: { manager: 'm1', password: 'hunter22' } })).json()).token;
+  const m2 = (await (await call('POST', '/api/claim',
+    { body: { manager: 'm2', password: 'hunter22' } })).json()).token;
 
   let r = await asJson(await call('POST', '/api/pick', { body: { player: 'G2_TOP' } }));
   assert(r.status === 401, `no token must 401, got ${r.status}`);
@@ -173,33 +173,33 @@ tests.pick_requires_login_and_turn = async () => {
 
   // boy2 is not on the clock
   r = await asJson(await call('POST', '/api/pick',
-    { body: { player: 'G2_TOP' }, token: boy2 }));
+    { body: { player: 'G2_TOP' }, token: m2 }));
   assert(r.status === 409, `out-of-turn must 409, got ${r.status} ${r.body.error}`);
 
   r = await asJson(await call('POST', '/api/pick',
-    { body: { player: 'G2_TOP' }, token: fabi }));
-  assert(r.status === 200, `fabi's turn should work, got ${r.body.error}`);
-  assert(r.body.onTheClock === 'boy2', 'clock should advance to boy2');
+    { body: { player: 'G2_TOP' }, token: m1 }));
+  assert(r.status === 200, `m1's turn should work, got ${r.body.error}`);
+  assert(r.body.onTheClock === 'm2', 'clock should advance to m2');
 
   // the same player cannot go twice
   r = await asJson(await call('POST', '/api/pick',
-    { body: { player: 'G2_TOP' }, token: boy2 }));
+    { body: { player: 'G2_TOP' }, token: m2 }));
   assert(r.status === 422, `duplicate player must 422, got ${r.status}`);
 
   const committed = gh.current('data/league.json');
   assert(committed.draft.picks.length === 1, 'exactly one pick committed');
-  assert(committed.draft.picks[0].manager === 'fabi', 'pick attributed to fabi');
+  assert(committed.draft.picks[0].manager === 'm1', 'pick attributed to m1');
   return 'anonymous/bogus/out-of-turn/duplicate all refused, legal pick commits';
 };
 
 tests.team_limit_enforced = async () => {
   const tok = {};
-  for (const m of ['fabi', 'boy2', 'boy3', 'boy4']) {
+  for (const m of ['m1', 'm2', 'm3', 'm4']) {
     tok[m] = (await (await call('POST', '/api/claim',
       { body: { manager: m, password: 'hunter22' } })).json()).token;
   }
   // maxPerTeam is 2, so fabi taking a third G2 player must be refused.
-  const order = ['fabi', 'boy2', 'boy3', 'boy4', 'boy4', 'boy3', 'boy2', 'fabi'];
+  const order = ['m1', 'm2', 'm3', 'm4', 'm4', 'm3', 'm2', 'm1'];
   const picks = ['G2_TOP', 'FNC_TOP', 'KC_TOP', 'MKOI_TOP',
                  'VIT_TOP', 'TH_TOP', 'FNC_JNG', 'G2_JNG'];
   for (let i = 0; i < order.length; i++) {
@@ -209,7 +209,7 @@ tests.team_limit_enforced = async () => {
   }
   // round 3 starts with fabi again; he now has G2_TOP + G2_JNG
   const r = await asJson(await call('POST', '/api/pick',
-    { body: { player: 'G2_MID' }, token: tok.fabi }));
+    { body: { player: 'G2_MID' }, token: tok.m1 }));
   assert(r.status === 422, `third G2 player must be refused, got ${r.status}`);
   assert(/max\. 2 von G2/.test(r.body.error), `expected team-limit reason, got "${r.body.error}"`);
   return 'maxPerTeam blocked a third G2 pick with the right reason';
@@ -217,7 +217,7 @@ tests.team_limit_enforced = async () => {
 
 tests.full_draft_completes = async () => {
   const tok = {};
-  for (const m of ['fabi', 'boy2', 'boy3', 'boy4']) {
+  for (const m of ['m1', 'm2', 'm3', 'm4']) {
     tok[m] = (await (await call('POST', '/api/claim',
       { body: { manager: m, password: 'hunter22' } })).json()).token;
   }
@@ -240,7 +240,7 @@ tests.full_draft_completes = async () => {
 
   // and a pick after the lock is refused
   const r = await asJson(await call('POST', '/api/pick',
-    { body: { player: pool[pool.length - 1] }, token: tok.fabi }));
+    { body: { player: pool[pool.length - 1] }, token: tok.m1 }));
   assert(r.status === 409, `pick after lock must 409, got ${r.status}`);
 
   // every manager ends with all five roles covered
@@ -257,20 +257,20 @@ tests.full_draft_completes = async () => {
 };
 
 tests.simultaneous_pick_has_one_winner = async () => {
-  const fabi = (await (await call('POST', '/api/claim',
-    { body: { manager: 'fabi', password: 'hunter22' } })).json()).token;
-  const boy2 = (await (await call('POST', '/api/claim',
-    { body: { manager: 'boy2', password: 'hunter22' } })).json()).token;
+  const m1 = (await (await call('POST', '/api/claim',
+    { body: { manager: 'm1', password: 'hunter22' } })).json()).token;
+  const m2 = (await (await call('POST', '/api/claim',
+    { body: { manager: 'm2', password: 'hunter22' } })).json()).token;
 
   // Both fire at once while fabi is on the clock. boy2 must lose - and must
   // lose for the right reason, not by corrupting the file.
   const [a, b] = await Promise.all([
-    call('POST', '/api/pick', { body: { player: 'G2_TOP' }, token: fabi }).then(asJson),
-    call('POST', '/api/pick', { body: { player: 'FNC_MID' }, token: boy2 }).then(asJson),
+    call('POST', '/api/pick', { body: { player: 'G2_TOP' }, token: m1 }).then(asJson),
+    call('POST', '/api/pick', { body: { player: 'FNC_MID' }, token: m2 }).then(asJson),
   ]);
   const oks = [a, b].filter(r => r.status === 200);
   assert(oks.length === 1, `exactly one should win, got ${oks.length}`);
-  assert(oks[0].body.picked === 'G2_TOP', 'fabi was on the clock, so fabi wins');
+  assert(oks[0].body.picked === 'G2_TOP', 'm1 was on the clock, so m1 wins');
 
   const league = gh.current('data/league.json');
   assert(league.draft.picks.length === 1, `file must hold 1 pick, holds ${league.draft.picks.length}`);
@@ -283,8 +283,8 @@ tests.simultaneous_pick_has_one_winner = async () => {
 // write in between the Worker's read and its write, which is exactly what the
 // host editing league.json mid-draft would do.
 tests.recovers_from_a_lost_race = async () => {
-  const fabi = (await (await call('POST', '/api/claim',
-    { body: { manager: 'fabi', password: 'hunter22' } })).json()).token;
+  const m1 = (await (await call('POST', '/api/claim',
+    { body: { manager: 'm1', password: 'hunter22' } })).json()).token;
 
   const realFetch = globalThis.fetch;
   let armed = true;
@@ -303,7 +303,7 @@ tests.recovers_from_a_lost_race = async () => {
   };
 
   const r = await asJson(await call('POST', '/api/pick',
-    { body: { player: 'G2_TOP' }, token: fabi }));
+    { body: { player: 'G2_TOP' }, token: m1 }));
   globalThis.fetch = realFetch;
 
   assert(gh.stats.conflicts >= 1, 'this test is pointless unless a 409 actually happened');
@@ -316,22 +316,22 @@ tests.recovers_from_a_lost_race = async () => {
 };
 
 tests.token_never_reaches_the_page = async () => {
-  const fabi = (await (await call('POST', '/api/claim',
-    { body: { manager: 'fabi', password: 'hunter22' } })).json()).token;
+  const m1 = (await (await call('POST', '/api/claim',
+    { body: { manager: 'm1', password: 'hunter22' } })).json()).token;
   const bodies = [];
   bodies.push(await (await call('GET', '/api/state')).text());
   bodies.push(await (await call('POST', '/api/login',
-    { body: { manager: 'fabi', password: 'hunter22' } })).text());
+    { body: { manager: 'm1', password: 'hunter22' } })).text());
   bodies.push(await (await call('POST', '/api/pick',
-    { body: { player: 'G2_TOP' }, token: fabi })).text());
+    { body: { player: 'G2_TOP' }, token: m1 })).text());
   bodies.push(await (await call('POST', '/api/pick',
-    { body: { player: 'nope' }, token: fabi })).text());
+    { body: { player: 'nope' }, token: m1 })).text());
   for (const b of bodies) {
     assert(!b.includes(env.GITHUB_TOKEN), 'a response leaked the GitHub token');
     assert(!b.includes('hunter22'), 'a response echoed a password');
   }
   // and the stored credential is a hash, not the password
-  const rec = JSON.parse(await env.LEAGUE.get('mgr:fabi'));
+  const rec = JSON.parse(await env.LEAGUE.get('mgr:m1'));
   assert(!JSON.stringify(rec).includes('hunter22'), 'password stored in clear');
   assert(rec.hash && rec.salt && rec.hash.length === 64, 'expected a salted sha-256 hash');
   return 'no response leaks the token or a password; stored credential is salted+hashed';

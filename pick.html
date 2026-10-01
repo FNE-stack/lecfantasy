@@ -66,6 +66,8 @@
     white-space:nowrap}
   .prow.gone{opacity:.38}
   .prow .why{font-size:11px;color:var(--down)}
+  .ppts{font-weight:700;font-variant-numeric:tabular-nums;text-align:right;min-width:58px}
+  .ppts small{display:block;font-weight:400;font-size:10px;color:var(--dim)}
   .msg{border-radius:6px;padding:10px 13px;font-size:13px;margin-bottom:12px}
   .msg.err{background:#2d1618;border:1px solid #6e2c30;color:#ff9b96}
   .msg.ok{background:#132b17;border:1px solid #2ea043;color:#5ddc7a}
@@ -96,6 +98,7 @@
 </div>
 
 <script src="scoring.js"></script>
+<script src="common.js"></script>
 <script>
 // ══════════════════════════════════════════════════════════════════════════
 // pick.html — the page each manager opens. Talks only to the Worker, which
@@ -120,7 +123,8 @@ const WORKER = (localStorage.getItem('lecfantasy.worker') || DEFAULT_WORKER).rep
 const TOKKEY = 'lecfantasy.session';
 let session = localStorage.getItem(TOKKEY) || '';
 let me = localStorage.getItem('lecfantasy.manager') || '';
-let STATE = null, PLAYERS = null, STATS = null, PIDX = new Map();
+let STATE = null, PLAYERS = null, STATS = null, PIDX = new Map(), D = null;
+const U = window.LECUI;
 let roleFilter = '', search = '', timer = null, busy = false;
 let lastSig = null;
 
@@ -174,12 +178,20 @@ function signOut(reload) {
 
 // ── loading ───────────────────────────────────────────────────────────────
 async function loadStatic() {
-  const bust = '?t=' + Date.now();
-  try { PLAYERS = await (await fetch('data/players.json' + bust, { cache: 'no-store' })).json(); }
-  catch (e) { PLAYERS = { players: [] }; }
-  try { STATS = await (await fetch('data/stats.json' + bust, { cache: 'no-store' })).json(); }
-  catch (e) { STATS = { games: [] }; }
+  D = await U.load();
+  PLAYERS = D.players;
+  STATS = D.stats;
+  // Rule checks use exactly the index the Worker uses (current rosters only),
+  // so a greyed-out row here always matches what the Worker would refuse.
+  // D.P additionally knows former players, for display only.
   PIDX = new Map((PLAYERS.players || []).map(p => [p.id, p]));
+}
+
+// last split's points per player, computed once - the draft-night sort key
+let SEASON = new Map();
+function season(id) {
+  if (!SEASON.has(id)) SEASON.set(id, U.playerSeason(D, id));
+  return SEASON.get(id);
 }
 
 async function refresh(force) {
@@ -261,10 +273,9 @@ function myRoster() {
     if (pid) used.add(pid);
     const pts = pid ? S.playerTotal(gp.get(pid) || [], sc) : null;
     lines.push(`<div class="slot">
-      <span class="role">${esc(slot)}</span>
-      <div class="who${pid ? '' : ' none'}">${pid ? esc(pid) : 'offen'}</div>
-      ${pid ? `<span class="team">${esc((PIDX.get(pid) || {}).team || '')}</span>
-               <span class="pts">${pts}</span>` : ''}
+      <div class="who${pid ? '' : ' none'}">${pid ? U.playerCell(D, pid, { photo: true })
+        : '<span class="role">' + esc(slot) + '</span> offen'}</div>
+      ${pid ? `<span class="pts">${U.fmt(pts)}</span>` : ''}
     </div>`);
   }
   for (let i = 0; i < bench; i++) {
@@ -273,31 +284,32 @@ function myRoster() {
     const pts = pid ? S.playerTotal(gp.get(pid) || [], sc) : null;
     lines.push(`<div class="slot">
       <span class="role" style="background:#1d2530">BANK</span>
-      <div class="who${pid ? '' : ' none'}">${pid ? esc(pid) : 'offen'}</div>
-      ${pid ? `<span class="team">${esc((PIDX.get(pid) || {}).team || '')}</span>
-               <span class="pts">${pts}</span>` : ''}
+      <div class="who${pid ? '' : ' none'}">${pid ? U.playerCell(D, pid, { photo: true }) : 'offen'}</div>
+      ${pid ? `<span class="pts">${U.fmt(pts)}</span>` : ''}
     </div>`);
   }
   const total = ros.reduce((t, p) => t + S.playerTotal(gp.get(p) || [], sc), 0);
-  return `<div class="card"><h2>Dein Kader — ${Math.round(total * 100) / 100} Punkte</h2>
+  return `<div class="card"><h2>Dein Kader — ${U.fmt(total)} Punkte</h2>
     <div class="body">${lines.join('')}</div></div>`;
 }
 
 function pool() {
   const mine = STATE.onTheClock === me;
   const all = (PLAYERS.players || []).slice()
-    .sort((a, b) => a.role.localeCompare(b.role) || a.id.localeCompare(b.id));
+    .sort((a, b) => season(b.id).pts - season(a.id).pts || a.name.localeCompare(b.name));
   const q = search.toLowerCase();
+  const hay = p => [p.name, p.realName, p.team, (D.T.get(p.team) || {}).name]
+    .filter(Boolean).join(' ').toLowerCase();
   const shown = all.filter(p =>
-    (!roleFilter || p.role === roleFilter) &&
-    (!q || p.id.toLowerCase().includes(q) || (p.team || '').toLowerCase().includes(q)));
+    (!roleFilter || p.role === roleFilter) && (!q || hay(p).includes(q)));
 
   const rows = shown.map(p => {
     const why = S.pickError(STATE.league, PIDX, me || '_', p.id);
     const can = mine && !why && !busy;
     return `<div class="prow${why ? ' gone' : ''}">
-      <span class="role">${esc(p.role)}</span>
-      <div class="nm">${esc(p.id)} <span class="team">${esc(p.team)}</span></div>
+      <div class="nm">${U.playerCell(D, p.id, { photo: true, real: true })}</div>
+      <span class="ppts" title="Punkte im letzten Split (Ø pro Spiel)">${U.fmt(season(p.id).pts)}
+        <small>Ø ${U.fmt(season(p.id).avg)}</small></span>
       ${why ? `<span class="why">${esc(why)}</span>`
             : `<button class="go" data-pick="${esc(p.id)}" ${can ? '' : 'disabled'}>Pick</button>`}
     </div>`;
@@ -308,8 +320,8 @@ function pool() {
     `<span class="chip${roleFilter === r ? ' on' : ''}" data-role="${esc(r)}">${r || 'Alle'}</span>`
   ).join('');
 
-  return `<div class="card"><h2>Spieler</h2><div class="body">
-    <div class="tools"><input id="q" placeholder="Name oder Team suchen" value="${esc(search)}"></div>
+  return `<div class="card"><h2>Spieler — sortiert nach Punkten im letzten Split</h2><div class="body">
+    <div class="tools"><input id="q" placeholder="Spieler, echter Name oder Team" value="${esc(search)}"></div>
     <div class="chips">${chips}</div>
     <div class="plist">${rows}</div>
   </div></div>`;
@@ -323,7 +335,7 @@ function draftLog() {
   };
   const rows = picks.length
     ? picks.map((p, i) => `<div>#${picks.length - i} <b>${esc(nameOf(p.manager))}</b>
-        → ${esc(p.player)}</div>`).join('')
+        → ${esc(U.playerName(D, p.player))}</div>`).join('')
     : '<div>noch keine Picks</div>';
   return `<div class="card"><h2>Verlauf</h2><div class="body"><div class="log">${rows}</div></div></div>`;
 }
@@ -384,7 +396,7 @@ async function doPick(playerId) {
   document.querySelectorAll('button[data-pick]').forEach(b => b.disabled = true);
   try {
     const res = await api('/api/pick', { method: 'POST', body: { player: playerId } });
-    say('ok', `${playerId} gehört dir.`);
+    say('ok', `${U.playerName(D, playerId)} gehört dir.`);
     STATE = await api('/api/state');
     lastSig = null;
   } catch (e) {

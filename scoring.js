@@ -17,7 +17,6 @@
     p += (g.a || 0) * s.assist;
     p += (g.cs || 0) * (s.cs10 || 0);
     if (g.win) p += s.win;
-    if (g.penta) p += (s.pentaKill || 0) * g.penta;
     return Math.round(p * 100) / 100;
   }
 

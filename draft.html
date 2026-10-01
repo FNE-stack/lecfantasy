@@ -138,6 +138,7 @@
 </div>
 
 <script src="scoring.js"></script>
+<script src="common.js"></script>
 <script>
 (function(){
 'use strict';
@@ -148,7 +149,8 @@ const CFG='lecfantasy_cfg';
 let cfg={repo:'',branch:'main',tok:''};
 try{ cfg=Object.assign(cfg,JSON.parse(localStorage.getItem(CFG)||'{}')); }catch(e){}
 
-let LEAGUE=null, PLAYERS=null, PIDX=new Map(), SHA=null;
+let LEAGUE=null, PLAYERS=null, PIDX=new Map(), SHA=null, D=null;
+const U=window.LECUI;
 let roleFilter=null, search='';
 
 function msg(kind,html){ $('msg').innerHTML='<div class="'+kind+'">'+html+'</div>'; }
@@ -210,6 +212,7 @@ async function loadLocal(){
   catch(e){ PLAYERS=null; }
   PIDX=new Map();
   if(PLAYERS&&PLAYERS.players) for(const p of PLAYERS.players) PIDX.set(p.id,p);
+  try{ D=await U.load(); }catch(e){ D={P:PIDX,T:new Map(),champs:{names:{}},league:LEAGUE,stats:{games:[]}}; }
   $('lname').textContent=LEAGUE.name||'—';
   $('swapn').textContent=LEAGUE.swapsPerWeek!=null?LEAGUE.swapsPerWeek:1;
   return true;
@@ -248,10 +251,10 @@ function render(){
     const pid=mine.find(p=>{const mm=PIDX.get(p);return mm&&mm.role===s&&!used.has(p);});
     if(pid) used.add(pid);
     rh+='<div class="kv"><span><span class="role">'+s+'</span></span><span>'+
-        (pid?esc(pid):'<span class="status">frei</span>')+'</span></div>';
+        (pid?U.playerCell(D,pid):'<span class="status">frei</span>')+'</span></div>';
   }
   for(const pid of mine){ if(used.has(pid)) continue;
-    rh+='<div class="kv"><span><span class="role" style="background:#2a2333">BANK</span></span><span>'+esc(pid)+'</span></div>'; }
+    rh+='<div class="kv"><span><span class="role" style="background:#2a2333">BANK</span></span><span>'+U.playerCell(D,pid)+'</span></div>'; }
   $('myros').innerHTML=rh||'<span class="status">—</span>';
 
   // pool
@@ -265,7 +268,7 @@ function render(){
     if(roleFilter) list=list.filter(p=>p.role===roleFilter);
     if(search){
       const q=search.toLowerCase();
-      list=list.filter(p=>p.name.toLowerCase().includes(q)||(p.team||'').toLowerCase().includes(q));
+      list=list.filter(p=>[p.name,p.realName,p.team].join(' ').toLowerCase().includes(q));
     }
     list.sort((a,b)=>(a.role||'').localeCompare(b.role||'')||a.name.localeCompare(b.name));
     $('poolcount').textContent=list.length+' frei';
@@ -273,7 +276,7 @@ function render(){
     for(const p of list.slice(0,200)){
       const why=(!done&&next)?LECScoring.pickError(LEAGUE,PIDX,next,p.id):'gesperrt';
       h+='<tr class="pick'+(why?' bad':'')+'" data-p="'+esc(p.id)+'">'+
-         '<td><span class="role">'+esc(p.role)+'</span> '+esc(p.name)+'</td>'+
+         '<td>'+U.playerCell(D,p.id,{real:true})+'</td>'+
          '<td class="team">'+esc(p.team)+'</td>'+
          '<td class="num">'+(why?'<span class="why">'+esc(why)+'</span>':
            '<button class="btn p" data-pick="'+esc(p.id)+'">Pick</button>')+'</td></tr>';
@@ -309,7 +312,7 @@ function render(){
       const mm=PIDX.get(p.player);
       const last=(i===picks.length);
       h+='<tr><td class="status">'+i+'</td><td>'+esc(mgrName[p.manager]||p.manager)+'</td>'+
-         '<td>'+(mm?'<span class="role">'+esc(mm.role)+'</span> ':'')+esc(p.player)+'</td>'+
+         '<td>'+U.playerCell(D,p.player)+'</td>'+
          '<td class="num">'+(last&&!done?'<button class="btn d" id="undo">↩</button>':'')+'</td></tr>';
     });
     h+='</table>';

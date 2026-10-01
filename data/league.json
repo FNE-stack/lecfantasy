@@ -1,14 +1,13 @@
 {
-  "name": "Die Boys LEC Fantasy",
-  "split": "LEC/2026 Season/Summer Season",
+  "name": "LEC Fantasy",
+  "tournament": "auto",
   "phase": "draft",
   "scoring": {
     "kill": 3,
     "death": -1,
     "assist": 1.5,
     "cs10": 0.02,
-    "win": 2,
-    "pentaKill": 10
+    "win": 2
   },
   "roster": {
     "slots": [
@@ -24,28 +23,28 @@
   "swapsPerWeek": 1,
   "managers": [
     {
-      "id": "fabi",
-      "name": "Fabi"
+      "id": "m1",
+      "name": "Manager 1"
     },
     {
-      "id": "boy2",
-      "name": "Boy 2"
+      "id": "m2",
+      "name": "Manager 2"
     },
     {
-      "id": "boy3",
-      "name": "Boy 3"
+      "id": "m3",
+      "name": "Manager 3"
     },
     {
-      "id": "boy4",
-      "name": "Boy 4"
+      "id": "m4",
+      "name": "Manager 4"
     }
   ],
   "draft": {
     "order": [
-      "fabi",
-      "boy2",
-      "boy3",
-      "boy4"
+      "m1",
+      "m2",
+      "m3",
+      "m4"
     ],
     "snake": true,
     "picks": [],

@@ -212,7 +212,9 @@ async function handlePick(env, request, body) {
     if (S.currentPicker(league) === null) league.draft.completed = true;
 
     try {
-      await ghPut(env, LEAGUE_PATH, league, sha, `draft: ${me} picks ${playerId}`);
+      const meta = idx.get(playerId) || {};
+      await ghPut(env, LEAGUE_PATH, league, sha,
+        `draft: ${me} picks ${meta.name || playerId} (${meta.team || '?'} ${meta.role || ''})`.trim());
       return json(env, {
         ok: true, picked: playerId,
         onTheClock: S.currentPicker(league),

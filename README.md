@@ -1,193 +1,83 @@
-# LEC Fantasy — Snake Draft für die Boys
+# LEC Fantasy — Snake Draft
 
-Eine kleine Fantasy-Liga für eine feste Gruppe. Läuft komplett auf **GitHub Pages**
-— kein Server, keine Datenbank, keine Kosten.
+Fantasy-Liga für eine feste Gruppe. Läuft komplett online und kostenlos:
+**GitHub Pages** für die Seiten, ein **Cloudflare Worker** als Draft-Schiedsrichter,
+eine **GitHub Action** für die Daten.
 
-- **`league.html`** — die öffentliche Liga-Seite. Tabelle, Kader, Spieler, Draft-Verlauf.
-  Braucht **keinen Login**, für alle immer erreichbar.
-- **`pick.html`** — die Draft-Seite **für die Boys**. Jeder setzt sich beim ersten
-  Besuch Name + Passwort und pickt dann selbst, vom eigenen Handy.
-- **`draft.html`** — Host-Werkzeug. Schreibt direkt mit eigenem Token, als
-  Notnagel wenn beim Draft etwas klemmt.
-- Daten liegen als JSON im Repo. Ein GitHub-Action-Job zieht die LEC-Stats.
+| Seite | Für wen | Was |
+|---|---|---|
+| `league.html` | alle, ohne Login | Tabelle, Kader, alle Spieler, Teams, Draft-Verlauf, Spielerkarte mit Game-Log |
+| `pick.html` | jeder Manager | Slot übernehmen (Name + Passwort), eigenen Kader sehen, selbst picken |
+| `draft.html` | nur Host | Notfall-Werkzeug mit GitHub-Token: Pick rückgängig, Draft sperren |
 
 ## Wie es funktioniert
 
 ```
-Leaguepedia  --(GitHub Action, 2x/Tag)-->  data/stats.json
-                                           data/players.json
-                                                  |
-Die Boys --(pick.html)--> Worker --(Token)--> data/league.json
-                          ^ prüft Zug + Regeln              |
-                                                            v
-Alle  --(league.html, read-only)-->  Tabelle & Kader
+lolesports API --(Action, 2x täglich)--> data/teams.json      Teams, Kürzel, Logos
+                                         data/players.json    Spieler, echte Namen, Fotos
+                                         data/stats.json      K/D/A/CS/Sieg pro Spiel
+                                         data/champions.json  Champion-Namen + Icons
+
+Manager --(pick.html)--> Worker --(GitHub-Token)--> data/league.json   Picks
+alle    --(league.html, nur lesen)-------------------> alles oben
 ```
 
-Der Trick: **das Repo ist die Datenbank.** Geschrieben wird ausschließlich über
-die GitHub-API mit einem Token — und der liegt **im Worker**, nicht in der Seite.
+**Das Repo ist die Datenbank.** Schreiben darf nur der Worker; er hält den
+GitHub-Token privat (eine statische Seite kann kein Geheimnis bewahren — ein Token
+in `pick.html` hätte jeder). Er prüft bei jedem Pick: eingeloggt? am Zug? Spieler
+frei? Rolle/Team-Limit ok? — mit genau denselben Regeln aus `scoring.js`, die
+auch die Seiten benutzen.
 
-Warum überhaupt ein Worker: GitHub Pages liefert nur statische Dateien aus. Eine
-Seite, die selbst ins Repo schreiben kann, müsste den Token enthalten — und ein
-Token in einer öffentlichen Seite ist ein Token, den **alle** haben. Dann könnte
-jeder jeden Kader umschreiben. Der Worker ist die einzige Stelle mit dem Token,
-prüft bei jedem Pick, ob der Absender wirklich dran ist und ob der Pick erlaubt
-ist, und committet erst dann.
+## Daten: lolesports API
 
-Wichtig: der Worker hat **keine eigene Regelkopie**. Er benutzt dasselbe
-`scoring.js` wie die Seiten, kann also nie etwas anderes erlauben, als auf dem
-Bildschirm stand.
+Dieselbe API, auf der lolesports.com läuft. **Braucht keinen Login.**
 
-## Einrichten
+- **Teams**: voller Name, Kürzel (`G2`, `MKOI`), offizielles Logo — nur die
+  Teams, die im Turnier wirklich spielen.
+- **Spieler**: IGN, echter Name, Rolle, Team, Foto. Coaches werden ausgefiltert.
+- **Spiele**: jedes Spiel nennt seine Spieler per `esportsPlayerId` — dieselbe ID
+  wie in den Kadern. Stats hängen also per ID am Spieler, nie per Namensvergleich.
+- **Sieger**: Die API hat pro Spiel kein Sieger-Feld, aber pro Serie den Endstand.
+  Bo1 ist damit exakt; bei Bo3/Bo5 werden die Spiele nach Türme-Differenz sortiert
+  und genau so viele Siege verteilt, wie der offizielle Endstand sagt. Geprüft am
+  Summer Split 2026: **53/53 Serien stimmen.**
+- **Inkrementell**: bereits geholte Spiele werden nicht neu geladen.
 
-### 1. Repo + Pages — erledigt
+Turnier steht in `data/league.json` unter `tournament`: `"auto"` = das neueste
+LEC-Turnier, das schon begonnen hat; oder fest, z. B. `"lec_split_3_2026"`.
 
-Läuft schon:
+## Online bringen
 
-- Repo: <https://github.com/FNE-stack/lecfantasy>
-- Liga: <https://fne-stack.github.io/lecfantasy/league.html>
-- Draft: <https://fne-stack.github.io/lecfantasy/draft.html>
+1. **GitHub-Token** — github.com → Settings → Developer settings → Fine-grained
+   tokens. Nur Repo `FNE-stack/lecfantasy`, Rechte **Contents: Read and write** und
+   **Workflows: Read and write**.
+2. **Cloudflare** — kostenlos registrieren, einmal **Workers & Pages** öffnen
+   (legt die `*.workers.dev`-Subdomain an), dann API-Token mit Vorlage
+   **„Edit Cloudflare Workers"** und die **Account ID** notieren.
+3. Alles in `~/lecfantasy.env` (liegt außerhalb des Repos, wird nie committed):
+   ```
+   GITHUB_TOKEN=github_pat_...
+   CLOUDFLARE_API_TOKEN=...
+   CLOUDFLARE_ACCOUNT_ID=...
+   ```
+4. `bash worker/deploy.sh` — legt den KV-Speicher an, hinterlegt den Token als
+   Worker-Secret, deployt und trägt die Worker-URL in `pick.html` ein.
+5. Committen und pushen. Danach ist alles live:
+   - Liga: <https://fne-stack.github.io/lecfantasy/league.html>
+   - Draft: <https://fne-stack.github.io/lecfantasy/pick.html>
 
-> Das Repo ist **public**, weil Pages im Free-Plan nur öffentliche Repos
-> ausliefert. Es enthält keine Secrets — der GitHub-Token liegt als Worker-Secret
-> bei Cloudflare, die Leaguepedia-Zugangsdaten als Actions-Secrets. Beides wird
-> nie committed.
+## Draft-Abend
 
-### 2. Liga konfigurieren — `data/league.json`
+Jeder öffnet `pick.html`, klickt auf einen freien Slot, wählt Namen und Passwort.
+Wer zuerst kommt, hat den Slot — der Link ist die Einladung. Danach pickt jeder auf
+dem eigenen Handy; die Seite zeigt, wer dran ist, sortiert die Spieler nach Punkten
+im letzten Split und graut ab, was nicht erlaubt ist. Nach dem letzten Pick sperrt
+der Draft sich selbst.
 
-```jsonc
-"split": "LEC/2026 Season/Summer Season",  // muss exakt der Leaguepedia-Name sein
-"managers": [ {"id":"fabi","name":"Fabi"}, … ],
-"draft": { "order": ["fabi","boy2",…], "snake": true },
-"roster": { "slots":["TOP","JNG","MID","BOT","SUP"], "bench":1, "maxPerTeam":2 },
-"swapsPerWeek": 1
-```
-
-Namen und IDs der Manager anpassen. `order` ist die Draft-Reihenfolge in Runde 1;
-bei `snake: true` dreht sie sich jede Runde.
-
-### 3. Leaguepedia-Bot-Account — PFLICHT
-
-Ohne Login geht gar nichts: Fandom lehnt anonymes `cargoquery` **komplett** ab.
-Nachgemessen am 01.10.2026 von einer frischen IP ohne jeden vorherigen Request —
-die allererste Anfrage kommt schon mit `{"error":{"code":"ratelimited"}}` zurück,
-während normales `action=query` sauber mit 200 antwortet. Das ist also kein
-Limit, das man aussitzen kann, sondern eine geschlossene Tür.
-
-1. Auf <https://lol.fandom.com> einloggen (Fandom-Account reicht).
-2. **Special:BotPasswords** → neuen Bot anlegen, Recht *Basic rights* / read.
-3. Im Repo: **Settings → Secrets and variables → Actions → New secret**
-   - `LEAGUEPEDIA_USERNAME` = `DeinUser@DeinBotName`
-   - `LEAGUEPEDIA_PASSWORD` = das generierte Bot-Passwort
-
-Damit gibt es 5000-Zeilen-Seiten und eine brauchbare Rate. **Ohne die Secrets
-bricht `update-stats` sofort ab** — mit einer Meldung, die genau das sagt. Die
-alten Daten bleiben dabei unangetastet.
-
-### 4. Schema prüfen — VOR dem ersten echten Lauf
-
-**Actions → probe-schema → Run workflow**
-
-Der Job schreibt nichts. Er prüft in zwei Stufen:
-
-1. **Deklarationen** — immer, *ohne Login*. Jede Cargo-Tabelle wird auf einer
-   ganz normalen Wiki-Seite deklariert (`Module:CargoDeclare/<Tabelle>`), und
-   die liest `action=query` problemlos. Genau das fängt Schema-Drift ab.
-2. **Echte Zeilen** — nur mit Bot-Zugangsdaten. Beweist zusätzlich, dass der
-   `split`-String auf eine echte `OverviewPage` passt und Zeilen da sind.
-
-Ergebnis:
-
-- `SCHEMA OK` → die Feldnamen stimmen.
-- `SCHEMA DRIFT` → im Log steht, **welches Feld** sich geändert hat; nur in
-  `fetch_lec.py` anpassen.
-- *keine Zeilen* (nur Stufe 2) → der `split`-String passt nicht zum
-  Leaguepedia-Seitentitel.
-
-> **Stufe 1 ist am 01.10.2026 gelaufen: `SCHEMA OK`.** Alle 14 Felder, die
-> `fetch_lec.py` liest, sind upstream deklariert — die Verifikation, die beim
-> Bauen nicht möglich war, ist damit erledigt. Stufe 2 steht noch aus, weil
-> dafür der Bot-Account nötig ist.
-
-### 5. Stats holen
-
-Action einmal manuell starten: **Actions → update-stats → Run workflow**.
-Danach läuft sie 2x täglich (04:20 / 16:20 UTC).
-
-Sie schreibt `data/players.json` (Draft-Pool) und `data/stats.json` (Punkte).
-Bei Problemen bricht sie **ab, ohne die alten Daten zu überschreiben**.
-
-### 6. Worker aufsetzen — einmalig, ~10 Minuten
-
-Der Worker ist der Schiedsrichter beim Draft. Ohne ihn kann `pick.html` nichts
-schreiben (und das ist Absicht).
-
-**a) Fine-grained Token bauen**
-GitHub → Settings → Developer settings → Fine-grained tokens → *Generate new*:
-
-- **Repository access:** *Only select repositories* → nur `FNE-stack/lecfantasy`
-- **Permissions → Repository permissions → Contents:** *Read and write*
-- Ablaufdatum ruhig kurz halten; nach der Saison einfach löschen.
-
-**b) Cloudflare**
-
-```bash
-cd worker
-npm install
-npx wrangler login                       # öffnet den Browser
-npx wrangler kv namespace create LEAGUE  # gibt eine id aus
-```
-
-Die ausgegebene `id` in `worker/wrangler.toml` bei `kv_namespaces` eintragen.
-Dort stehen auch `GITHUB_REPO`, `GITHUB_BRANCH` und `ALLOWED_ORIGIN` — die sind
-schon richtig gesetzt, solange Repo und Pages-URL gleich bleiben.
-
-```bash
-npx wrangler secret put GITHUB_TOKEN     # Token aus (a) einfügen
-npx wrangler deploy
-```
-
-`deploy` gibt eine URL aus, etwa `https://lecfantasy-draft.<dein-name>.workers.dev`.
-Die in `pick.html` oben bei `DEFAULT_WORKER` eintragen, committen, fertig.
-
-**c) Link verteilen**
-Alle bekommen denselben Link: `https://fne-stack.github.io/lecfantasy/pick.html`.
-Jeder wählt einmal seinen Slot und setzt Name + Passwort. **Wer zuerst kommt,
-nimmt den Slot** — ein bereits übernommener Slot lässt sich nicht kapern. Es gibt
-bewusst kein Passwort-Zurücksetzen; falls doch nötig, den Key `mgr:<id>` im
-KV-Namespace löschen, dann ist der Slot wieder frei.
-
-> **Kosten:** keine. Der Free-Plan von Workers erlaubt 100.000 Requests/Tag,
-> ein Draft braucht ein paar hundert. Kreditkarte wird nicht verlangt.
-
-**Vorher ausprobieren — ohne Cloudflare, ohne GitHub:**
-
-```bash
-node worker/devserver.mjs
-# -> http://localhost:8787/pick.html?worker=http://localhost:8787
-```
-
-Das startet den echten Worker-Code lokal mit nachgebautem KV und GitHub. Picks
-landen im Arbeitsspeicher, `data/` wird nicht angefasst, Neustart setzt alles
-zurück. Damit lässt sich ein kompletter Draft durchklicken, bevor irgendwas live
-geht.
-
-### 7. Draften
-
-1. Alle öffnen `pick.html`, loggen sich ein und sehen, wer dran ist
-   (aktualisiert sich von selbst).
-2. Wer dran ist, pickt. Illegale Picks sind ausgegraut **und** werden vom Worker
-   nochmal abgelehnt: schon gedraftet, falsche Rolle, Team-Limit, nicht am Zug.
-3. Nach dem letzten Pick sperrt sich der Draft **automatisch** (`completed`).
-
-Die Picks landen als ganz normale Commits in `data/league.json` — man kann also
-hinterher genau nachsehen, wer wann was genommen hat, und im Notfall
-zurückrollen.
-
-Wenn der Worker klemmt, bleibt `draft.html` als Host-Notnagel: eigener Token,
-schreibt direkt, kennt dieselben Regeln.
+Ein Passwort vergessen? Den Eintrag `mgr:<id>` im KV-Speicher löschen
+(`npx wrangler kv key delete --binding LEAGUE mgr:m2`), dann ist der Slot wieder frei.
 
 ## Punkte
-
 
 | | Punkte |
 |---|---|
@@ -196,54 +86,27 @@ schreibt direkt, kennt dieselben Regeln.
 | Assist | 1,5 |
 | CS | 0,02 (= 2 pro 100) |
 | Sieg | 2 |
-| Pentakill | 10 |
 
-Anpassbar unter `scoring` in `league.json`. `scoring.js` ist die **einzige**
-Stelle, an der gerechnet wird — beide Seiten benutzen sie, also können Draft und
-Tabelle nie unterschiedliche Zahlen zeigen.
+Anpassbar unter `scoring` in `league.json`. `scoring.js` ist die **einzige** Stelle,
+an der gerechnet und geregelt wird — Seiten und Worker benutzen dieselbe Datei.
+Multikills/Pentakills gibt es nicht: die lolesports API liefert sie nicht.
 
-## Wechsel nach dem Draft
+## Neue Saison
 
-Kader sind gesperrt. Ein Wechsel wird als Eintrag in `swaps` ergänzt:
+`tournament` auf `"auto"` lassen (oder den neuen Slug eintragen), in `league.json`
+`draft.picks` leeren und `draft.completed` auf `false` setzen. Die Kader holt die
+Action automatisch neu.
 
-```json
-"swaps": [ { "manager":"fabi", "out":"G2_MID", "in":"FNC_MID", "week":3 } ]
-```
-
-`swapsPerWeek` begrenzt, wie viele pro Woche erlaubt sind (wird aktuell **nicht**
-automatisch erzwungen — der Host trägt sie ein, das ist die Kontrolle).
-
-## Testen ohne echte Daten
-
-`data/players.json` und `data/stats.json` enthalten aktuell **Fixture-Daten**
-(echte 2026-Teams, erfundene Spieler) mit `"fixture": true`, damit man die Seiten
-sofort ausprobieren kann. Der erste Action-Lauf überschreibt sie mit echten Daten.
-
-Logik-Tests:
+## Tests
 
 ```bash
-python scripts/test_scoring.py     # Punkte + Snake-Reihenfolge
-node   worker/test_worker.mjs     # Draft-Schiedsrichter (braucht kein Cloudflare)
+python scripts/test_scoring.py   # Regeln: Snake-Reihenfolge, Draft-Ende, Punkte (Python + JS vergleichen)
+node worker/test_worker.mjs      # Worker: Login, Zugreihenfolge, Limits, gleichzeitige Picks, keine Token-Lecks
 ```
 
-Prüft Snake-Reihenfolge, Draft-Abschluss und Punkteberechnung. Wenn `node`
-installiert ist, wird zusätzlich verglichen, dass `scoring.js` dieselben Zahlen
-liefert wie die Python-Referenz.
+## Grenzen
 
-## Stand der Saison
-
-Die LEC-Saison 2026 ist am **20. September 2026 beendet**. Es gibt also gerade
-keinen laufenden Split zum Draften — für einen echten Testlauf einen
-abgeschlossenen Split in `split` eintragen (z. B. `LEC/2026 Season/Summer Season`),
-dann hat man echte Stats und echte Punkte. Für die neue Saison einfach den
-Split-Namen ändern, `picks` leeren und `completed` auf `false` setzen.
-
-## Bekannte Grenzen
-
-- **Leaguepedia-Schema** ist nicht offiziell garantiert. Ändert sich ein Feldname,
-  bricht der Fetch — deshalb bricht das Skript laut ab und lässt die alten Daten
-  stehen, statt sie mit Müll zu überschreiben.
-- **Pentakills zählen** — `ScoreboardPlayers` hat ein Feld `Pentakills`, es wird
-  geholt und verrechnet. **Triple- und Quadrakills gibt es dort nicht**, deshalb
-  sind sie aus `scoring` entfernt, statt still auf 0 zu stehen.
-- **`swapsPerWeek`** ist eine Absprache, keine erzwungene Regel.
+- `swapsPerWeek` ist eine Absprache, wird nicht erzwungen.
+- Keine Lineups pro Spieltag: alle gedrafteten Spieler zählen immer, auch die Bank.
+- Die lolesports API ist nicht offiziell dokumentiert. Ändert sie sich, bricht der
+  Fetch laut ab und lässt die alten Daten stehen.
