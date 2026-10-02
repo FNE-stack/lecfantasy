@@ -28,11 +28,6 @@
   "standingsMode": "points",
   "managers": [
     {
-      "id": "m1bc5e872",
-      "name": "Bot Charlie",
-      "joined": "2026-10-02T12:31:40.261Z"
-    },
-    {
       "id": "m9d3c374b",
       "name": "Bot Delta",
       "joined": "2026-10-02T12:31:41.774Z"
@@ -40,7 +35,6 @@
   ],
   "draft": {
     "order": [
-      "m1bc5e872",
       "m9d3c374b"
     ],
     "snake": true,
