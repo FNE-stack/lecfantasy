@@ -36,9 +36,9 @@
       "mode": "auto",
       "seconds": 90
     },
-    "scheduledAt": "2026-10-02T10:03:00.000Z",
-    "reminderMinutes": 1,
-    "autoStart": true
+    "scheduledAt": null,
+    "reminderMinutes": 60,
+    "autoStart": false
   },
   "adjustments": [],
   "swaps": [],
