@@ -38,7 +38,14 @@
       "m81f26dd0"
     ],
     "snake": true,
-    "picks": [],
+    "picks": [
+      {
+        "manager": "m65d261bb",
+        "player": "103536968833612789",
+        "at": "2026-10-02T08:17:01.508Z",
+        "by": "admin"
+      }
+    ],
     "status": "live",
     "completed": false,
     "timer": {
