@@ -154,13 +154,7 @@
     "equalCount": true,
     "rosterRules": false,
     "mode": "always",
-    "windows": [
-      {
-        "from": "2027-01-09T23:00:00.000Z",
-        "to": "2027-01-20T22:59:59.000Z",
-        "label": "QA Fenster"
-      }
-    ]
+    "windows": []
   },
   "announcement": null
 }
