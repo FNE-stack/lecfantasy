@@ -274,10 +274,22 @@
         "manager": "mf329663f",
         "player": "103889902476986558",
         "at": "2026-10-02T16:18:49.426Z"
+      },
+      {
+        "manager": "m368246d3",
+        "player": "103495716738607011",
+        "at": "2026-10-02T16:18:50.455Z",
+        "by": "bot"
+      },
+      {
+        "manager": "maf23e52a",
+        "player": "102181528883745160",
+        "at": "2026-10-02T16:18:50.455Z",
+        "by": "bot"
       }
     ],
-    "status": "live",
-    "completed": false,
+    "status": "done",
+    "completed": true,
     "timer": {
       "mode": "auto",
       "seconds": 30
