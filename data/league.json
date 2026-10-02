@@ -26,17 +26,9 @@
     "perRole": 2
   },
   "standingsMode": "points",
-  "managers": [
-    {
-      "id": "mb2718cb2",
-      "name": "Bot Delta",
-      "joined": "2026-10-02T14:07:57.034Z"
-    }
-  ],
+  "managers": [],
   "draft": {
-    "order": [
-      "mb2718cb2"
-    ],
+    "order": [],
     "snake": true,
     "picks": [],
     "status": "lobby",
