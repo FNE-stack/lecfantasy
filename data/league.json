@@ -55,7 +55,13 @@
       "m2b35c778"
     ],
     "snake": true,
-    "picks": [],
+    "picks": [
+      {
+        "manager": "ma39be5bd",
+        "player": "103536968833612789",
+        "at": "2026-10-02T10:03:57.511Z"
+      }
+    ],
     "status": "live",
     "completed": false,
     "timer": {
