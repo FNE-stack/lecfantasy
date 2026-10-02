@@ -810,15 +810,24 @@ function lecBracket(split) {
   const stage = sd && sd.stages.find(st => /playoff/i.test(st.name)) || (sd && sd.stages[1]);
   const ms = stage && stage.sections[0] && stage.sections[0].matches;
   if (!ms || !ms.length) return card('Playoffs', '<div class="empty">Noch keine Playoffs für diesen Split.</div>');
-  // round = longest chain of previous matches; columns left to right
-  const byId = new Map(ms.map(m => [m.id, m]));
-  const depth = new Map();
-  const d = m => { if (depth.has(m.id)) return depth.get(m.id); const v = m.prev.length ? 1 + Math.max(...m.prev.map(id => byId.has(id) ? d(byId.get(id)) : 0)) : 0; depth.set(m.id, v); return v; };
-  ms.forEach(d);
+  // lolesports gives no links between LEC playoff matches, so the bracket is
+  // rebuilt from the teams: whoever already lost a playoff match (or came from
+  // a lower-bracket match, e.g. a team seeded straight into it) plays in the
+  // lower bracket, a match's round is 1 + the round of its teams' previous
+  // match in the same bracket, and the last match is the final.
   const when = new Map((D.schedule.events || []).map(e => [e.match, e]));
-  const cols = [];
-  ms.forEach(m => { (cols[depth.get(m.id)] = cols[depth.get(m.id)] || []).push(m); });
-  cols.forEach(c => c.sort((a, b) => ((when.get(a.id) || {}).start || '').localeCompare((when.get(b.id) || {}).start || '')));
+  const at = m => (when.get(m.id) || {}).start || '';
+  const ordered = ms.map((m, i) => [m, i]).sort((x, y) => at(x[0]).localeCompare(at(y[0])) || x[1] - y[1]).map(x => x[0]);
+  const known = m => m.teams.length === 2 && m.teams.every(t => t.code && t.code !== 'TBD');
+  const final = ordered.length > 1 ? ordered[ordered.length - 1] : null;
+  const last = new Map(), lost = new Set(), secs = { upper: [], lower: [], final: [], open: [] };
+  for (const m of ordered) {
+    const sec = m === final ? 'final' : !known(m) ? 'open' : m.teams.some(t => lost.has(t.code) || (last.get(t.code) || {}).sec === 'lower') ? 'lower' : 'upper';
+    let dep = 0;
+    if (sec === 'upper' || sec === 'lower') for (const t of m.teams) { const l = last.get(t.code); if (l && l.sec === sec) dep = Math.max(dep, l.dep + 1); }
+    (secs[sec][dep] = secs[sec][dep] || []).push(m);
+    for (const t of m.teams) { last.set(t.code, { sec, dep }); if (t.outcome === 'loss') lost.add(t.code); }
+  }
   const mine = myTeams();
   const box = m => {
     const ev = when.get(m.id);
@@ -826,11 +835,18 @@ function lecBracket(split) {
         ${t.code && t.code !== 'TBD' ? logo(t.code, 20) : ''}<b style="flex:1">${esc(t.code || 'TBD')}</b><b class="num">${t.wins ?? ''}</b></div>`).join('')}
       <div class="dim" style="font-size:11px;padding:5px 10px">${ev ? esc(weekName(ev.block)) + ' · ' + esc(new Date(ev.start).toLocaleDateString('de-DE', { timeZone: TZ, day: '2-digit', month: '2-digit' })) : ''}</div></div>`;
   };
-  const final = cols[cols.length - 1] && cols[cols.length - 1][0];
   const champ = final && final.teams.find(t => t.outcome === 'win');
+  const lane = (cols, name, lastName) => {
+    cols = cols.filter(Boolean);
+    if (!cols.length) return '';
+    const label = i => lastName && cols.length > 1 && i === cols.length - 1 ? lastName : name + (cols.length > 1 ? ' · Runde ' + (i + 1) : '');
+    return `<div style="overflow-x:auto;-webkit-overflow-scrolling:touch;margin-bottom:8px"><div class="row" style="align-items:flex-start;gap:16px;min-width:max-content;padding-bottom:6px">
+      ${cols.map((c, i) => `<div><div class="eyebrow" style="margin-bottom:8px">${esc(label(i))}</div>${c.map(box).join('')}</div>`).join('')}</div></div>`;
+  };
+  const double = secs.lower.length > 0;
   return (champ ? `<div class="note" style="display:flex;align-items:center;gap:12px">🏆 ${logo(champ.code, 28)} <b>${esc((D.T.get(champ.code) || {}).name || champ.code)}</b> gewinnt ${esc(splitLabel(split))}</div>` : '')
-    + `<div style="overflow-x:auto;-webkit-overflow-scrolling:touch"><div class="row" style="align-items:flex-start;gap:16px;min-width:max-content;padding-bottom:6px">
-      ${cols.map((c, i) => `<div><div class="eyebrow" style="margin-bottom:8px">${i === cols.length - 1 ? 'Finale' : 'Runde ' + (i + 1)}</div>${c.map(box).join('')}</div>`).join('')}</div></div>`;
+    + lane(secs.upper, double ? 'Upper Bracket' : 'Playoffs', double && 'Upper-Finale') + lane(secs.lower, 'Lower Bracket', 'Lower-Finale')
+    + lane(secs.open, 'Noch offen') + lane(secs.final, 'Finale');
 }
 // .ics with every upcoming match (optionally only my teams), German time
 function exportIcs() {
