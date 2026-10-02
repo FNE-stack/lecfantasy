@@ -288,9 +288,9 @@
     "adminApproval": false,
     "equalCount": true,
     "rosterRules": true,
-    "teamLimit": true,
+    "teamLimit": false,
     "autoWindows": true,
-    "mode": "windows",
+    "mode": "always",
     "windows": []
   },
   "announcement": null,
