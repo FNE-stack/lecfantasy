@@ -56,7 +56,13 @@
       "m1b85f150"
     ],
     "snake": true,
-    "picks": [],
+    "picks": [
+      {
+        "manager": "mf4fbad69",
+        "player": "109461265532592848",
+        "at": "2026-10-02T12:01:38.684Z"
+      }
+    ],
     "status": "live",
     "completed": false,
     "timer": {
