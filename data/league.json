@@ -56,7 +56,20 @@
       "ma4340991"
     ],
     "snake": true,
-    "picks": [],
+    "picks": [
+      {
+        "manager": "maf23e52a",
+        "player": "103536968833612789",
+        "at": "2026-10-02T16:18:23.816Z",
+        "by": "bot"
+      },
+      {
+        "manager": "m368246d3",
+        "player": "109461265532592848",
+        "at": "2026-10-02T16:18:23.816Z",
+        "by": "bot"
+      }
+    ],
     "status": "live",
     "completed": false,
     "timer": {
