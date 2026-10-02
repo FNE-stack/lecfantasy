@@ -219,6 +219,39 @@ tests.lineup_auto_captain_autosub = () => {
   return 'auto lineup from prior averages, auto-sub, vice inherits captain, bench not counted, saved lineup wins, off = all count';
 };
 
+tests.week_recap_and_hall = () => {
+  const { L, pi, sched } = lineupLeague();
+  const stats = { games: [gg('g1', 'A', 't1', '2026-01-10T17:00:00Z', 10), gg('g1', 'A', 't2', '2026-01-10T17:00:00Z', 1),
+                          gg('g1', 'A', 'm1x', '2026-01-10T17:00:00Z', 5), gg('g1', 'A', 'm2x', '2026-01-10T17:00:00Z', 2),
+                          gg('g2', 'B', 't2', '2026-01-17T17:00:00Z', 4), gg('g2', 'B', 'm1x', '2026-01-17T17:00:00Z', 6),
+                          gg('g2', 'B', 'm2x', '2026-01-17T17:00:00Z', 9), gg('g2', 'B', 'free1', '2026-01-17T17:00:00Z', 20)] };
+  stats.games.forEach(g => { g.tournament = 'sp'; });
+  pi.set('free1', { role: 'TOP', name: 'Free' });
+  // week 2: t2 subs in for t1 (12), m1x is the vice-captain (6*3*1.5 = 27), m2x (27) sits on the bench
+  const r = S.weekRecap(L, stats, pi, sched, 'sp|Week 2');
+  assert(r.ranking[0].pts === 39, 'week score 39, got ' + r.ranking[0].pts);
+  assert(r.best.player === 'm1x' && r.best.pts === 18 && r.best.captain, 'player of the week = m1x (raw 18, scored as captain): ' + JSON.stringify(r.best));
+  assert(r.flop.player === 't2' && r.flop.pts === 12, 'flop = t2: ' + JSON.stringify(r.flop));
+  assert(r.benchPain && r.benchPain.pts === 27, 'bench pain 27: ' + JSON.stringify(r.benchPain));
+  assert(r.freeBest && r.freeBest.player === 'free1', 'best unowned player found');
+  assert(!r.record, 'week 1 (52.5) was higher - no record');
+  assert(S.weekRecap(L, stats, pi, sched, 'sp|Week 1').record, 'week 1 is the record');
+  assert(S.weekRecap(L, { games: [] }, pi, sched, 'sp|Week 2') === null, 'no stats -> null');
+  // hall of fame
+  L.draft.status = 'done'; L.draft.startedAt = '2026-01-01T00:00:00Z';
+  const h = S.hallEntry(L, stats, pi, sched, 'sp', null);
+  assert(h.table.length === 1 && h.table[0].pts === 91.5, 'split total 52.5 + 39, got ' + JSON.stringify(h.table));
+  assert(h.bestWeek && h.bestWeek.week === 'Week 1' && h.bestWeek.pts === 52.5, 'best week');
+  assert(h.steal && h.steal.player === 'm1x' && h.bust && h.bust.player === 't1', 'steal m1x (pick 3 -> 1st), bust t1 (pick 1 -> 3rd) ' + JSON.stringify(h.steal));
+  const season = { tournaments: [{ slug: 'sp', lastMatch: '2026-01-17T17:00:00Z', done: true }, { slug: 'sp2', lastMatch: '2099-01-01T00:00:00Z', done: false }] };
+  assert(JSON.stringify(S.hallDue(L, season, Date.parse('2026-01-18T12:00:00Z'))) === '["sp"]', 'due 12 h after the last match');
+  assert(S.hallDue(L, season, Date.parse('2026-01-17T20:00:00Z')).length === 0, 'not right after the final');
+  assert(S.hallDue(Object.assign({}, L, { hall: { sp: h } }), season, Date.parse('2026-01-18T12:00:00Z')).length === 0, 'never twice');
+  const late = JSON.parse(JSON.stringify(L)); late.draft.startedAt = '2026-02-01T00:00:00Z';
+  assert(S.hallDue(late, season, Date.parse('2026-03-01T00:00:00Z')).length === 0, 'drafted after the split: no entry');
+  return 'recap: winner, player/flop of the week, bench pain, best free player, record; hall: totals, best week, steal, due timing';
+};
+
 tests.pickem = () => {
   const L = league(2);
   const ev = (m, block, a, b, aw, start) => ({ match: m, start, state: 'completed', block, tournament: 'sp',

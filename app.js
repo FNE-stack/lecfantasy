@@ -133,7 +133,7 @@ function topProsCard(n, withOwner) {
   return card('Top Spieler', '<table><tbody>' + top.map((x, i) => {
     const o = withOwner && owner(x.p.id);
     return `<tr class="click" data-href="#/spieler/${esc(x.p.id)}"><td class="rank r${i + 1}" style="width:30px;font-size:16px">${i + 1}</td>
-      <td class="fill">${pcell(x.p.id, { photo: true })}</td>${o ? `<td class="hide-s"><span class="pill gold">${esc(mgrName(o))}</span></td>` : withOwner ? '<td class="hide-s"></td>' : ''}
+      <td class="fill">${pcell(x.p.id, { photo: true })}${withOwner ? `<div class="dim" style="font-size:12px;margin-top:2px">${o ? 'bei <b style="color:var(--gold-hi)">' + esc(mgrName(o)) + '</b>' : 'frei'}</div>` : ''}</td>
       <td class="num pts">${fmt(x.s.pts)}</td></tr>`;
   }).join('') + '</tbody></table>', `Fantasy-Punkte · <a href="#/spieler">alle</a>`);
 }
@@ -268,7 +268,7 @@ function viewHome() {
         <td class="num hide-s">${fmt(r.week)}</td><td class="num hide-s dim">${r.rank === 1 ? '—' : '−' + fmt(r.gap)}</td>
         <td class="num pts" style="font-size:16px">${fmt(r.total)}</td></tr>`).join('') + '</tbody></table>';
   }
-  h += `<div class="grid g-main"><div class="stack">${card('Tabelle', table, toggle)}${seasonFeed()}</div><div class="stack">${matchupCard()}${topProsCard(5, true)}</div></div>`;
+  h += `<div class="grid g-main"><div class="stack">${card('Tabelle', table, toggle)}${recapCard()}${seasonFeed()}</div><div class="stack">${matchupCard()}${chatCard()}${hallCard()}${topProsCard(5, true)}</div></div>`;
   return h;
 }
 
@@ -590,15 +590,16 @@ function viewTransfers() {
   const pl = ids => ids.map(id => pcell(id, { photo: true })).join('<br>');
   const offerRows = trades.filter(t => ['proposed', 'agreed'].includes(t.status)).map(t => {
     const incoming = t.to === me();
+    const give = incoming ? t.get : t.give, get = incoming ? t.give : t.get;
     const actions = t.status === 'agreed' ? '<span class="pill gold">wartet auf Admin</span>'
       : incoming ? `<button class="btn gold sm" data-tx="accept" data-id="${esc(t.id)}" ${open ? '' : 'disabled'}>Annehmen</button> <button class="btn sm" data-tx="decline" data-id="${esc(t.id)}">Ablehnen</button>`
       : `<button class="btn sm" data-tx="cancel" data-id="${esc(t.id)}">Zurückziehen</button>`;
-    return `<tr><td style="white-space:nowrap"><b>${incoming ? 'von ' + esc(mgrName(t.from)) : 'an ' + esc(mgrName(t.to))}</b><div class="dim" style="font-size:11px">${d(t.at)}</div></td>
-      <td class="fill"><div class="dim" style="font-size:11px">${incoming ? 'du bekommst' : 'du gibst'}</div>${pl(incoming ? t.give : t.give)}</td>
-      <td class="fill"><div class="dim" style="font-size:11px">${incoming ? 'du gibst' : 'du bekommst'}</div>${pl(t.get)}</td>
-      <td class="num" style="white-space:nowrap">${actions}</td></tr>`;
+    return `<div style="padding:14px 16px;border-bottom:1px solid var(--line)">
+      <div class="row" style="justify-content:space-between;flex-wrap:wrap;gap:8px"><div><b>${incoming ? 'von ' + esc(mgrName(t.from)) : 'an ' + esc(mgrName(t.to))}</b> <span class="dim" style="font-size:12px">${d(t.at)}</span></div><div style="white-space:nowrap">${actions}</div></div>
+      <div class="grid g-2" style="gap:10px;margin-top:10px"><div><div class="eyebrow" style="margin-bottom:4px">Du gibst</div>${pl(give)}</div><div><div class="eyebrow" style="margin-bottom:4px">Du bekommst</div>${pl(get)}</div></div>
+      ${tradeLine(give, get)}</div>`;
   }).join('');
-  if (tr.enabled) h += card('Angebote', offerRows ? `<table class="tight"><tbody>${offerRows}</tbody></table>` : '<div class="empty">Keine offenen Angebote.</div>');
+  if (tr.enabled) h += card('Angebote', offerRows || '<div class="empty">Keine offenen Angebote.</div>');
 
   // new trade
   if (tr.enabled && done) {
@@ -612,7 +613,7 @@ function viewTransfers() {
         <div><div class="eyebrow" style="margin-bottom:6px">Du bekommst</div>${pick(theirs, 'get')}</div></div>
         <div class="row" style="margin-top:14px;flex-wrap:wrap"><button class="btn gold" data-tx="propose" ${open && tx.give.length && tx.get.length ? '' : 'disabled'}>Angebot schicken</button>
         <span class="muted" style="font-size:12px">${tr.equalCount ? 'Gleich viele Spieler auf beiden Seiten. ' : ''}${tr.rosterRules ? 'Jede Rolle muss danach besetzt bleiben. ' : ''}${tr.teamLimit ? `Max. ${L().roster.maxPerTeam} pro LEC-Team.` : ''}</span></div>` : ''}
-    </div>`);
+    </div>` + (tx.partner ? tradeCompare(tx.give, tx.get) : ''));
   }
 
   // free agents
@@ -1076,7 +1077,7 @@ async function disablePush() {
 }
 
 // ── routing & chrome ──────────────────────────────────────────────────────
-const PRIVATE = /^\/(mein-team|draft|manager\/.+|regeln|transfers|pickem)$/;
+const PRIVATE = /^\/(mein-team|draft|manager\/.+|regeln|transfers|pickem|chat|rueckblick|ruhmeshalle)$/;
 const ICONS = {
   home: '<path d="M3 11l9-7 9 7v9a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/>',
   user: '<circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 4-6 8-6s8 2 8 6"/>',
@@ -1092,14 +1093,14 @@ function nav() {
   const liveDot = liveNow.length ? '<span class="live-dot"></span>' : '';
   if (!loggedIn()) return [['#/', 'Saison', 'home', /^\/?$/], ['#/live', 'Live' + liveDot, 'live', /^\/live/], ['#/lec', 'LEC', 'shield', /^\/(lec|team)/], ['#/spieler', 'Spieler', 'players', /^\/spieler/]];
   const draftDone = status() === 'done';
-  if (adminOnly()) return [['#/', 'Übersicht', 'home', /^\/?$/], ...(draftDone ? [] : [['#/draft', 'Draft' + (status() === 'live' ? '<span class="live-dot"></span>' : ''), 'draft', /^\/draft$/]]),
+  if (adminOnly()) return [['#/', 'Übersicht', 'home', /^\/(|chat|rueckblick|ruhmeshalle)$/], ...(draftDone ? [] : [['#/draft', 'Draft' + (status() === 'live' ? '<span class="live-dot"></span>' : ''), 'draft', /^\/draft$/]]),
     ['#/live', 'Live' + liveDot, 'live', /^\/live/], ['#/spieler', 'Spieler', 'players', /^\/spieler/], ['#/lec', 'LEC', 'shield', /^\/(lec|team)/]];
   // Pick'em is always there (tips happen before the split, often before the
   // draft). The phone tab bar holds 6: until the draft is done, Live is only in
   // the desktop nav (no team yet, so nothing personal to watch live).
   const dot = '<span class="live-dot" style="background:var(--gold);animation:none"></span>';
   const draft = draftDone ? [] : [['#/draft', 'Draft' + (status() === 'live' ? '<span class="live-dot"></span>' : ''), 'draft', /^\/draft$/]];
-  return [['#/', 'Übersicht', 'home', /^\/?$/], ['#/mein-team', 'Mein Team' + (pendingForMe() ? dot : ''), 'user', /^\/(mein-team|manager\/.+|transfers)$/],
+  return [['#/', 'Übersicht' + (chatUnread() ? dot : ''), 'home', /^\/(|chat|rueckblick|ruhmeshalle)$/], ['#/mein-team', 'Mein Team' + (pendingForMe() ? dot : ''), 'user', /^\/(mein-team|manager\/.+|transfers)$/],
     ...draft, ['#/pickem', 'Pick\'em' + (pickemOpenNow() ? dot : ''), 'book', /^\/pickem/],
     ['#/live', 'Live' + liveDot, draftDone ? 'live' : '', /^\/live/], ['#/spieler', 'Spieler', 'players', /^\/spieler/], ['#/lec', 'LEC', 'shield', /^\/(lec|team)/]];
 }
@@ -1119,11 +1120,11 @@ function chrome() {
     ? `<a class="userchip" href="#/mein-team"><span class="av">${esc(initials(LIVE.me.name))}</span><span class="hide-s">${esc(LIVE.me.name)}</span></a>`
     : (p === '/' ? '' : `<a class="btn sm" href="#/">Einloggen</a>`);
   if (D.teams.league && D.teams.league.logo) { $('brandlogo').src = D.teams.league.logo; $('brandlogo').hidden = false; }
-  $('footmeta').innerHTML = D.stats.updated ? `Daten: lolesports · Stand ${esc(new Date(D.stats.updated * 1000).toLocaleString('de-DE', { dateStyle: 'short', timeStyle: 'short' }))}${loggedIn() ? ' · <a href="#/regeln">Regeln</a>' : ''} · <a href="#/admin">Admin</a>` : '';
+  $('footmeta').innerHTML = D.stats.updated ? `Daten: lolesports · Stand ${esc(new Date(D.stats.updated * 1000).toLocaleString('de-DE', { dateStyle: 'short', timeStyle: 'short' }))}${loggedIn() ? ' · <a href="#/chat">Chat</a> · <a href="#/rueckblick">Rückblick</a> · <a href="#/ruhmeshalle">Ruhmeshalle</a> · <a href="#/regeln">Regeln</a>' : ''} · <a href="#/admin">Admin</a>` : '';
   const mine = loggedIn() && status() === 'live' && S.currentPicker(L()) === me();
   $('turnbar').className = 'turnbar' + (mine ? ' on' : '');
   $('turnbar').innerHTML = mine ? (p === '/draft' ? 'Du bist dran — wähle deinen Spieler' : 'Du bist dran! <a href="#/draft">Jetzt picken →</a>') : '';
-  const title = { '/': loggedIn() ? 'Übersicht' : 'Saison', '/draft': 'Draft', '/spieler': 'Spieler', '/teams': 'Teams', '/regeln': 'Regeln', '/mein-team': 'Mein Team', '/live': 'Live', '/admin': 'Admin', '/transfers': 'Transfers', '/pickem': 'Pick\'em', '/lec': 'LEC' }[p] || '';
+  const title = { '/chat': 'Chat', '/rueckblick': 'Rückblick', '/ruhmeshalle': 'Ruhmeshalle', '/': loggedIn() ? 'Übersicht' : 'Saison', '/draft': 'Draft', '/spieler': 'Spieler', '/teams': 'Teams', '/regeln': 'Regeln', '/mein-team': 'Mein Team', '/live': 'Live', '/admin': 'Admin', '/transfers': 'Transfers', '/pickem': 'Pick\'em', '/lec': 'LEC' }[p] || '';
   document.title = (mine ? '▶ Du bist dran · ' : '') + 'LEC Fantasy' + (title ? ' — ' + title : '');
   if (mine && !wasMyTurn) yourTurn();
   wasMyTurn = !!mine;
@@ -1157,6 +1158,9 @@ function render() {
   else if (p === '/mein-team') html = viewMine();
   else if (p === '/transfers') html = viewTransfers();
   else if (p === '/pickem') html = viewPickem();
+  else if (p === '/chat') html = viewChat();
+  else if (p === '/rueckblick') html = viewRecap();
+  else if (p === '/ruhmeshalle') html = viewHall();
   else if (p === '/spieler') html = viewPlayers();
   else if (p === '/teams') { lecUi.tab = 'teams'; html = viewLec(); }
   else if (p === '/lec') html = viewLec();
@@ -1185,6 +1189,13 @@ function bind() {
   on('tAvail', 'onclick', () => { ui.avail = !ui.avail; render(); });
   on('tWatch', 'onclick', () => { ui.watch = !ui.watch; render(); });
   on('logout', 'onclick', () => logout());
+  on('recapWeek', 'onchange', e => { recapKey = e.target.value; render(); });
+  on('chatText', 'oninput', e => { chatDraft = e.target.value; });
+  on('chatText', 'onkeydown', e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); chatDraft = e.target.value; sendChat(); } });
+  on('chatSend', 'onclick', () => { const t = $('chatText'); if (t) chatDraft = t.value; sendChat(); });
+  on('chatMute', 'onclick', async () => { try { const r = await api('/api/chat/mute', { method: 'POST', body: { mute: !CHAT.muted } }); CHAT.muted = r.muted; render(); } catch (e) { toast(esc(e.message)); } });
+  document.querySelectorAll('[data-chatdel]').forEach(a => a.onclick = async e => { e.preventDefault(); if (!confirm('Nachricht löschen?')) return; try { await chatCall('DELETE', { id: a.dataset.chatdel }); await loadChat(); } catch (er) { toast(esc(er.message)); } });
+  const box = $('chatBox'); if (box) box.scrollTop = box.scrollHeight;
   on('adminToPlayer', 'onclick', () => { try { localStorage.removeItem('lf.admin'); } catch (e) {} LIVE = null; if (D) D.league = null; liveSig = ''; location.hash = '#/'; render(); });
   on('pushOn', 'onclick', async () => { unlockAudio(); try { await enablePush(); toast('Benachrichtigungen an ✓'); } catch (e) { toast(`<span style="color:#ffb1b3">${esc(e.message)}</span>`); } render(); });
   on('pushOff', 'onclick', async () => { await disablePush(); render(); });
@@ -1241,6 +1252,169 @@ function bind() {
   });
 }
 
+
+// ── trade helper ──────────────────────────────────────────────────────────
+// Both sides of a trade with season points, average per game and form (last
+// 5 games), plus the balance from my point of view.
+function tradeNumbers(id) {
+  const s = season(id), last = s.rows.slice(-5);
+  return { pts: s.pts, avg: s.avg, form: last.length ? last.reduce((t, g) => t + S.gamePoints(g, scoring()), 0) / last.length : 0, games: s.games };
+}
+function tradeCompare(give, get) {
+  if (!give.length && !get.length) return '';
+  const sum = ids => ids.map(tradeNumbers).reduce((t, x) => ({ pts: t.pts + x.pts, avg: t.avg + x.avg, form: t.form + x.form }), { pts: 0, avg: 0, form: 0 });
+  const side = (ids, title) => `<div><div class="eyebrow" style="margin-bottom:6px">${title}</div><table class="tight"><thead><tr><th>Spieler</th><th class="num">Pkt</th><th class="num">Ø</th><th class="num">Form</th></tr></thead><tbody>`
+    + (ids.map(id => { const x = tradeNumbers(id); return `<tr><td class="fill">${pcell(id, { photo: true })}</td><td class="num">${fmt(x.pts)}</td><td class="num">${fmt(x.avg)}</td><td class="num">${fmt(x.form)}</td></tr>`; }).join('') || '<tr><td class="dim" colspan="4">—</td></tr>')
+    + '</tbody></table></div>';
+  const a = sum(give), b = sum(get), d = b.avg - a.avg, f = b.form - a.form;
+  const sign = v => (v > 0 ? '+' : v < 0 ? '−' : '±') + fmt(Math.abs(v));
+  const tone = v => v > 0.5 ? 'var(--win)' : v < -0.5 ? 'var(--loss)' : 'var(--muted)';
+  return `<div class="card-b" style="border-top:1px solid var(--line)"><div class="grid g-2" style="gap:14px">${side(give, 'Du gibst')}${side(get, 'Du bekommst')}</div>
+    <div class="note" style="margin:12px 0 0">Für dich: <b style="color:${tone(d)}">${sign(d)} Pkt pro Spiel</b> im Saisonschnitt · Form (letzte 5): <b style="color:${tone(f)}">${sign(f)}</b>
+    <span class="dim" style="font-size:12px">· Ø = Punkte pro Spiel, Form = Schnitt der letzten 5 Spiele</span></div></div>`;
+}
+const tradeLine = (give, get) => {
+  const ag = give.map(tradeNumbers).reduce((t, x) => t + x.avg, 0), bg = get.map(tradeNumbers).reduce((t, x) => t + x.avg, 0), d = bg - ag;
+  return `<div class="dim" style="font-size:12px;margin-top:10px">Ø pro Spiel: du gibst ${fmt(ag)} · bekommst ${fmt(bg)} <b style="color:${d > 0.5 ? 'var(--win)' : d < -0.5 ? 'var(--loss)' : 'inherit'}">(${d >= 0 ? '+' : '−'}${fmt(Math.abs(d))})</b></div>`;
+};
+
+// ── weekly recap ──────────────────────────────────────────────────────────
+let BOOKC = null, recapKey = null;
+function bookNow() {
+  if (!BOOKC || BOOKC.l !== L() || BOOKC.s !== D.stats) BOOKC = { l: L(), s: D.stats, b: S.scoreBook(L(), D.stats, D.P, D.schedule) };
+  return BOOKC.b;
+}
+function recapOf(k) { return S.weekRecap(L(), D.stats, D.P, D.schedule, k, bookNow()); }
+function award(icon, title, body) {
+  return `<div class="row" style="gap:12px;padding:12px 16px;border-bottom:1px solid var(--line);align-items:center"><span style="font-size:22px;width:28px;text-align:center">${icon}</span>
+    <div style="flex:1;min-width:0"><div class="eyebrow" style="margin-bottom:3px">${title}</div>${body}</div></div>`;
+}
+function playerAward(x, withOwner) {
+  if (!x) return '<span class="dim">—</span>';
+  return `<div class="row" style="gap:10px;justify-content:space-between"><span style="min-width:0">${pcell(x.player, { photo: true })}</span><b class="pts">${fmt(x.pts)}</b></div>`
+    + (withOwner && x.manager ? `<div class="dim" style="font-size:12px;margin-top:3px">bei ${esc(mgrName(x.manager))}${x.captain ? ' · als Kapitän (Punkte ×' + fmt(S.lineupConfig(L()).captain) + ')' : ''}</div>` : '');
+}
+function viewRecap() {
+  const keys = playedKeys();
+  let h = pageHead('Liga', 'Rückblick');
+  if (status() !== 'done' || !keys.length) return h + card('Rückblick', '<div class="empty">Nach der ersten gespielten Woche steht hier, wer gewonnen hat — mit Spieler und Flop der Woche.</div>');
+  const k = keys.includes(recapKey) ? recapKey : keys[keys.length - 1];
+  const r = recapOf(k);
+  const sel = `<select id="recapWeek">${keys.slice().reverse().map(x => `<option value="${esc(x)}" ${x === k ? 'selected' : ''}>${esc(blockLabel(x))}</option>`).join('')}</select>`;
+  h = pageHead(esc(splitLabel(CAL.split(k))), 'Rückblick', sel);
+  if (!r) return h + card(blockLabel(k), '<div class="empty">Für diese Woche gibt es noch keine Stats.</div>');
+  const w = r.ranking[0];
+  h += `<div class="note" style="display:flex;gap:12px;align-items:center;flex-wrap:wrap"><span style="font-size:22px">🏆</span><div style="flex:1;min-width:200px"><b>${esc(w.name)}</b> gewinnt ${esc(blockLabel(k))} mit <b class="pts">${fmt(w.pts)}</b> Punkten${r.record ? ' <span class="pill gold">Saisonrekord</span>' : ''}</div></div>`;
+  const rank = `<table><tbody>${r.ranking.map((x, i) => `<tr class="click ${x.manager === me() ? 'me' : ''}" data-href="#/manager/${esc(x.manager)}"><td class="rank r${i + 1}">${i + 1}</td><td class="fill"><b>${esc(x.name)}</b>${x.manager === me() ? ' <span class="pill gold">Du</span>' : ''}</td><td class="num pts">${fmt(x.pts)}</td></tr>`).join('')}</tbody></table>`;
+  const wk = (L().managers || []).length > 1 ? h2h().weeks.find(x => x.block === k) : null;
+  const duels = wk && wk.played ? wk.games.map(g => {
+    const side = (id, pts, other, right) => id ? `<div style="flex:1;min-width:0;text-align:${right ? 'right' : 'left'}"><b style="${pts > other ? 'color:var(--gold-hi)' : 'opacity:.75'}">${esc(mgrName(id))}</b><div class="pts">${fmt(pts)}</div></div>` : `<div style="flex:1;text-align:${right ? 'right' : 'left'}" class="dim">spielfrei</div>`;
+    return `<div class="row" style="padding:12px 16px;border-bottom:1px solid var(--line);gap:12px">${side(g.a, g.pa, g.pb)}<span class="dim" style="font-family:var(--display)">VS</span>${side(g.b, g.pb, g.pa, true)}</div>`;
+  }).join('') : '';
+  const awards = award('⭐', 'Spieler der Woche', playerAward(r.best, true))
+    + award('🥴', 'Flop der Woche', playerAward(r.flop, true))
+    + (r.benchPain ? award('🪑', 'Bank-Pech', `<b>${esc(r.benchPain.name)}</b> ließ <b class="pts">${fmt(r.benchPain.pts)}</b> Punkte auf der Bank liegen`) : '')
+    + (r.freeBest ? award('👀', 'Hatte keiner', playerAward(r.freeBest, false)) : '');
+  return h + `<div class="grid g-main"><div class="stack">${card('Wochenwertung', rank)}${duels ? card('Duelle', duels) : ''}</div><div class="stack">${card('Auszeichnungen', awards)}</div></div>`;
+}
+function recapCard() {
+  if (status() !== 'done') return '';
+  const keys = playedKeys();
+  const r = keys.length ? recapOf(keys[keys.length - 1]) : null;
+  if (!r) return '';
+  return card('Rückblick', award('🏆', esc(blockLabel(r.key)), `<b>${esc(r.ranking[0].name)}</b> · <span class="pts">${fmt(r.ranking[0].pts)}</span>`)
+    + award('⭐', 'Spieler der Woche', playerAward(r.best, true)), '<a href="#/rueckblick">alles</a>');
+}
+
+// ── hall of fame ──────────────────────────────────────────────────────────
+function viewHall() {
+  const hall = L().hall || {};
+  const ents = Object.entries(hall).sort((a, b) => (b[1].at || '').localeCompare(a[1].at || '') || (b[0].startsWith('season_') ? 1 : -1));
+  let h = pageHead('Liga', 'Ruhmeshalle');
+  if (!ents.length) return h + card('Ruhmeshalle', '<div class="empty">Noch leer. Nach jedem Split wird hier der Sieger verewigt — mit Pick\'em-König, bester Woche, Schnäppchen und Fehlgriff des Drafts.</div>');
+  const medal = ['🏆', '🥈', '🥉'];
+  for (const [key, e] of ents) {
+    if (key.startsWith('season_')) {
+      h += card('Saison ' + esc(e.season), `<div class="card-b" style="text-align:center;padding:22px"><div style="font-size:40px">👑</div><div class="eyebrow">Saisonsieger</div>
+        <div style="font-family:var(--display);font-size:30px;margin-top:4px">${esc((e.table[0] || {}).name || '—')}</div><div class="pts">${fmt((e.table[0] || {}).pts || 0)} Punkte</div></div>`
+        + `<table><tbody>${e.table.slice(1).map((r, i) => `<tr><td class="rank">${i + 2}</td><td class="fill"><b>${esc(r.name)}</b></td><td class="num pts">${fmt(r.pts)}</td></tr>`).join('')}</tbody></table>`, 'Gesamtwertung');
+      continue;
+    }
+    const pod = e.table.slice(0, 3).map((r, i) => award(medal[i], i ? `Platz ${i + 1}` : 'Sieger', `<div class="row" style="justify-content:space-between"><b>${esc(r.name)}</b><span class="pts">${fmt(r.pts)}</span></div>`)).join('');
+    const draftAward = (x, good) => x ? `<div class="row" style="gap:10px;justify-content:space-between"><span style="min-width:0">${D.P.has(x.player) ? pcell(x.player, { photo: true }) : esc(x.playerName)}</span><span class="pts">${fmt(x.pts)}</span></div>
+      <div class="dim" style="font-size:12px;margin-top:3px">bei ${esc(x.name)} · Pick ${x.pick}, am Ende Platz <b style="color:${good ? 'var(--win)' : 'var(--loss)'}">${x.rank}</b> nach Punkten</div>` : '<span class="dim">—</span>';
+    h += card(esc(splitLabel(key)), pod
+      + (e.pickemKing ? award('🔮', 'Pick\'em-König', `<div class="row" style="justify-content:space-between"><b>${esc(e.pickemKing.name)}</b><span class="pts">${fmt(e.pickemKing.pickem)}</span></div>`) : '')
+      + (e.bestWeek ? award('🔥', 'Beste Woche', `<div class="row" style="justify-content:space-between"><span><b>${esc(e.bestWeek.name)}</b> <span class="dim" style="font-size:12px">${esc(weekName(e.bestWeek.week))}</span></span><span class="pts">${fmt(e.bestWeek.pts)}</span></div>`) : '')
+      + award('💎', 'Schnäppchen im Draft', draftAward(e.steal, true))
+      + award('🧱', 'Fehlgriff im Draft', draftAward(e.bust, false)), esc(new Date(e.at).toLocaleDateString('de-DE')));
+  }
+  return h;
+}
+function hallCard() {
+  const ents = Object.entries(L().hall || {}).filter(([k]) => !k.startsWith('season_')).sort((a, b) => (b[1].at || '').localeCompare(a[1].at || ''));
+  if (!ents.length) return '';
+  const [key, e] = ents[0];
+  return card('Ruhmeshalle', award('🏆', esc(splitLabel(key)), `<b>${esc((e.table[0] || {}).name || '—')}</b>`), '<a href="#/ruhmeshalle">alle</a>');
+}
+
+// ── league chat ───────────────────────────────────────────────────────────
+let CHAT = null, chatDraft = '', chatBusy = false;
+async function adminApi(method, p, body) {
+  const r = await fetch(WORKER + p, { method, headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + adminTok() }, body: body ? JSON.stringify(body) : undefined });
+  const data = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(data.error || 'Fehler ' + r.status);
+  return data;
+}
+const chatCall = (method, body, sub) => adminOnly() ? adminApi(method, '/api/admin/chat', body) : api('/api/chat' + (sub || ''), { method, body });
+async function loadChat() {
+  try { CHAT = await chatCall('GET'); } catch (e) { CHAT = CHAT || { messages: [], err: e.message }; }
+  if (path() === '/chat') markChatRead();
+  if (path() === '/chat' || path() === '/') render();
+}
+function markChatRead() {
+  const last = CHAT && CHAT.messages.length ? CHAT.messages[CHAT.messages.length - 1].at : (LIVE && LIVE.chatLast ? LIVE.chatLast.at : '');
+  if (last && last > store.get('lf.chatReadAt', '')) store.set('lf.chatReadAt', last);
+}
+function chatUnread() {
+  const c = LIVE && LIVE.chatLast;
+  return !!(c && c.m !== me() && c.at > store.get('lf.chatReadAt', '') && path() !== '/chat');
+}
+function chatLines(msgs, canDelete) {
+  return msgs.map(m => {
+    const mine = m.m === me() && !adminOnly(), adm = m.m === 'admin';
+    return `<div style="display:flex;gap:10px;padding:8px 16px;${mine ? 'flex-direction:row-reverse;text-align:right' : ''}">
+      <span class="userchip" style="padding:0;border:0;background:none"><span class="av" style="${adm ? 'background:var(--gold);color:#111' : ''}">${esc(adm ? 'A' : initials(mgrName(m.m)))}</span></span>
+      <div style="min-width:0;max-width:80%"><div class="dim" style="font-size:11px">${adm ? '<b style="color:var(--gold-hi)">Admin</b>' : esc(mgrName(m.m))} · ${esc(dt(m.at))}
+        ${canDelete(m) ? ` <a href="#" data-chatdel="${esc(m.id)}" title="löschen" style="color:var(--dim)">✕</a>` : ''}</div>
+        <div style="display:inline-block;margin-top:3px;padding:8px 12px;border-radius:12px;background:${mine ? 'var(--gold-soft)' : 'var(--bg-2, rgba(255,255,255,.05))'};white-space:pre-wrap;word-break:break-word;text-align:left">${esc(m.t)}</div></div></div>`;
+  }).join('');
+}
+function viewChat() {
+  if (CHAT === null) { loadChat(); return pageHead('Liga', 'Chat') + card('Chat', '<div class="empty">lädt …</div>'); }
+  const canDelete = m => adminOnly() || m.m === me();
+  const mute = adminOnly() ? '' : `<button class="btn sm" id="chatMute">${CHAT.muted ? '🔕 Push aus' : '🔔 Push an'}</button>`;
+  const msgs = CHAT.messages || [];
+  return pageHead('Liga', 'Chat', mute) + card('Liga-Chat', `<div id="chatBox" style="max-height:60vh;overflow-y:auto;padding:8px 0">${msgs.length ? chatLines(msgs, canDelete) : '<div class="empty">Noch still hier. Sag was 🙂</div>'}</div>
+    <div class="card-b row" style="gap:10px;border-top:1px solid var(--line);align-items:flex-end">
+      <textarea id="chatText" maxlength="500" rows="2" placeholder="${adminOnly() ? 'Als Admin schreiben …' : 'Nachricht …'}" style="flex:1;resize:vertical;min-height:44px">${esc(chatDraft)}</textarea>
+      <button class="btn gold" id="chatSend" ${chatBusy ? 'disabled' : ''}>Senden</button></div>`, CHAT.err ? `<span style="color:var(--loss)">${esc(CHAT.err)}</span>` : `${msgs.length} Nachrichten`);
+}
+function chatCard() {
+  if (!loggedIn()) return '';
+  if (CHAT === null) { loadChat(); return ''; }
+  const msgs = (CHAT.messages || []).slice(-3);
+  return card('Liga-Chat', (msgs.length ? `<div style="padding:6px 0">${chatLines(msgs, () => false)}</div>` : '<div class="empty">Noch still hier.</div>'), '<a href="#/chat">öffnen</a>');
+}
+async function sendChat() {
+  const text = chatDraft.trim();
+  if (!text || chatBusy) return;
+  chatBusy = true; render();
+  try { await chatCall('POST', { text }); chatDraft = ''; await loadChat(); }
+  catch (e) { toast(`<span style="color:#ffb1b3">${esc(e.message)}</span>`); }
+  finally { chatBusy = false; render(); const t = $('chatText'); if (t) t.focus(); }
+}
+
 // ── worker ────────────────────────────────────────────────────────────────
 async function api(p, opt) {
   opt = opt || {};
@@ -1265,7 +1439,7 @@ async function startSession(token) {
 }
 function logout(silent) {
   if (session && !silent) api('/api/logout', { method: 'POST' }).catch(() => {});
-  session = ''; LIVE = null; if (D) D.league = null; store.del('lf.session');
+  session = ''; LIVE = null; CHAT = null; if (D) D.league = null; store.del('lf.session');
   SEASON = new Map(); lastPickCount = null;
   if (!silent) location.hash = '#/';
   render();
@@ -1366,10 +1540,11 @@ function tick() {
   catch (e) { $('view').innerHTML = card('Fehler', '<div class="empty">Daten konnten nicht geladen werden.</div>'); return; }
   rebuild();
   render();
-  window.addEventListener('hashchange', () => { joinInfo = null; render(); if (path() === '/live') refreshLive(true); });
+  window.addEventListener('hashchange', () => { joinInfo = null; if (path() === '/chat' && CHAT) { loadChat(); markChatRead(); } render(); if (path() === '/live') refreshLive(true); });
   document.addEventListener('visibilitychange', () => { if (!document.hidden) pollLive(); });
   setInterval(tick, 1000);
   setInterval(() => { if (path() === '/live' && !document.hidden) refreshLive(); }, 20000);
+  setInterval(() => { if (path() === '/chat' && !document.hidden && loggedIn() && !chatBusy && !(document.activeElement && document.activeElement.id === 'chatText' && chatDraft)) loadChat(); }, 6000);
   setInterval(async () => { try { const league = D.league; D = await U.load(); D.league = league; rebuild(); render(); } catch (e) {} }, 180000);
   checkLiveBadge(); setInterval(checkLiveBadge, 120000);
   if (session || asAdmin()) await pollLive(true);

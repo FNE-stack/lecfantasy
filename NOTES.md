@@ -6,7 +6,7 @@ Punkte, Entscheidungen und Fallen, in die man schon getreten ist.
 ## Stand
 
 **LIVE, leer, bereit.** Liga im Status *Anmeldung*, 0 Mitglieder, frischer
-Einladungslink im Admin. Alle Tests grün (Regeln 16/16, Worker 18/18, Punkte 4/4).
+Einladungslink im Admin. Alle Tests grün (Regeln 17/17, Worker 22/22, Punkte 4/4).
 Saison 2026 komplett geladen (3 Splits, 382 Spiele, 186/186 Serien = offiziell).
 Live per echtem Browser geprüft: Einladung → Beitreten → Login → Draft → Pick →
 Admin-Pick → Undo → Restore → Health; Layout auf 5 Breiten × alle Seiten × alle
@@ -64,6 +64,24 @@ Admin-Tabs; ausgeloggt keine Mitgliedsdaten sichtbar.
 - Probelauf 02.10.2026 live mit 4 Bots: 10er-Draft (je 2/Rolle, Cron-Auto-Pick),
   Pick'em mit Cron-Aufdeckung 49 s nach Sperre, Auswertung gegen echte Ergebnisse,
   FAAB-Lauf, Aufstellungen über 23 Wochen (30 Auto-Wechsel, 14× Vize). Aufgeräumt.
+
+## Liga-Extras (02.10.2026)
+
+- **Chat** (`#/chat`): liegt im KV (`chat`, letzte 300), nicht in league.json — eine
+  Chatzeile soll kein Git-Commit sein. 2 s Abstand pro Person, 500 Zeichen, eigene
+  Zeilen löschen, Admin schreibt als „Admin“ und löscht alles. Push an alle außer
+  Absender (abschaltbar pro Person). Ungelesen-Punkt am Übersicht-Tab (`chatLast`
+  im /api/state).
+- **Aufstellungs-Erinnerung**: Cron, 3 h vor der Sperre, einmal pro Woche — nur an
+  Manager mit Startern, deren Team nicht spielt oder die zuletzt nicht gespielt haben.
+- **Wochen-Rückblick** (`#/rueckblick`): Wochensieger, Duelle, Spieler/Flop der Woche,
+  Bank-Pech, „Hatte keiner“, Saisonrekord. Push ≥ 10 h nach dem letzten Spiel der
+  Woche, nur 9–22 Uhr, nie für Wochen älter als 3 Tage.
+- **Ruhmeshalle** (`#/ruhmeshalle`): eingefroren 12 h nach Split-Ende, nur für Splits,
+  die die Liga gespielt hat (Draft vor dem letzten Spiel). Plus Saison-Eintrag, wenn
+  alle Splits drin sind. Übersteht Draft-Reset. Admin → Punkte: neu berechnen/entfernen.
+- **Trade-Helfer**: beide Seiten mit Punkten, Ø pro Spiel, Form (letzte 5) und Bilanz.
+- Eigene Liga-Playoffs bewusst **nicht** — bei wenigen Spielern sitzt sonst einer raus.
 
 ## Dateien
 

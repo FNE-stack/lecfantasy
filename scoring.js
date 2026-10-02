@@ -822,6 +822,90 @@
     return { errors, warnings };
   }
 
+
+  // ── weekly recap ────────────────────────────────────────────────────────
+  // Everything the "Rückblick" shows for one calendar week. Only players who
+  // actually counted (starters after auto-subs, or every owned player when
+  // lineups are off) can be player/flop of the week.
+  function weekRecap(league, stats, playerIndex, schedule, key, book) {
+    book = book || scoreBook(league, stats, playerIndex, schedule);
+    const cal = book._cal, sc = league.scoring;
+    const rows = ((stats && stats.games) || []).filter(g => cal.blockOf.get(g.match) === key);
+    if (!rows.length) return null;
+    const pp = new Map();
+    for (const g of rows) {
+      const x = pp.get(g.player) || { pts: 0, games: 0, ts: g.ts };
+      x.pts += gamePoints(g, sc); x.games++; pp.set(g.player, x);
+    }
+    const ownerAt = ownerResolver(league);
+    const lc = lineupConfig(league);
+    const ranking = (league.managers || []).map(m => ({ manager: m.id, name: m.name, pts: r2(book[m.id].byBlock[key] || 0) }))
+      .sort((a, b) => b.pts - a.pts);
+    const counted = [], bench = [];
+    for (const m of league.managers || []) {
+      const lu = book[m.id].lineups[key];
+      if (lc.enabled && lu) {
+        for (const id of lu.active) if (pp.has(id)) counted.push({ player: id, manager: m.id, pts: r2(pp.get(id).pts), games: pp.get(id).games, captain: id === lu.captainScored });
+        const left = r2(lu.bench.filter(id => !lu.active.includes(id)).reduce((t, id) => t + (pp.has(id) ? pp.get(id).pts : 0), 0));
+        if (left > 0) bench.push({ manager: m.id, name: m.name, pts: left });
+      }
+    }
+    if (!lc.enabled) pp.forEach((x, id) => { const m = ownerAt(id, x.ts); if (m) counted.push({ player: id, manager: m, pts: r2(x.pts), games: x.games }); });
+    const free = [...pp].filter(([id, x]) => !ownerAt(id, x.ts)).map(([id, x]) => ({ player: id, pts: r2(x.pts), games: x.games }));
+    const top = (list, dir) => list.length ? list.reduce((a, b) => (dir * (b.pts - a.pts) > 0 ? b : a)) : null;
+    // weekly high score of the season so far (this week included)
+    let record = 0;
+    for (const m of league.managers || []) for (const [k, v] of Object.entries(book[m.id].byBlock)) if (cal.start.get(k) <= cal.start.get(key)) record = Math.max(record, v);
+    return {
+      key, week: cal.name(key), split: cal.split(key), ranking,
+      best: top(counted, 1), flop: top(counted, -1), benchPain: top(bench, 1), freeBest: top(free, 1),
+      record: ranking.length > 0 && ranking[0].pts > 0 && ranking[0].pts >= record,
+    };
+  }
+
+  // ── hall of fame ────────────────────────────────────────────────────────
+  // A frozen snapshot per finished split (names stored, so it survives
+  // managers leaving and new seasons). Draft steal / bust compare the overall
+  // pick number with where that player finished in points among all drafted
+  // players in this split.
+  function hallEntry(league, stats, playerIndex, schedule, split, officialAll) {
+    const book = scoreBook(league, stats, playerIndex, schedule), cal = book._cal;
+    const pk = pickemPoints(league, stats, schedule, playerIndex, officialAll);
+    const mgrs = league.managers || [];
+    const table = mgrs.map(m => {
+      let pts = 0;
+      for (const [k, v] of Object.entries(book[m.id].byBlock)) if (cal.split(k) === split) pts += v;
+      const pick = ((pk[m.id] || {}).bySplit || {})[split];
+      return { manager: m.id, name: m.name, players: r2(pts), pickem: pick ? pick.pts : 0, pts: r2(pts + (pick ? pick.pts : 0)) };
+    }).sort((a, b) => b.pts - a.pts);
+    const pickemKing = table.filter(r => r.pickem > 0).sort((a, b) => b.pickem - a.pickem)[0] || null;
+    let bestWeek = null;
+    for (const m of mgrs) for (const [k, v] of Object.entries(book[m.id].byBlock)) {
+      // playoffs are one multi-weekend block in the data - not a fair "week"
+      if (cal.split(k) === split && !/playoff|final/i.test(cal.name(k)) && (!bestWeek || v > bestWeek.pts)) bestWeek = { manager: m.id, name: m.name, week: cal.name(k), pts: r2(v) };
+    }
+    const sp = new Map();
+    for (const g of (stats && stats.games) || []) if (g.tournament === split) sp.set(g.player, (sp.get(g.player) || 0) + gamePoints(g, league.scoring));
+    const picks = ((league.draft && league.draft.picks) || []).filter(x => x && x.player);
+    const ranked = picks.map(x => x.player).sort((a, b) => (sp.get(b) || 0) - (sp.get(a) || 0));
+    const nameOf = id => (mgrs.find(m => m.id === id) || {}).name || '?';
+    const entries = picks.map((x, i) => ({ player: x.player, playerName: ((playerIndex && playerIndex.get(x.player)) || {}).name || x.player,
+      manager: x.manager, name: nameOf(x.manager), pick: i + 1, rank: ranked.indexOf(x.player) + 1, pts: r2(sp.get(x.player) || 0) }));
+    const steal = entries.length ? entries.reduce((a, b) => (b.pick - b.rank > a.pick - a.rank ? b : a)) : null;
+    const bust = entries.length ? entries.reduce((a, b) => (b.rank - b.pick > a.rank - a.pick ? b : a)) : null;
+    return { split, at: new Date().toISOString(), table, pickemKing, bestWeek,
+             steal: steal && steal.pick > steal.rank ? steal : null, bust: bust && bust.rank > bust.pick ? bust : null };
+  }
+  // splits whose hall entry is due: finished >= 12 h ago, and the league was
+  // already drafted before the split's last match (no fame for replayed history)
+  function hallDue(league, season, now) {
+    const started = league.draft && league.draft.startedAt;
+    if (draftStatus(league) !== 'done' || !started) return [];
+    const t = now || Date.now();
+    return ((season && season.tournaments) || []).filter(x => x.lastMatch && x.done !== false
+      && Date.parse(x.lastMatch) + 12 * 3600e3 <= t && started < x.lastMatch && !(league.hall || {})[x.slug]).map(x => x.slug);
+  }
+
   global.LECScoring = {
     gamePoints, byPlayer, playerTotal, applyOverrides,
     draftStatus, rosterSize, capacity,
@@ -831,7 +915,8 @@
     transferRules, transferWindow, rosterProblems, weekKey,
     berlinParts, berlinAt, waiverRules, waiverSlots, nextWaiverRun, lastWaiverSlot, waiverOrder,
     suggestedCapacity, calendar, blockKey, lineupConfig, lineupFor, lineupPreview, scoreBook, autoWindows, faabLeft,
-    PICKEM_TYPES, pickemTruth, pickemPoints, pickemLock, splitDone
+    PICKEM_TYPES, pickemTruth, pickemPoints, pickemLock, splitDone,
+    weekRecap, hallEntry, hallDue
   };
 // `this` is undefined in an ES module, so a Cloudflare Worker importing this
 // file would crash on a bare `this`. globalThis works in every place these

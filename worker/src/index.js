@@ -8,8 +8,9 @@
 //            POST /api/login    name + password -> session
 //   member   GET  /api/state    league, me, clock (auto-pick runs here)
 //            POST /api/pick · /api/logout · /api/queue · /api/trade · /api/push
+//            GET|POST|DELETE /api/chat, POST /api/chat/mute
 //   admin    POST /api/admin/login, GET /api/admin/state|health|history,
-//            POST /api/admin/op|invite|stats|broadcast
+//            POST /api/admin/op|invite|stats|broadcast|hall, GET|POST|DELETE /api/admin/chat
 // ═══════════════════════════════════════════════════════════════════════════
 import { S, HttpError, readLeague, playerIndex, publicData } from './store.js';
 import { setMemberPassword, verifyMember, newSession, sessionManager, endSession, adminLogin, isAdmin,
@@ -18,6 +19,7 @@ import { addMember, makePick, autoPickIfDue, deadline, tradeAction, nameKey, cla
          setLineup, pickemState, savePickem, revealPickems } from './draft.js';
 import { runOp, adminState, rotateInvite, health, runStats, broadcast, leagueHistory } from './admin.js';
 import { subscribe, unsubscribe, notify } from './push.js';
+import { chatState, chatLast, chatPost, chatDelete, chatMute, lineupReminders, recapPush, hallCron, hallAdmin } from './extras.js';
 
 function cors(env, request) {
   const allowed = (env.ALLOWED_ORIGIN || '*').split(',').map(s => s.trim());
@@ -53,6 +55,7 @@ async function memberState(env, me) {
     claims: S.transferRules(league).faMode === 'waiver' ? await claimsOf(env, me) : [],
     nextWaiver: S.transferRules(league).faMode === 'waiver' ? S.nextWaiverRun(league) : null,
     autoPicked: auto && auto.changed ? { manager: auto.manager, player: auto.picked } : null,
+    chatLast: await chatLast(env).catch(() => null),
   };
 }
 
@@ -107,6 +110,12 @@ async function route(request, env, ctx) {
     if (p === '/api/admin/invite' && method === 'POST') return { invite: await rotateInvite(env) };
     if (p === '/api/admin/stats' && method === 'POST') return runStats(env, body.tournament);
     if (p === '/api/admin/broadcast' && method === 'POST') return broadcast(env, body.text || '');
+    if (p === '/api/admin/hall' && method === 'POST') return hallAdmin(env, body);
+    if (p === '/api/admin/chat') {
+      if (method === 'POST') return chatPost(env, 'admin', body.text);
+      if (method === 'DELETE') return chatDelete(env, 'admin', body.id);
+      return chatState(env, null);
+    }
     if (p === '/api/admin/op' && method === 'POST') {
       const r = await runOp(env, body);
       if (r.league) pingNext(env, ctx, r.league);
@@ -151,6 +160,12 @@ async function route(request, env, ctx) {
     return { trade: t };
   }
   if (p === '/api/lineup' && method === 'POST') return setLineup(env, me, body);
+  if (p === '/api/chat/mute' && method === 'POST') return chatMute(env, me, !!body.mute);
+  if (p === '/api/chat') {
+    if (method === 'POST') return chatPost(env, me, body.text);
+    if (method === 'DELETE') return chatDelete(env, me, body.id);
+    return chatState(env, me);
+  }
   if (p === '/api/pickem' && method === 'GET') return { pickems: await pickemState(env, me) };
   if (p === '/api/pickem' && method === 'POST') return savePickem(env, me, body);
   if (p === '/api/push/key' && method === 'GET') return { key: env.VAPID_PUBLIC || null };
@@ -228,6 +243,9 @@ export default {
     // pick'em: reveal everyone's picks once a split has started
     try { await revealPickems(env); } catch (e) { console.error('cron pickem', e && e.message); }
     try { await pickemNotices(env, data, all); } catch (e) { console.error('cron pickem push', e && e.message); }
+    try { await lineupReminders(env, data); } catch (e) { console.error('cron lineup reminder', e && e.message); }
+    try { await recapPush(env, data); } catch (e) { console.error('cron recap', e && e.message); }
+    try { await hallCron(env, data); } catch (e) { console.error('cron hall', e && e.message); }
     // waivers at their scheduled times (German time); each slot runs once
     try {
       const slot = S.lastWaiverSlot(data);

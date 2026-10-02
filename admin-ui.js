@@ -147,7 +147,17 @@ function viewPoints() {
       <select id="swM">${mgrOptions('')}</select><input id="swOut" list="plOwned" placeholder="raus …" style="min-width:160px">${playerList('plOwned', p => owned.has(p.id))}
       <input id="swIn" list="plFree" placeholder="rein …" style="min-width:160px">${playerList('plFree', p => !owned.has(p.id))}${btn('Wechsel eintragen', 'swap', {}, 'gold')}</div>
       <p class="muted" style="font-size:12px;margin:0 16px 14px">Zählt ab jetzt — bisherige Punkte des Spielers bleiben beim alten Manager.</p>`)
-    + card('Trades', tr ? `<table><tbody>${tr}</tbody></table>` : '<div class="empty">keine Trades</div>', (L.tradeRules || {}).enabled ? '<span class="pill teal">aktiv</span>' : '<span class="pill">deaktiviert</span>');
+    + card('Trades', tr ? `<table><tbody>${tr}</tbody></table>` : '<div class="empty">keine Trades</div>', (L.tradeRules || {}).enabled ? '<span class="pill teal">aktiv</span>' : '<span class="pill">deaktiviert</span>')
+    + viewHallAdmin();
+}
+function viewHallAdmin() {
+  const hall = A.league.hall || {};
+  const rows = Object.entries(hall).map(([k, e]) => `<tr><td><b>${esc(k)}</b></td><td class="fill">${esc(((e.table || [])[0] || {}).name || '—')}</td><td class="dim">${e.at ? new Date(e.at).toLocaleDateString('de-DE') : ''}</td>
+      <td class="num">${btn('✕', 'hall', { split: k, mode: 'delete' })}</td></tr>`).join('');
+  const splits = ((ctx.D.season || {}).tournaments || []).map(t => t.slug);
+  return card('Ruhmeshalle', (rows ? `<table><tbody>${rows}</tbody></table>` : '<div class="empty">noch leer</div>')
+    + `<div class="card-b row" style="flex-wrap:wrap"><select id="hallSplit">${splits.map(x => `<option>${esc(x)}</option>`).join('')}</select>${btn('Eintragen / neu berechnen', 'hall', { mode: 'build' }, 'gold')}</div>
+    <p class="muted" style="font-size:12px;margin:0 16px 14px">Passiert automatisch 12 h nach dem letzten Spiel eines Splits (nur Splits, die die Liga gespielt hat). Hier z. B. nach einer Stat-Korrektur neu berechnen.</p>`);
 }
 
 function viewStats() {
@@ -383,6 +393,10 @@ async function act(a, d, el) {
     case 'reload': flash = null; await load(); if (tab === 'overview') runHealth(); if (tab === 'history') loadHistory(); return;
     case 'alogout': tokenDel(); A = null; draw(); return;
     case 'health': return runHealth();
+    case 'hall':
+      if (d.mode === 'delete' && !window.confirm('Eintrag aus der Ruhmeshalle entfernen?')) return;
+      try { const r = await api('/api/admin/hall', { method: 'POST', body: { split: d.split || val('hallSplit'), action: d.mode === 'delete' ? 'delete' : 'build' } }); flash = { ok: true, text: r.message }; await load(); } catch (e) { flash = { ok: false, text: e.message }; draw(); }
+      return;
     case 'stats':
       try { const r = await api('/api/admin/stats', { method: 'POST', body: {} }); flash = { ok: true, text: r.message }; } catch (e) { flash = { ok: false, text: e.message }; }
       return draw();

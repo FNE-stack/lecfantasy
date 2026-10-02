@@ -576,6 +576,95 @@ tests.pickem_push_once = async () => {
   return 'open push once, 24 h reminder once (only to managers without tips), late opening sends a single message';
 };
 
+tests.chat = async () => {
+  const { a, tok, ids } = await liveLeague(['Ann', 'Ben']);
+  let r = await call('POST', '/api/chat', { token: tok.Ann, body: { text: '  hallo zusammen  ' } });
+  assert(r.status === 200 && r.body.message.t === 'hallo zusammen' && r.body.message.m === ids.Ann, 'post: ' + JSON.stringify(r.body));
+  const first = r.body.message.id;
+  r = await call('POST', '/api/chat', { token: tok.Ann, body: { text: 'spam' } });
+  assert(r.status === 429, 'two lines within 2 s refused');
+  r = await call('POST', '/api/chat', { token: tok.Ben, body: { text: 'x'.repeat(900) } });
+  assert(r.status === 200 && r.body.message.t.length === 500, 'cut to 500 chars');
+  const benMsg = r.body.message.id;
+  r = await call('POST', '/api/chat', { token: tok.Ben, body: { text: '   ' } });
+  assert(r.status === 400, 'empty refused');
+  r = await call('GET', '/api/chat');
+  assert(r.status === 401, 'chat needs a login');
+  const st = (await call('GET', '/api/state', { token: tok.Ann })).body;
+  assert(st.chatLast && st.chatLast.id === benMsg, 'state carries the newest chat id');
+  r = await call('DELETE', '/api/chat', { token: tok.Ben, body: { id: first } });
+  assert(r.status === 403, "cannot delete someone else's line");
+  r = await call('DELETE', '/api/chat', { token: tok.Ann, body: { id: first } });
+  assert(r.status === 200, 'delete own line');
+  r = await call('POST', '/api/admin/chat', { token: a, body: { text: 'Draft Sonntag 20 Uhr' } });
+  assert(r.status === 200 && r.body.message.m === 'admin', 'admin posts as Admin');
+  r = await call('DELETE', '/api/admin/chat', { token: a, body: { id: benMsg } });
+  assert(r.status === 200, 'admin deletes any line');
+  const list = (await call('GET', '/api/chat', { token: tok.Ben })).body;
+  assert(list.messages.length === 1 && list.messages[0].m === 'admin' && !list.muted, 'one admin line left: ' + JSON.stringify(list));
+  await call('POST', '/api/chat/mute', { token: tok.Ben, body: { mute: true } });
+  assert((await call('GET', '/api/chat', { token: tok.Ben })).body.muted === true, 'mute stored');
+  r = await call('POST', '/api/admin/chat', { token: tok.Ann, body: { text: 'fake admin' } });
+  assert(r.status === 401, 'members cannot use the admin chat');
+  return 'post/trim/500 cap, 2 s rate limit, login needed, chatLast in state, own delete only, admin post + delete any, mute';
+};
+
+tests.lineup_reminder_and_recap = async () => {
+  const X = await import('./src/extras.js');
+  const { a } = await liveLeague(['Ann', 'Ben']);
+  await call('POST', '/api/admin/op', { token: a, body: { op: 'setRoster', roster: { slots: ROLES, perRole: 2, maxPerTeam: 3 }, force: true } });
+  await draftAll(a);
+  const now = Date.parse('2026-08-08T10:00:00Z');                   // Saturday, 12:00 in Berlin
+  const iso = ms => new Date(ms).toISOString();
+  SCHEDULE = { events: [
+    { match: 'x', start: iso(now - 7 * 864e5), state: 'completed', block: 'Week 1', tournament: 'sp', teams: [{ code: 'G2' }, { code: 'FNC' }] },
+    { match: 'W2', start: iso(now + 2 * 3600e3), state: 'unstarted', block: 'Week 2', tournament: 'sp', teams: [{ code: 'G2' }, { code: 'FNC' }] }] };
+  let r = await X.lineupReminders(env, league(), now);
+  assert(r === null, 'lineups off: no reminder');
+  await call('POST', '/api/admin/op', { token: a, body: { op: 'setLineupRules', enabled: true, captain: 1.5 } });
+  r = await X.lineupReminders(env, league(), now - 2 * 3600e3);
+  assert(r === null && !(await env.LEAGUE.get('lrem:sp|Week 2')), '4 h before the lock: too early, nothing flagged');
+  r = await X.lineupReminders(env, league(), now);
+  assert(r && r.key === 'sp|Week 2' && r.sent.length === 2, 'both have starters from teams without a match: ' + JSON.stringify(r));
+  assert((await X.lineupReminders(env, league(), now + 60e3)) === null, 'once per week');
+  // recap: week 1 ended long ago -> never announced; a fresh one at a civil hour -> once
+  assert((await X.recapPush(env, league(), now)) === null, 'old week not announced');
+  SCHEDULE.events[1].state = 'completed';
+  const night = now + 2 * 3600e3 + 11 * 3600e3;                     // 23:00 UTC = 01:00 Berlin
+  assert((await X.recapPush(env, league(), night)) === null, 'not at night');
+  const morning = now + 2 * 3600e3 + 20 * 3600e3;                   // 08:00 UTC = 10:00 Berlin
+  assert((await X.recapPush(env, league(), morning)) === 'sp|Week 2', 'announced in the morning');
+  assert((await X.recapPush(env, league(), morning + 60e3)) === null, 'only once');
+  return 'reminder only with lineups on, only within 3 h, flags starters of idle teams, once; recap once, daytime only, never for old weeks';
+};
+
+tests.hall_of_fame = async () => {
+  const X = await import('./src/extras.js');
+  const { a } = await liveLeague(['Ann', 'Ben']);
+  await draftAll(a);
+  SCHEDULE = { events: [{ match: 'x', start: '2026-08-01T15:00:00Z', state: 'completed', block: 'Week 1', tournament: 'sp', teams: [{ code: 'G2' }, { code: 'FNC' }] }] };
+  STATS.games.forEach(g => { g.tournament = 'sp'; });
+  try {
+    SEASON = { season: 2026, tournaments: [{ slug: 'sp', lastMatch: new Date(Date.now() - 864e5).toISOString(), done: true }] };
+    assert((await X.hallCron(env, league())) === null, 'drafted after the split ended: no fame for history');
+    const l = league(); l.draft.startedAt = '2026-01-01T00:00:00Z';
+    await call('POST', '/api/admin/op', { token: a, body: { op: 'setRaw', league: l } });
+    const r = await X.hallCron(env, league());
+    assert(r && r.changed && r.due[0] === 'sp', 'split frozen: ' + JSON.stringify(r));
+    const h = league().hall;
+    assert(h.sp.table.length === 2 && h.sp.table[0].pts >= h.sp.table[1].pts, 'table stored');
+    assert(h.season_2026 && h.season_2026.table.length === 2, 'season entry once all splits are in');
+    assert((await X.hallCron(env, league())) === null, 'nothing twice');
+    let q = await call('POST', '/api/admin/hall', { token: a, body: { split: 'sp', action: 'delete' } });
+    assert(q.status === 200 && !league().hall.sp, 'admin removes an entry');
+    q = await call('POST', '/api/admin/hall', { token: a, body: { split: 'sp' } });
+    assert(q.status === 200 && league().hall.sp, 'admin rebuilds an entry');
+    await call('POST', '/api/admin/op', { token: a, body: { op: 'resetDraft', force: true } });
+    assert(league().hall.sp, 'a draft reset keeps the hall of fame');
+  } finally { STATS.games.forEach(g => { delete g.tournament; }); }
+  return 'no fame for replayed history, split + season frozen once, admin delete/rebuild, survives a draft reset';
+};
+
 tests.faab = async () => {
   const S = globalThis.LECScoring, idx = new Map(PLAYERS.players.map(p => [p.id, p]));
   const { a, tok, ids } = await liveLeague(['Ann', 'Ben']);

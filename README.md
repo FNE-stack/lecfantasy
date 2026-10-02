@@ -30,7 +30,8 @@ Profi-Stats) und den Login. Mitglieder, Kader und Picks gibt es nur nach dem Log
 | **Mein Team** | Aufstellung der Woche (5 Starter, Kapitän ×1,5, Vize, Auto-Wechsel), Platz, Punkte, Ø/Woche, Kader mit nächstem Spiel und Form, Punkte pro Woche, dein Duell, nächste Spiele, Push an/aus |
 | **Draft** | Uhr, Pool nach Punkten, ★ Watchlist (= Auto-Pick-Reihenfolge), bester Verfügbarer pro Rolle, Draft Board |
 | **Pick'em** | Saison-Tipps vor jedem Split (Fragen + Punkte vom Admin), danach Auflösung; zählt zur Wertung |
-| **Transfers** | Trades, Free Agents über Waiver (Reihenfolge oder FAAB-Gebote), Fenster automatisch zwischen den Splits |
+| **Transfers** | Trades mit Vergleich (Punkte, Ø, Form), Free Agents über Waiver (Reihenfolge oder FAAB-Gebote), Fenster automatisch zwischen den Splits |
+| **Chat · Rückblick · Ruhmeshalle** | Liga-Chat mit Push; Wochen-Rückblick (Sieger, Spieler/Flop der Woche); Sieger jedes Splits für immer |
 | **Live** | Live-Punkte während LEC-Spielen, auch pro Manager |
 | **LEC** | Spielplan (Filter, „nur meine Spieler“, Kalender-Export .ics), offizielle Tabelle, Playoff-Baum, Teams — je Split |
 | **Spieler** | alle Profis mit Form, Champion-Pool, Game-Log |
