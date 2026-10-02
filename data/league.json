@@ -26,17 +26,9 @@
     "perRole": 2
   },
   "standingsMode": "points",
-  "managers": [
-    {
-      "id": "m07627def",
-      "name": "QA Backup",
-      "joined": "2026-10-02T15:09:10.570Z"
-    }
-  ],
+  "managers": [],
   "draft": {
-    "order": [
-      "m07627def"
-    ],
+    "order": [],
     "snake": true,
     "picks": [],
     "status": "lobby",
