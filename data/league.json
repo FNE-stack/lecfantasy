@@ -82,7 +82,24 @@
     "enabled": true,
     "captain": 1.5
   },
-  "pickems": {},
+  "pickems": {
+    "lec_split_1_2027": {
+      "questions": [
+        {
+          "id": "q1",
+          "type": "champion",
+          "points": 10
+        },
+        {
+          "id": "q2",
+          "type": "mostKills",
+          "points": 5
+        }
+      ],
+      "revealed": false,
+      "lockAt": "2026-10-07T15:04:22.093Z"
+    }
+  },
   "faab": {
     "budget": 100,
     "resetEachSplit": false
