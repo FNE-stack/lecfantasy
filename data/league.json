@@ -191,7 +191,21 @@
   },
   "adjustments": [],
   "swaps": [],
-  "trades": [],
+  "trades": [
+    {
+      "id": "t1dba83a8",
+      "from": "m2b35c778",
+      "to": "m53c5dfc1",
+      "give": [
+        "98767975961872793"
+      ],
+      "get": [
+        "105553696718837337"
+      ],
+      "status": "proposed",
+      "at": "2026-10-02T10:05:42.869Z"
+    }
+  ],
   "tradeRules": {
     "faMode": "waiver",
     "waiver": {
