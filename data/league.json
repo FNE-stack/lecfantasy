@@ -61,7 +61,10 @@
     "timer": {
       "mode": "auto",
       "seconds": 30
-    }
+    },
+    "scheduledAt": "2026-10-02T10:03:00.000Z",
+    "reminderMinutes": 1,
+    "autoStart": true
   },
   "adjustments": [],
   "swaps": [],
