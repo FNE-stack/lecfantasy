@@ -52,6 +52,7 @@ Jede Admin-Aktion ist ein Commit. **Alles ist rückgängig machbar** (*Verlauf �
 - **Liga:** Name, Punkte-Regeln, Kader-Regeln, Haupttabelle, Trade-Regeln
 - **Prüfung:** System-Check (GitHub, KV, Daten, Stats-Job, Push) und Datenprüfung mit
   „Beheben"-Knopf
+- **Backups:** jeden Morgen nach einem Spieltag automatisch (60 Stück), jederzeit per Knopf; herunterladen, wiederherstellen, Datei einspielen
 - **Rohdaten:** league.json direkt, mit Prüfung vor dem Speichern
 - **Notfall:** was tun, wenn …
 

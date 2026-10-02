@@ -378,6 +378,19 @@ export async function health(env) {
   const checks = [];
   const add = (name, ok, detail) => checks.push({ name, ok, detail });
   const c = cfg(env);
+  // backups: the newest should be at most a few days old (none at all = fine
+  // before the first morning, but say so)
+  try {
+    const index = (await env.LEAGUE.get('backup:index', 'json')) || [];
+    const newest = index.length ? index[0].at : null;
+    const r = { keys: index };
+    // the daily run counts even when it skipped (nothing changed, e.g. off-season)
+    const last = (await env.LEAGUE.get('backup:last', 'json')) || {};
+    const ranAgo = last.day ? (Date.now() - Date.parse(last.day + 'T12:00:00Z')) / 864e5 : null;
+    add('Backups', ranAgo === null ? true : ranAgo < 2.5,
+      (newest ? `letztes ${new Date(newest).toLocaleString('de-DE', { timeZone: 'Europe/Berlin', dateStyle: 'short', timeStyle: 'short' })} · ${r.keys.length} gespeichert` : 'noch keins — das erste kommt am nächsten Morgen')
+      + (last.day ? ` · täglicher Lauf zuletzt ${last.day}` : ''));
+  } catch (e) { add('Backups', false, e.message); }
   // GitHub token + repo write access
   try {
     const rl = await (await githubRaw(env, '/rate_limit')).json();

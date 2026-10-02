@@ -665,6 +665,62 @@ tests.hall_of_fame = async () => {
   return 'no fame for replayed history, split + season frozen once, admin delete/rebuild, survives a draft reset';
 };
 
+tests.backups = async () => {
+  const B = await import('./src/backup.js');
+  const { a, tok, ids } = await liveLeague(['Ann', 'Ben']);
+  await call('POST', '/api/chat', { token: tok.Ann, body: { text: 'vorher' } });
+  await env.LEAGUE.put('pick:sp:' + ids.Ann, JSON.stringify({ q1: 'G2' }));
+  await env.LEAGUE.put('queue:' + ids.Ben, JSON.stringify(['G2_MID']));
+  // manual backup
+  let r = await call('POST', '/api/admin/backup', { token: a, body: { action: 'create' } });
+  assert(r.status === 200 && r.body.backup.id, 'create: ' + JSON.stringify(r.body));
+  const id = r.body.backup.id;
+  const list = (await call('GET', '/api/admin/backups', { token: a })).body.backups;
+  assert(list.length === 1 && list[0].id === id && list[0].managers === 2 && list[0].chat === 1, 'listed with summary: ' + JSON.stringify(list));
+  const full = (await call('GET', '/api/admin/backup?id=' + id, { token: a })).body;
+  assert(full.v === 1 && full.league.managers.length === 2 && full.kv.tips['pick:sp:' + ids.Ann].q1 === 'G2' && full.kv.queues['queue:' + ids.Ben][0] === 'G2_MID', 'league + KV parts inside');
+  const txt = JSON.stringify(full);
+  assert(!/mgr:|session:|push:|pbkdf2|"invite"|"salt"|"iters"/i.test(txt) && !txt.includes('secret-Ann'), 'download: no password hashes, sessions, push or invite');
+  assert((await call('GET', '/api/admin/backups')).status === 401 && (await call('GET', '/api/admin/backups', { token: tok.Ann })).status === 401, 'backups are admin-only');
+  // things go wrong: a member removed, chat wiped, tips gone
+  await call('POST', '/api/admin/op', { token: a, body: { op: 'removeManager', manager: ids.Ben, force: true } });
+  await env.LEAGUE.put('chat', '[]'); await env.LEAGUE.delete('pick:sp:' + ids.Ann); await env.LEAGUE.put('pick:sp:junk', '{"q1":"KC"}');
+  r = await call('POST', '/api/admin/backup', { token: a, body: { action: 'restore', id } });
+  assert(r.status === 200 && /wiederhergestellt/.test(r.body.message), 'restore: ' + JSON.stringify(r.body));
+  assert(league().managers.length === 2, 'league back');
+  assert(JSON.parse(await env.LEAGUE.get('chat')).length === 1, 'chat back');
+  assert(JSON.parse(await env.LEAGUE.get('pick:sp:' + ids.Ann)).q1 === 'G2' && !(await env.LEAGUE.get('pick:sp:junk')), 'tips back, stray tips removed');
+  r = await call('POST', '/api/login', { body: { name: 'Ben', password: 'secret-Ben' } });
+  assert(r.status === 200, 'a removed and restored member can log in again: ' + JSON.stringify(r.body));
+  const after = (await call('GET', '/api/admin/backups', { token: a })).body.backups;
+  assert(after.length === 2 && after.some(b => /vor Wiederherstellung/.test(b.label)), 'the state before the restore was saved first');
+  // uploaded file
+  r = await call('POST', '/api/admin/backup', { token: a, body: { action: 'restore', data: { hello: 1 } } });
+  assert(r.status === 400, 'garbage file refused');
+  await call('POST', '/api/admin/op', { token: a, body: { op: 'removeManager', manager: ids.Ben, force: true } });
+  r = await call('POST', '/api/admin/backup', { token: a, body: { action: 'restore', data: full } });
+  assert(r.status === 200 && r.body.noLogin.length === 1 && r.body.noLogin[0] === 'Ben', 'upload (no logins inside) names who needs a new password: ' + JSON.stringify(r.body));
+  // cron: not before 05:00 Berlin, once a day, nothing if unchanged
+  const day = Date.parse('2030-03-05T02:00:00Z');                    // 03:00 Berlin
+  assert((await B.backupCron(env, day)) === null, 'not at night');
+  const morning = Date.parse('2030-03-05T05:00:00Z');                // 06:00 Berlin
+  const c1 = await B.backupCron(env, morning);
+  assert(c1 && (c1.id || c1.skipped), 'morning run: ' + JSON.stringify(c1));
+  assert((await B.backupCron(env, morning + 3600e3)) === null, 'once a day');
+  const c3 = await B.backupCron(env, morning + 864e5);
+  assert(c3 && c3.skipped === 'unverändert', 'next day without changes: skipped');
+  await env.LEAGUE.put('queue:' + ids.Ann, JSON.stringify(['KC_TOP']));
+  const c4 = await B.backupCron(env, morning + 2 * 864e5);
+  assert(c4 && c4.id, 'next day with a change: new backup');
+  const before = (await call('GET', '/api/admin/backups', { token: a })).body.backups;
+  r = await call('POST', '/api/admin/backup', { token: a, body: { action: 'delete', id: before[0].id } });
+  assert(r.status === 200 && (await call('GET', '/api/admin/backups', { token: a })).body.backups.length === before.length - 1, 'delete one backup');
+  // retention
+  for (let i = 0; i < 62; i++) await B.backupNow(env, 'x' + i);
+  assert((await call('GET', '/api/admin/backups', { token: a })).body.backups.length === 60, 'newest 60 kept');
+  return 'manual backup, summary, league+chat+tips+claims+queues inside, no secrets, admin-only, restore (with safety backup first), upload, garbage refused, cron daily from 05:00 only on change, keeps 60';
+};
+
 tests.faab = async () => {
   const S = globalThis.LECScoring, idx = new Map(PLAYERS.players.map(p => [p.id, p]));
   const { a, tok, ids } = await liveLeague(['Ann', 'Ben']);

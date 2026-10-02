@@ -323,6 +323,24 @@ function viewHistory() {
     'jede Änderung ist ein Eintrag — alles ist rückgängig machbar');
 }
 
+function viewBackups() {
+  const rows = (backups || []).map(b => `<div style="padding:12px 16px;border-bottom:1px solid var(--line)">
+      <div><b>${esc(new Date(b.at).toLocaleString('de-DE', { dateStyle: 'short', timeStyle: 'short' }))}</b> <span class="muted">· ${esc(b.label || '')}</span></div>
+      <div class="dim" style="font-size:12px;margin:3px 0 8px">${b.managers ?? '?'} Manager · ${b.picks ?? '?'} Picks · ${b.chat ?? 0} Chat · ${Math.max(1, Math.round((b.size || 0) / 1024))} KB</div>
+      <div class="row" style="gap:6px;flex-wrap:wrap">${btn('Herunterladen', 'bkGet', { id: b.id })}${btn('Wiederherstellen', 'bkRestore', { id: b.id, at: b.at })}${btn('✕', 'bkDel', { id: b.id })}</div></div>`).join('');
+  return card('Backups', `<div class="card-b muted" style="font-size:13px;line-height:1.7">
+      <b style="color:var(--text)">Automatisch</b> jeden Morgen ab 5 Uhr, wenn sich seit dem letzten etwas geändert hat — also nach jedem Spieltag eins.
+      Die neuesten 60 bleiben. Drin: die ganze Liga plus Chat, noch geheime Pick'em-Tipps, Waiver-Ansprüche, Watchlists und die Logins
+      (nur verschlüsselt, und nie in heruntergeladenen Dateien — nach dem Einspielen einer Datei siehst du, wer ein neues Passwort braucht).
+      Push-Anmeldungen schaltet jeder einfach wieder an.<br>
+      Zusätzlich speichert GitHub jede einzelne Änderung der Liga — siehe Tab <b style="color:var(--text)">Verlauf</b>.</div>
+    <div class="card-b row" style="flex-wrap:wrap;border-top:1px solid var(--line)">${btn('Jetzt Backup machen', 'bkNow', {}, 'gold')}
+      <label class="btn sm" style="margin:0;cursor:pointer">Backup-Datei hochladen …<input type="file" id="bkFile" accept="application/json,.json" style="display:none"></label>
+      <span class="muted" style="font-size:12px">Tipp: ab und zu eins herunterladen und auf dem PC behalten.</span></div>`)
+    + card('Gespeicherte Backups', backups === null ? '<div class="empty">lade …</div>' : rows ? rows : '<div class="empty">Noch keins — das erste kommt morgen früh, oder jetzt per Knopf.</div>',
+      backups ? `${backups.length} Stück` : '');
+}
+
 function viewRaw() {
   return card('league.json direkt bearbeiten', `<div class="card-b">
       <p class="muted" style="font-size:13px;margin-top:0">Letzter Ausweg. Wird vor dem Speichern geprüft; kaputte Daten nur mit „trotzdem speichern". Jeder Stand bleibt im Verlauf.</p>
@@ -336,6 +354,7 @@ function viewEmergency() {
   const repo = A.dataRepo;
   const path = A.privateData ? 'league.json' : 'data/league.json';
   return card('Wenn etwas schiefgeht', `<div class="card-b muted" style="line-height:1.8">
+    <b style="color:var(--text)">Daten kaputt oder weg</b> → Tab Backups: Stand von gestern (bzw. vom letzten Spieltag) wiederherstellen — der jetzige Stand wird vorher gesichert. Nur die Liga betroffen? Tab Verlauf: auf jede einzelne frühere Änderung zurück.<br>
     <b style="color:var(--text)">Falscher Pick / jemand kann nicht picken</b> → Draft-Tab: „Pick setzen" (für wen gerade dran ist) oder „Ändern" / „Letzten Pick rückgängig".<br>
     <b style="color:var(--text)">Passwort vergessen</b> → Mitglieder: „Passwort" setzen und dem Spieler sagen.<br>
     <b style="color:var(--text)">Irgendwas ist kaputt / falsch geklickt</b> → Verlauf: einen Stand vor dem Fehler wiederherstellen.<br>
@@ -349,13 +368,13 @@ function viewEmergency() {
       : `Aktuell öffentlich in ${esc(repo)}. Für echte Privatsphäre: privates Repo <code>lecfantasy-data</code> anlegen, Token darauf erweitern, dann <code>DATA_REPO</code> setzen und neu deployen.`}</div>`);
 }
 
-const TABS = [['overview', 'Übersicht'], ['draft', 'Draft'], ['members', 'Mitglieder'], ['points', 'Punkte'], ['stats', 'Stats'], ['pickem', "Pick'em"], ['settings', 'Einstellungen'], ['history', 'Verlauf'], ['raw', 'Rohdaten'], ['emergency', 'Notfall']];
+const TABS = [['overview', 'Übersicht'], ['draft', 'Draft'], ['members', 'Mitglieder'], ['points', 'Punkte'], ['stats', 'Stats'], ['pickem', "Pick'em"], ['settings', 'Einstellungen'], ['history', 'Verlauf'], ['backup', 'Backups'], ['raw', 'Rohdaten'], ['emergency', 'Notfall']];
 function draw() {
   if (!root) return;
   if (!tokenGet()) { root.innerHTML = viewLogin(flash && !flash.ok ? flash.text : ''); bind(); return; }
   if (!A) { root.innerHTML = '<div class="empty">lade Admin …</div>'; return; }
   const issues = A.validation.errors.length;
-  const body = { overview: viewOverview, draft: viewDraft, members: viewMembers, points: viewPoints, stats: viewStats, pickem: viewPickemAdmin, settings: viewSettings, history: viewHistory, raw: viewRaw, emergency: viewEmergency }[tab]();
+  const body = { overview: viewOverview, draft: viewDraft, members: viewMembers, points: viewPoints, stats: viewStats, backup: viewBackups, pickem: viewPickemAdmin, settings: viewSettings, history: viewHistory, raw: viewRaw, emergency: viewEmergency }[tab]();
   root.innerHTML = `<div class="row" style="justify-content:space-between;flex-wrap:wrap;gap:12px;margin-bottom:14px">
       <div><div class="eyebrow">${esc(A.league.name || 'LEC Fantasy')} · ${{ lobby: 'Anmeldung', live: 'Draft läuft', done: 'Saison' }[window.LECScoring.draftStatus(A.league)]}</div><h1 style="font-size:40px">Admin</h1></div>
       <div class="row">${issues ? `<span class="pill live">${issues} Fehler</span>` : '<span class="pill teal">konsistent</span>'}${btn('Neu laden', 'reload')}${btn('Admin abmelden', 'alogout')}</div></div>
@@ -375,7 +394,18 @@ function bind() {
     lb.onclick = go; document.getElementById('apw').onkeydown = e => { if (e.key === 'Enter') go(); };
     return;
   }
-  root.querySelectorAll('[data-tab]').forEach(b => b.onclick = () => { tab = b.dataset.tab; flash = null; if (tab === 'history') loadHistory(); draw(); });
+  const bkFile = document.getElementById('bkFile');
+  if (bkFile) bkFile.onchange = async () => {
+    const f = bkFile.files && bkFile.files[0];
+    if (!f) return;
+    let data;
+    try { data = JSON.parse(await f.text()); } catch (e) { flash = { ok: false, text: 'Datei ist kein gültiges JSON.' }; return draw(); }
+    const when = data && data.at ? new Date(data.at).toLocaleString('de-DE', { dateStyle: 'short', timeStyle: 'short' }) : '?';
+    if (!window.confirm(`Backup-Datei vom ${when} einspielen? Der jetzige Stand wird vorher gesichert.`)) return;
+    try { const r = await api('/api/admin/backup', { method: 'POST', body: { action: 'restore', data } }); flash = { ok: true, text: r.message }; await load(); } catch (e) { flash = { ok: false, text: e.message }; }
+    loadBackups();
+  };
+  root.querySelectorAll('[data-tab]').forEach(b => b.onclick = () => { tab = b.dataset.tab; flash = null; if (tab === 'history') loadHistory(); if (tab === 'backup') loadBackups(); draw(); });
   root.querySelectorAll('[data-act]').forEach(el => {
     const ev = el.tagName === 'SELECT' ? 'onchange' : 'onclick';
     el[ev] = () => act(el.dataset.act, el.dataset, el);
@@ -383,6 +413,8 @@ function bind() {
 }
 
 async function runHealth() { health = null; draw(); try { health = (await api('/api/admin/health')).checks; } catch (e) { health = [{ name: 'Health', ok: false, detail: e.message }]; } draw(); }
+let backups = null;
+async function loadBackups() { backups = null; draw(); try { backups = (await api('/api/admin/backups')).backups; } catch (e) { flash = { ok: false, text: e.message }; backups = []; } draw(); }
 async function loadHistory() { history = null; draw(); try { history = (await api('/api/admin/history')).commits; } catch (e) { flash = { ok: false, text: e.message }; history = []; } draw(); }
 const J = s => { try { return JSON.parse(s); } catch (e) { return s; } };
 
@@ -510,6 +542,27 @@ async function act(a, d, el) {
       }
       if (a === 'winDel') rules.windows = (cur.windows || []).filter((_, k) => k !== +d.i);
       return op({ op: 'setTradeRules', rules }, a === 'winDel' ? 'Fenster löschen?' : null);
+    }
+    case 'bkNow':
+      try { const r = await api('/api/admin/backup', { method: 'POST', body: { action: 'create' } }); flash = { ok: true, text: r.message }; } catch (e) { flash = { ok: false, text: e.message }; }
+      return loadBackups();
+    case 'bkDel':
+      if (!window.confirm(`Backup ${d.id} löschen?`)) return;
+      try { const r = await api('/api/admin/backup', { method: 'POST', body: { action: 'delete', id: d.id } }); flash = { ok: true, text: r.message }; } catch (e) { flash = { ok: false, text: e.message }; }
+      return loadBackups();
+    case 'bkGet':
+      try {
+        const b = await api('/api/admin/backup?id=' + encodeURIComponent(d.id));
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(new Blob([JSON.stringify(b, null, 1)], { type: 'application/json' }));
+        a.download = `lecfantasy-backup-${d.id}.json`; document.body.appendChild(a); a.click(); a.remove();
+      } catch (e) { flash = { ok: false, text: e.message }; draw(); }
+      return;
+    case 'bkRestore': {
+      const when = new Date(d.at).toLocaleString('de-DE', { dateStyle: 'short', timeStyle: 'short' });
+      if (!window.confirm(`Liga, Chat, Tipps und Ansprüche auf den Stand vom ${when} zurücksetzen?\n\nDer jetzige Stand wird vorher automatisch als Backup gesichert.`)) return;
+      try { const r = await api('/api/admin/backup', { method: 'POST', body: { action: 'restore', id: d.id } }); flash = { ok: true, text: r.message }; await load(); } catch (e) { flash = { ok: false, text: e.message }; }
+      return loadBackups();
     }
     case 'rawCheck': case 'rawSave': {
       let obj;

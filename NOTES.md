@@ -6,7 +6,7 @@ Punkte, Entscheidungen und Fallen, in die man schon getreten ist.
 ## Stand
 
 **LIVE, leer, bereit.** Liga im Status *Anmeldung*, 0 Mitglieder, frischer
-Einladungslink im Admin. Alle Tests grün (Regeln 17/17, Worker 22/22, Punkte 4/4).
+Einladungslink im Admin. Alle Tests grün (Regeln 17/17, Worker 23/23, Punkte 4/4).
 Saison 2026 komplett geladen (3 Splits, 382 Spiele, 186/186 Serien = offiziell).
 Live per echtem Browser geprüft: Einladung → Beitreten → Login → Draft → Pick →
 Admin-Pick → Undo → Restore → Health; Layout auf 5 Breiten × alle Seiten × alle
@@ -82,6 +82,18 @@ Admin-Tabs; ausgeloggt keine Mitgliedsdaten sichtbar.
   alle Splits drin sind. Übersteht Draft-Reset. Admin → Punkte: neu berechnen/entfernen.
 - **Trade-Helfer**: beide Seiten mit Punkten, Ø pro Spiel, Form (letzte 5) und Bilanz.
 - Eigene Liga-Playoffs bewusst **nicht** — bei wenigen Spielern sitzt sonst einer raus.
+
+## Backups (02.10.2026)
+
+- league.json: jede Änderung ist ein Git-Commit (Admin → Verlauf, Restore pro Commit).
+- Zusätzlich **tägliches Backup ab 05:00** (Cron, nur wenn sich etwas geändert hat →
+  praktisch eins pro Spieltag), 60 Stück, in KV `backup:<datum>`, Liste in
+  `backup:index` (KV-Listings hängen bis 60 s hinterher — nie für die Liste benutzen).
+  Inhalt: Liga + Chat + geheime Tipps + Ansprüche + Watchlists + Logins (Hashes).
+  Downloads enthalten **keine** Logins. Restore sichert vorher den aktuellen Stand,
+  stellt fehlende Logins wieder her, überschreibt nie ein neueres Passwort.
+- Admin → Backups: jetzt sichern, herunterladen, wiederherstellen, Datei hochladen,
+  löschen. System-Check zeigt, ob der tägliche Lauf passiert ist.
 
 ## Dateien
 
