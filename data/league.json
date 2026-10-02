@@ -171,10 +171,15 @@
         "manager": "mf2904d66",
         "player": "102787200059605684",
         "at": "2026-10-02T10:05:28.334Z"
+      },
+      {
+        "manager": "ma39be5bd",
+        "player": "107605583684952312",
+        "at": "2026-10-02T10:05:31.543Z"
       }
     ],
-    "status": "live",
-    "completed": false,
+    "status": "done",
+    "completed": true,
     "timer": {
       "mode": "auto",
       "seconds": 30
