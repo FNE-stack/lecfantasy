@@ -30,12 +30,18 @@
       "id": "mf2904d66",
       "name": "Bot Bravo",
       "joined": "2026-10-02T10:01:35.130Z"
+    },
+    {
+      "id": "m53c5dfc1",
+      "name": "Bot Charlie",
+      "joined": "2026-10-02T10:01:36.256Z"
     }
   ],
   "draft": {
     "order": [
       "ma39be5bd",
-      "mf2904d66"
+      "mf2904d66",
+      "m53c5dfc1"
     ],
     "snake": true,
     "picks": [],
