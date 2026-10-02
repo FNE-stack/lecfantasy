@@ -114,7 +114,9 @@ export async function adminLogin(env, username, password) {
   if (!env.ADMIN_PASSWORD) throw new HttpError(500, 'ADMIN_PASSWORD ist nicht gesetzt (wrangler secret put ADMIN_PASSWORD)');
   // hash both sides so the comparison is length-independent
   const a = await hmac('cmp', String(password || '')), b = await hmac('cmp', env.ADMIN_PASSWORD);
-  const userOk = String(username || '').trim().toLowerCase() === adminUser(env);
+  // a missing name is accepted: an admin page still cached from before the
+  // name field existed only sends the password, and the password is the secret
+  const userOk = username === undefined || username === null || String(username).trim().toLowerCase() === adminUser(env);
   if (!safeEqual(a, b) || !userOk) {
     await new Promise(r => setTimeout(r, 600));   // slows guessing down
     throw new HttpError(401, 'Admin-Name oder Passwort falsch');

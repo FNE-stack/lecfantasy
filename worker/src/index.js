@@ -82,6 +82,9 @@ async function route(request, env, ctx) {
     return { ok: true, token: await newSession(env, m.id), me: m };
   }
   if (p === '/api/login' && method === 'POST') {
+    if (String(body.name || '').trim().toLowerCase() === 'admin') {
+      throw new HttpError(409, 'Das ist der Admin-Zugang — deine Seite ist noch eine alte Version. Bitte neu laden (Strg+F5, am Handy Tab schließen und neu öffnen) oder direkt …/#/admin öffnen.');
+    }
     const { data: league } = await readLeague(env);
     const m = (league.managers || []).find(x => nameKey(x.name) === nameKey(body.name));
     if (!m || !(await verifyMember(env, m.id, String(body.password || '')))) {
