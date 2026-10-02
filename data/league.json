@@ -57,7 +57,7 @@
     ],
     "snake": true,
     "picks": [],
-    "status": "lobby",
+    "status": "live",
     "completed": false,
     "timer": {
       "mode": "auto",
@@ -65,7 +65,8 @@
     },
     "scheduledAt": null,
     "reminderMinutes": 60,
-    "autoStart": false
+    "autoStart": false,
+    "startedAt": "2026-10-02T16:18:22.494Z"
   },
   "adjustments": [],
   "swaps": [],
