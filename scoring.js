@@ -338,15 +338,15 @@
   //   perWeek        free-agent pickups per manager per calendar week (0 = no limit)
   //   adminApproval  admin must confirm trades the two managers agreed on
   //   equalCount     same number of players on both sides
-  //   rosterRules    after a transfer every roster must still cover each
-  //                  starting role and respect the per-team limit
+  //   rosterRules    after a transfer every starting role stays covered
+  //   teamLimit      after a transfer nobody is over roster.maxPerTeam
   //   mode           'windows' = only inside windows[] (the LEC transfer
   //                  periods the admin enters) · 'always'
   //   windows        [{from, to, label}] ISO dates, inclusive
   // }
   function transferRules(league) {
     return Object.assign({ enabled: false, freeAgents: false, perWeek: 1, adminApproval: false,
-      equalCount: true, rosterRules: true, mode: 'windows', windows: [] }, league.tradeRules || {});
+      equalCount: true, rosterRules: true, teamLimit: true, mode: 'windows', windows: [] }, league.tradeRules || {});
   }
 
   // {open, current, next} at time `now` (ISO). No window entered = closed.
@@ -363,7 +363,9 @@
 
   // Problems a roster would have (empty list = fine). Used for transfers:
   // every starting role covered, nobody over the per-team limit.
-  function rosterProblems(league, playerIndex, ids) {
+  // opts: { roles: true, teams: true } - which of the two checks to run
+  function rosterProblems(league, playerIndex, ids, opts) {
+    opts = Object.assign({ roles: true, teams: true }, opts || {});
     const out = [], roles = {}, teams = {};
     for (const id of ids) {
       const p = playerIndex.get(id);
@@ -371,9 +373,9 @@
       roles[p.role] = (roles[p.role] || 0) + 1;
       teams[p.team] = (teams[p.team] || 0) + 1;
     }
-    for (const r of (league.roster && league.roster.slots) || []) if (!roles[r]) out.push('keine ' + r + ' mehr');
+    if (opts.roles) for (const r of (league.roster && league.roster.slots) || []) if (!roles[r]) out.push('keine ' + r + ' mehr');
     const max = (league.roster && league.roster.maxPerTeam) || 99;
-    for (const [t, n] of Object.entries(teams)) if (n > max) out.push(n + ' von ' + t + ' (max. ' + max + ')');
+    if (opts.teams) for (const [t, n] of Object.entries(teams)) if (n > max) out.push(n + ' von ' + t + ' (max. ' + max + ')');
     return out;
   }
 

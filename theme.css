@@ -148,6 +148,7 @@ tr.me td:first-child{box-shadow:inset 3px 0 0 var(--gold)}
   border:1px solid var(--line-2);background:transparent;color:var(--muted)}
 .chip:hover{color:var(--text)}
 .chip.on{background:var(--text);border-color:var(--text);color:#000}
+input[type=checkbox],input[type=radio]{accent-color:var(--gold);width:16px;height:16px}
 input,select{font:14px var(--font);background:var(--bg-2);border:1px solid var(--line-2);
   color:var(--text);border-radius:var(--r);padding:10px 12px}
 input:focus,select:focus{outline:none;border-color:var(--teal)}

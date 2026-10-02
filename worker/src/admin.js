@@ -162,7 +162,7 @@ const LEAGUE_OPS = {
     const per = Number(r.perWeek ?? 1);
     need(Number.isInteger(per) && per >= 0 && per <= 20, 'Free Agents pro Woche: 0–20 (0 = unbegrenzt)');
     l.tradeRules = { enabled: !!r.enabled, freeAgents: !!r.freeAgents, perWeek: per, adminApproval: !!r.adminApproval,
-      equalCount: r.equalCount !== false, rosterRules: r.rosterRules !== false, mode: r.mode || 'windows',
+      equalCount: r.equalCount !== false, rosterRules: r.rosterRules !== false, teamLimit: r.teamLimit !== false, mode: r.mode || 'windows',
       windows: windows.sort((a, b) => a.from.localeCompare(b.from)) };
     return `Transfers: Trades ${r.enabled ? 'an' : 'aus'}, Free Agents ${r.freeAgents ? 'an' : 'aus'}, `
       + (l.tradeRules.mode === 'always' ? 'immer offen' : `${windows.length} Fenster`);

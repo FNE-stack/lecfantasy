@@ -182,6 +182,7 @@ tests.transfer_window_and_roster = () => {
   const pi = new Map([['a', { role: 'TOP', team: 'G2' }], ['b', { role: 'JNG', team: 'G2' }], ['c', { role: 'MID', team: 'G2' }], ['d', { role: 'BOT', team: 'FNC' }], ['e', { role: 'SUP', team: 'FNC' }]]);
   const probs = S.rosterProblems(L, pi, ['a', 'b', 'c', 'd']);
   assert(probs.some(x => /SUP/.test(x)) && probs.some(x => /3 von G2/.test(x)), JSON.stringify(probs));
+  assert(S.rosterProblems(L, pi, ['a', 'b', 'c', 'd'], { teams: false }).every(x => !/von/.test(x)), 'teams switch');
   assert(S.weekKey('2027-01-13T22:00:00Z') === '2027-01-11' && S.weekKey('2027-01-17T23:00:00Z') === '2027-01-11', 'Mon-Sun weeks');
   return 'windows (before/inside/between/always), roster problems, week keys';
 };

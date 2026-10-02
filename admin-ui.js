@@ -171,7 +171,7 @@ function viewSettings() {
   const tr = window.LECScoring.transferRules(L), win = window.LECScoring.transferWindow(L);
   const t = L.draft.timer || { mode: 'off', seconds: 90 };
   const num = (id, v, step) => `<input id="${id}" type="number" step="${step || 'any'}" value="${v}" style="width:90px">`;
-  const chk = (id, on, label) => `<label style="display:flex;gap:8px;align-items:center;margin:0"><input type="checkbox" id="${id}" style="width:auto" ${on ? 'checked' : ''}> ${label}</label>`;
+  const chk = (id, on, label) => `<label style="display:flex;gap:10px;align-items:flex-start;margin:0;color:var(--text)"><input type="checkbox" id="${id}" style="width:auto;margin-top:3px" ${on ? 'checked' : ''}><span>${label}</span></label>`;
   const d = iso => new Date(iso).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' });
   const now = new Date().toISOString();
   const winRows = (tr.windows || []).map((w, i) => {
@@ -189,7 +189,8 @@ function viewSettings() {
         ${chk('trOn', tr.enabled, '<b>Trades</b> zwischen Managern — die zwei Beteiligten einigen sich, fertig')}
         ${chk('trFa', tr.freeAgents, '<b>Free Agents</b> — Spieler, die niemand gedraftet hat, gegen einen eigenen tauschen')}
         <label style="margin:0">Free-Agent-Wechsel pro Manager und Woche (Mo–So, 0 = unbegrenzt) ${num('trPer', tr.perWeek, 1)}</label>
-        ${chk('trRos', tr.rosterRules, 'Kaderregeln auch bei Transfers (jede Rolle bleibt besetzt, max. ' + r.maxPerTeam + ' pro Team)')}
+        ${chk('trRos', tr.rosterRules, 'Jede Rolle muss nach einem Transfer besetzt bleiben')}
+        ${chk('trTeam', tr.teamLimit, 'Team-Limit (max. ' + r.maxPerTeam + ' pro LEC-Team) gilt auch bei Transfers <span class="muted" style="font-size:12px">— blockiert in der Praxis viele Trades</span>')}
         ${chk('trEq', tr.equalCount, 'Trades nur mit gleich vielen Spielern auf beiden Seiten')}
         ${chk('trAdm', tr.adminApproval, 'Admin muss Trades zusätzlich freigeben')}
         <div class="row" style="flex-wrap:wrap;gap:14px;margin-top:4px">
@@ -369,7 +370,7 @@ async function act(a, d, el) {
       const g = id => document.getElementById(id);
       const rules = a === 'trades' ? {
         enabled: g('trOn').checked, freeAgents: g('trFa').checked, perWeek: Math.max(0, parseInt(val('trPer'), 10) || 0),
-        rosterRules: g('trRos').checked, equalCount: g('trEq').checked, adminApproval: g('trAdm').checked,
+        rosterRules: g('trRos').checked, teamLimit: g('trTeam').checked, equalCount: g('trEq').checked, adminApproval: g('trAdm').checked,
         mode: (root.querySelector('input[name="trMode"]:checked') || {}).value || 'windows', windows: cur.windows,
       } : Object.assign({}, cur);
       if (a === 'winAdd') {

@@ -124,11 +124,12 @@ function windowGuard(league, rules) {
 // Only blocks problems a transfer CREATES: a roster that was already off
 // (an emergency pick in the draft) must still be able to trade its way back.
 function rosterGuard(league, players, rules, rostersAfter) {
-  if (!rules.rosterRules) return;
+  const opts = { roles: !!rules.rosterRules, teams: !!rules.teamLimit };
+  if (!opts.roles && !opts.teams) return;
   const now = S.rosters(league);
   for (const [mgr, ids] of Object.entries(rostersAfter)) {
-    const before = new Set(S.rosterProblems(league, players, now[mgr] || []));
-    const added = S.rosterProblems(league, players, ids).filter(x => !before.has(x));
+    const before = new Set(S.rosterProblems(league, players, now[mgr] || [], opts));
+    const added = S.rosterProblems(league, players, ids, opts).filter(x => !before.has(x));
     if (added.length) throw new HttpError(422, `Danach hätte ${mgrName(league, mgr)}: ${added.join(', ')}.`);
   }
 }

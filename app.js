@@ -482,7 +482,7 @@ function viewTransfers() {
       ${tx.partner ? `<div class="grid g-2" style="margin-top:14px;gap:14px"><div><div class="eyebrow" style="margin-bottom:6px">Du gibst</div>${pick(mine, 'give')}</div>
         <div><div class="eyebrow" style="margin-bottom:6px">Du bekommst</div>${pick(theirs, 'get')}</div></div>
         <div class="row" style="margin-top:14px;flex-wrap:wrap"><button class="btn gold" data-tx="propose" ${open && tx.give.length && tx.get.length ? '' : 'disabled'}>Angebot schicken</button>
-        <span class="muted" style="font-size:12px">${tr.equalCount ? 'Gleich viele Spieler auf beiden Seiten. ' : ''}${tr.rosterRules ? 'Jede Rolle muss danach besetzt bleiben.' : ''}</span></div>` : ''}
+        <span class="muted" style="font-size:12px">${tr.equalCount ? 'Gleich viele Spieler auf beiden Seiten. ' : ''}${tr.rosterRules ? 'Jede Rolle muss danach besetzt bleiben. ' : ''}${tr.teamLimit ? `Max. ${L().roster.maxPerTeam} pro LEC-Team.` : ''}</span></div>` : ''}
     </div>`);
   }
 
@@ -628,7 +628,7 @@ function viewRules() {
       return `<div class="card-b muted" style="line-height:1.7">${tr.enabled ? '<b style="color:var(--text)">Trades:</b> zwei Manager einigen sich, fertig' + (tr.adminApproval ? ' (plus Freigabe durch den Admin)' : '') + '.<br>' : 'Keine Trades.<br>'}
         ${tr.freeAgents ? `<b style="color:var(--text)">Free Agents:</b> ungedraftete Spieler gegen eigene tauschen${tr.perWeek ? `, ${tr.perWeek}× pro Woche` : ''}.<br>` : ''}
         ${tr.mode === 'always' ? 'Jederzeit möglich.' : `Nur in Transferfenstern${w.open ? ' — gerade offen.' : w.next ? ' — nächstes ab ' + new Date(w.next.from).toLocaleDateString('de-DE') + '.' : '.'}`}
-        ${tr.rosterRules ? '<br>Nach jedem Transfer muss jede Rolle besetzt bleiben.' : ''} Punkte zählen ab dem Transfer.</div>`; })())}
+        ${tr.rosterRules ? '<br>Nach jedem Transfer muss jede Rolle besetzt bleiben.' : ''}${tr.teamLimit ? ` Max. ${lg.roster.maxPerTeam} Spieler pro LEC-Team.` : ''} Punkte zählen ab dem Transfer.</div>`; })())}
     ${card('Daten', `<div class="card-b muted" style="line-height:1.7">Stats kommen von der offiziellen lolesports-API, automatisch <b style="color:var(--text)">2× täglich</b>.
       Sieger pro Spiel werden aus den offiziellen Serienergebnissen abgeleitet. Passwort vergessen? Dem Admin Bescheid geben.</div>`)}
   </div>`;
