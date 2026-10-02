@@ -23,8 +23,18 @@ Admin-Tabs; ausgeloggt keine Mitgliedsdaten sichtbar.
    Admin-Knopf „Stats jetzt aktualisieren" nicht (403). Der Zeitplan läuft trotzdem.
 3. **Privates Daten-Repo** (`DATA_REPO`) — siehe README. Bis dahin ist league.json
    im öffentlichen Repo lesbar.
-4. **Pick-Timer und Trades: Regeln festlegen.** Gerüst ist fertig und getestet,
-   beides standardmäßig aus (Timer `off`, `tradeRules.enabled=false`).
+4. **Transferfenster eintragen** (Admin → Einstellungen → Transferfenster), sobald
+   das LEC-Regelwerk 2027 die Zeiträume nennt. Ohne Fenster sind Transfers zu.
+
+## Abgesprochene Regeln (02.10.2026)
+
+- Pick-Timer **90 s, dann Auto-Pick** (Watchlist zuerst, sonst bester Verfügbarer).
+- **Trades:** nur die zwei Manager müssen zustimmen (Admin-Veto bleibt).
+- **Free Agents** (ungedraftete Spieler): 1 Wechsel pro Woche (Mo–So).
+- Alles nur **in Transferfenstern**, die Fabian einträgt (LEC-Regelwerk / Absprache).
+- Kaderregeln bei Transfers: Rollen bleiben besetzt **an**, Team-Limit **an** —
+  Letzteres blockiert in einer vollen Liga fast jeden 1:1-Trade (im QA-Draft gab
+  es keinen einzigen legalen). Bei Bedarf in den Einstellungen abschalten.
 
 ## Dateien
 
