@@ -25,11 +25,17 @@
       "id": "m65d261bb",
       "name": "QA Anna",
       "joined": "2026-10-02T08:16:56.996Z"
+    },
+    {
+      "id": "m81f26dd0",
+      "name": "QA Ben",
+      "joined": "2026-10-02T08:16:58.176Z"
     }
   ],
   "draft": {
     "order": [
-      "m65d261bb"
+      "m65d261bb",
+      "m81f26dd0"
     ],
     "snake": true,
     "picks": [],
