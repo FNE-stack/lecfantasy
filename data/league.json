@@ -26,17 +26,9 @@
     "perRole": 2
   },
   "standingsMode": "points",
-  "managers": [
-    {
-      "id": "mbdad399b",
-      "name": "QA Pick",
-      "joined": "2026-10-02T15:04:31.594Z"
-    }
-  ],
+  "managers": [],
   "draft": {
-    "order": [
-      "mbdad399b"
-    ],
+    "order": [],
     "snake": true,
     "picks": [],
     "status": "lobby",
