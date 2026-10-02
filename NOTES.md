@@ -79,6 +79,9 @@ Admin-Tabs; ausgeloggt keine Mitgliedsdaten sichtbar.
 - **Live-Feed hängt Minuten hinterher**; `startingTime` zu nah an jetzt = HTTP 400,
   ganz ohne `startingTime` = erster Frame des Spiels (0 Gold). `gameFrame` tastet
   sich zurück.
+- **Vor jedem Push mit Seiten-Änderungen `python scripts/stamp.py`.** GitHub Pages
+  cacht 10 min; ohne neuen `?v=` läuft beim Nutzer altes app.js gegen den neuen
+  Worker (so scheiterte einmal der Admin-Login direkt nach einer Änderung).
 - **Browser-Tests:** `addInitScript` läuft bei jedem neuen Dokument wieder — für
   „ausgeloggt"-Checks eine neue Seite ohne Init-Script nehmen.
 
