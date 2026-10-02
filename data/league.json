@@ -20,26 +20,141 @@
     "maxPerTeam": 2
   },
   "standingsMode": "points",
-  "managers": [],
+  "managers": [
+    {
+      "id": "m65d261bb",
+      "name": "QA Anna",
+      "joined": "2026-10-02T08:16:56.996Z"
+    },
+    {
+      "id": "m81f26dd0",
+      "name": "QA Ben",
+      "joined": "2026-10-02T08:16:58.176Z"
+    }
+  ],
   "draft": {
-    "order": [],
+    "order": [
+      "m65d261bb",
+      "m81f26dd0"
+    ],
     "snake": true,
-    "picks": [],
-    "status": "lobby",
-    "completed": false,
+    "picks": [
+      {
+        "manager": "m65d261bb",
+        "player": "103536968833612789",
+        "at": "2026-10-02T08:17:01.508Z",
+        "by": "admin"
+      },
+      {
+        "manager": "m81f26dd0",
+        "player": "109461265532592848",
+        "at": "2026-10-02T08:17:02.871Z",
+        "by": "admin"
+      },
+      {
+        "manager": "m81f26dd0",
+        "player": "105504920899018806",
+        "at": "2026-10-02T08:17:04.211Z",
+        "by": "admin"
+      },
+      {
+        "manager": "m65d261bb",
+        "player": "98767975961872793",
+        "at": "2026-10-02T08:17:05.797Z",
+        "by": "admin"
+      },
+      {
+        "manager": "m65d261bb",
+        "player": "103877629120745120",
+        "at": "2026-10-02T08:17:07.434Z",
+        "by": "admin"
+      },
+      {
+        "manager": "m81f26dd0",
+        "player": "105537190986692036",
+        "at": "2026-10-02T08:17:08.923Z",
+        "by": "admin"
+      },
+      {
+        "manager": "m81f26dd0",
+        "player": "107128052280762804",
+        "at": "2026-10-02T08:17:10.310Z",
+        "by": "admin"
+      },
+      {
+        "manager": "m65d261bb",
+        "player": "98767975968177297",
+        "at": "2026-10-02T08:17:11.948Z",
+        "by": "admin"
+      },
+      {
+        "manager": "m65d261bb",
+        "player": "103495716771322725",
+        "at": "2026-10-02T08:17:13.482Z",
+        "by": "admin"
+      },
+      {
+        "manager": "m81f26dd0",
+        "player": "110350224593953686",
+        "at": "2026-10-02T08:17:14.884Z",
+        "by": "admin"
+      },
+      {
+        "manager": "m81f26dd0",
+        "player": "102787200059605684",
+        "at": "2026-10-02T08:17:16.568Z",
+        "by": "admin"
+      },
+      {
+        "manager": "m65d261bb",
+        "player": "106625308523122120",
+        "at": "2026-10-02T08:17:17.964Z",
+        "by": "admin"
+      }
+    ],
+    "status": "done",
+    "completed": true,
     "timer": {
       "mode": "off",
       "seconds": 90
-    }
+    },
+    "startedAt": "2026-10-02T08:16:59.613Z"
   },
   "adjustments": [],
-  "swaps": [],
-  "trades": [],
+  "swaps": [
+    {
+      "manager": "m65d261bb",
+      "out": "109461265532592848",
+      "in": "103461966879623046",
+      "at": "2026-10-02T08:21:28.061Z",
+      "by": "self"
+    }
+  ],
+  "trades": [
+    {
+      "id": "t706e0ad2",
+      "from": "m65d261bb",
+      "to": "m81f26dd0",
+      "give": [
+        "103536968833612789"
+      ],
+      "get": [
+        "109461265532592848"
+      ],
+      "status": "accepted",
+      "at": "2026-10-02T08:21:19.537Z",
+      "decidedAt": "2026-10-02T08:21:24.014Z"
+    }
+  ],
   "tradeRules": {
-    "enabled": false,
+    "enabled": true,
+    "freeAgents": true,
+    "perWeek": 1,
     "adminApproval": false,
     "equalCount": true,
-    "deadline": null
+    "rosterRules": false,
+    "mode": "always",
+    "windows": []
   },
   "announcement": null
 }
