@@ -60,9 +60,9 @@
     "adminApproval": false,
     "equalCount": true,
     "rosterRules": true,
-    "teamLimit": false,
+    "teamLimit": true,
     "autoWindows": true,
-    "mode": "always",
+    "mode": "windows",
     "windows": []
   },
   "announcement": null,
