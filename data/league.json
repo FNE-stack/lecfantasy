@@ -271,7 +271,16 @@
     "startedAt": "2026-10-02T12:01:36.964Z"
   },
   "adjustments": [],
-  "swaps": [],
+  "swaps": [
+    {
+      "manager": "m9212e962",
+      "out": "104287359934240404",
+      "in": "105501717406803640",
+      "at": "2026-10-02T12:06:12.630Z",
+      "by": "waiver",
+      "bid": 35
+    }
+  ],
   "trades": [],
   "tradeRules": {
     "faMode": "waiver",
@@ -296,6 +305,11 @@
   },
   "announcement": null,
   "waiverRuns": [
+    {
+      "at": "2026-10-02T12:06:12.630Z",
+      "awarded": 1,
+      "failed": 2
+    },
     {
       "at": "2026-10-02T10:07:46.538Z",
       "awarded": 2,
