@@ -26,9 +26,17 @@
     "perRole": 2
   },
   "standingsMode": "points",
-  "managers": [],
+  "managers": [
+    {
+      "id": "m38c0f470",
+      "name": "QA Pick",
+      "joined": "2026-10-02T15:03:12.586Z"
+    }
+  ],
   "draft": {
-    "order": [],
+    "order": [
+      "m38c0f470"
+    ],
     "snake": true,
     "picks": [],
     "status": "lobby",
