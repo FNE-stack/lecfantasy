@@ -461,6 +461,65 @@
         "rank": 22,
         "pts": 619.62
       }
+    },
+    "lec_split_3_2026": {
+      "split": "lec_split_3_2026",
+      "at": "2026-10-02T14:09:20.401Z",
+      "table": [
+        {
+          "manager": "ma5b73ef0",
+          "name": "Bot Alpha",
+          "players": 4490.06,
+          "pickem": 0,
+          "pts": 4490.06
+        },
+        {
+          "manager": "m01382dea",
+          "name": "Bot Charlie",
+          "players": 4309.63,
+          "pickem": 0,
+          "pts": 4309.63
+        },
+        {
+          "manager": "ma475e6b3",
+          "name": "Bot Bravo",
+          "players": 4201.48,
+          "pickem": 0,
+          "pts": 4201.48
+        },
+        {
+          "manager": "mb2718cb2",
+          "name": "Bot Delta",
+          "players": 4005.92,
+          "pickem": 0,
+          "pts": 4005.92
+        }
+      ],
+      "pickemKing": null,
+      "bestWeek": {
+        "manager": "mb2718cb2",
+        "name": "Bot Delta",
+        "week": "Week 1",
+        "pts": 917.72
+      },
+      "steal": {
+        "player": "105504920899018806",
+        "playerName": "Jojopyun",
+        "manager": "ma5b73ef0",
+        "name": "Bot Alpha",
+        "pick": 9,
+        "rank": 3,
+        "pts": 924.64
+      },
+      "bust": {
+        "player": "106625308523122120",
+        "playerName": "Busio",
+        "manager": "mb2718cb2",
+        "name": "Bot Delta",
+        "pick": 12,
+        "rank": 23,
+        "pts": 577.28
+      }
     }
   }
 }
