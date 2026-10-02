@@ -28,7 +28,7 @@
     "status": "lobby",
     "completed": false,
     "timer": {
-      "mode": "off",
+      "mode": "auto",
       "seconds": 90
     }
   },
