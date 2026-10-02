@@ -104,10 +104,16 @@
         "player": "102787200059605684",
         "at": "2026-10-02T08:17:16.568Z",
         "by": "admin"
+      },
+      {
+        "manager": "m65d261bb",
+        "player": "106625308523122120",
+        "at": "2026-10-02T08:17:17.964Z",
+        "by": "admin"
       }
     ],
-    "status": "live",
-    "completed": false,
+    "status": "done",
+    "completed": true,
     "timer": {
       "mode": "off",
       "seconds": 90
