@@ -21,8 +21,9 @@
       "BOT",
       "SUP"
     ],
-    "bench": 1,
-    "maxPerTeam": 2
+    "bench": 0,
+    "maxPerTeam": 3,
+    "perRole": 2
   },
   "standingsMode": "points",
   "managers": [],
