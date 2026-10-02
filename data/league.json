@@ -39,12 +39,13 @@
     ],
     "snake": true,
     "picks": [],
-    "status": "lobby",
+    "status": "live",
     "completed": false,
     "timer": {
       "mode": "off",
       "seconds": 90
-    }
+    },
+    "startedAt": "2026-10-02T08:16:59.613Z"
   },
   "adjustments": [],
   "swaps": [],
