@@ -269,10 +269,28 @@
         "manager": "mad54e760",
         "player": "99322214618656216",
         "at": "2026-10-02T22:07:52.190Z"
+      },
+      {
+        "manager": "m1fe09710",
+        "player": "99322214629661297",
+        "at": "2026-10-02T22:07:53.342Z",
+        "by": "bot"
+      },
+      {
+        "manager": "m6d5760d0",
+        "player": "107156544177574787",
+        "at": "2026-10-02T22:07:53.342Z",
+        "by": "bot"
+      },
+      {
+        "manager": "mb6bd4d83",
+        "player": "100356590519370319",
+        "at": "2026-10-02T22:07:53.342Z",
+        "by": "bot"
       }
     ],
-    "status": "live",
-    "completed": false,
+    "status": "done",
+    "completed": true,
     "timer": {
       "mode": "auto",
       "seconds": 30
