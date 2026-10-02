@@ -187,6 +187,21 @@ tests.transfer_window_and_roster = () => {
   return 'windows (before/inside/between/always), roster problems, week keys';
 };
 
+tests.bonus_and_berlin_time = () => {
+  const s = { kill: 3, death: -1, assist: 1.5, cs10: 0, win: 2, bonus: { enabled: true, threshold: 10, points: 2 } };
+  assert(S.gamePoints({ k: 10, d: 0, a: 0 }, s) === 32, '10 kills -> +2');
+  assert(S.gamePoints({ k: 0, d: 0, a: 10 }, s) === 17, '10 assists -> +2');
+  assert(S.gamePoints({ k: 9, d: 0, a: 9 }, s) === 40.5, '9/9 -> no bonus');
+  s.bonus.enabled = false;
+  assert(S.gamePoints({ k: 10, d: 0, a: 0 }, s) === 30, 'bonus off');
+  const L = { tradeRules: { waiver: { days: [2], time: '03:00' } } };
+  // Tuesday 03:00 German time: 01:00 UTC in summer, 02:00 UTC in winter
+  assert(new Date(S.nextWaiverRun(L, Date.parse('2026-10-02T10:00:00Z'))).toISOString() === '2026-10-06T01:00:00.000Z', 'summer time');
+  assert(new Date(S.nextWaiverRun(L, Date.parse('2026-10-28T10:00:00Z'))).toISOString() === '2026-11-03T02:00:00.000Z', 'winter time');
+  assert(new Date(S.lastWaiverSlot(L, Date.parse('2026-11-04T10:00:00Z'))).toISOString() === '2026-11-03T02:00:00.000Z', 'last slot');
+  return 'bonus on/off and threshold; Tue 03:00 Berlin = 01:00Z summer / 02:00Z winter';
+};
+
 function assert(c, m) { if (!c) throw new Error(m); }
 let failed = 0;
 for (const [n, t] of Object.entries(tests)) {

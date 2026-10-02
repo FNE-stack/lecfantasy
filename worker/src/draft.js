@@ -6,7 +6,7 @@
 // writeLeague's mutate callback, i.e. re-checked on the freshest league on
 // every retry - two simultaneous picks can never both pass.
 // ═══════════════════════════════════════════════════════════════════════════
-import { S, HttpError, writeLeague, playerIndex, seasonPoints } from './store.js';
+import { S, HttpError, writeLeague, readLeagueFresh, playerIndex, seasonPoints, cfg } from './store.js';
 import { randomHex } from './auth.js';
 
 export const nameKey = n => String(n || '').trim().toLowerCase().replace(/\s+/g, ' ');
@@ -138,6 +138,7 @@ function rosterGuard(league, players, rules, rostersAfter) {
 export async function tradeAction(env, me, body) {
   const action = body.action;
   const players = await playerIndex(env);
+  if (['claim', 'unclaim', 'claimMove'].includes(action)) return claimAction(env, me, body, players);
   let out = null;
   await writeLeague(env, league => {
     const rules = S.transferRules(league);
@@ -148,6 +149,7 @@ export async function tradeAction(env, me, body) {
 
     if (action === 'freeAgent') {
       if (!rules.freeAgents) throw new HttpError(403, 'Free Agents sind in dieser Liga nicht erlaubt.');
+      if (rules.faMode === 'waiver') throw new HttpError(409, 'Free Agents laufen über Waiver — stell einen Anspruch, er wird beim nächsten Waiver-Lauf entschieden.');
       windowGuard(league, rules);
       const own = S.ownership(league);
       if (!ros[me] || !ros[me].includes(body.out)) throw new HttpError(400, 'Du kannst nur einen eigenen Spieler abgeben.');
@@ -211,5 +213,138 @@ export async function tradeAction(env, me, body) {
   }, l => action === 'freeAgent'
     ? `transfer: ${mgrName(l, me)} holt ${(players.get(body.in) || {}).name || body.in} für ${(players.get(body.out) || {}).name || body.out}`
     : `trade: ${action} ${body.id || (out && out.id) || ''}`.trim());
+  return out;
+}
+
+// ── waivers ───────────────────────────────────────────────────────────────
+// Claims are private (KV claims:<manager>, ordered = that manager's own
+// preference). A run resolves all claims at once in priority order: the
+// manager with priority gets their first still-valid claim, then the order
+// starts again from the top - the usual waiver procedure. Everything that was
+// awarded lands in ONE league write; afterwards all claims are cleared.
+const MAX_CLAIMS = 10;
+export async function claimsOf(env, id) { return (await env.LEAGUE.get(`claims:${id}`, 'json')) || []; }
+
+async function claimAction(env, me, body, players) {
+  const { data: league } = await readLeagueFresh(env);
+  const rules = S.transferRules(league);
+  let list = await claimsOf(env, me);
+  if (body.action === 'claim') {
+    if (!rules.freeAgents) throw new HttpError(403, 'Free Agents sind in dieser Liga nicht erlaubt.');
+    if (rules.faMode !== 'waiver') throw new HttpError(409, 'Free Agents laufen hier sofort — einfach holen.');
+    windowGuard(league, rules);
+    const mine = S.rosters(league)[me] || [];
+    if (!mine.includes(body.out)) throw new HttpError(400, 'Du kannst nur einen eigenen Spieler abgeben.');
+    if (!players.has(body.in)) throw new HttpError(400, 'Unbekannter Spieler.');
+    if (S.ownership(league).has(body.in)) throw new HttpError(409, 'Der Spieler ist nicht frei.');
+    if (list.some(c => c.in === body.in && c.out === body.out)) throw new HttpError(409, 'Den Anspruch hast du schon.');
+    if (list.length >= MAX_CLAIMS) throw new HttpError(409, `Höchstens ${MAX_CLAIMS} Ansprüche gleichzeitig.`);
+    list.push({ in: body.in, out: body.out, at: new Date().toISOString() });
+  } else if (body.action === 'unclaim') {
+    list = list.filter((_, i) => i !== Number(body.index));
+  } else if (body.action === 'claimMove') {
+    const i = Number(body.index), j = i + (Number(body.dir) < 0 ? -1 : 1);
+    if (list[i] && list[j]) [list[i], list[j]] = [list[j], list[i]];
+  }
+  await env.LEAGUE.put(`claims:${me}`, JSON.stringify(list));
+  return { claims: list };
+}
+
+async function statsForStandings(env) {
+  const base = cfg(env).pages;
+  const [st, ov] = await Promise.all([
+    fetch(`${base}/data/stats.json`, { cf: { cacheTtl: 300, cacheEverything: true } }).then(r => r.json()).catch(() => ({ games: [] })),
+    fetch(`${base}/data/overrides.json`, { cf: { cacheTtl: 60, cacheEverything: true } }).then(r => r.json()).catch(() => ({ rows: [] })),
+  ]);
+  return { games: S.applyOverrides(st.games || [], ov) };
+}
+
+// opts.force: admin "run now" - ignores the window check
+export async function runWaivers(env, opts) {
+  opts = opts || {};
+  const { data: league0 } = await readLeagueFresh(env);
+  const rules = S.transferRules(league0);
+  if (!rules.freeAgents || rules.faMode !== 'waiver') return { skipped: 'Waiver sind nicht aktiv.' };
+  if (S.draftStatus(league0) !== 'done') return { skipped: 'Erst nach dem Draft.' };
+  if (!opts.force && !S.transferWindow(league0).open) return { skipped: 'Transferfenster ist zu.' };
+  const ids = (league0.managers || []).map(m => m.id);
+  const claims = {};
+  for (const id of ids) claims[id] = await claimsOf(env, id);
+  const total = Object.values(claims).reduce((n, l) => n + l.length, 0);
+  if (!total) return { awarded: [], failed: [], skipped: 'Keine Ansprüche.' };
+  const players = await playerIndex(env);
+  const stats = await statsForStandings(env);
+  let result = null;
+  await writeLeague(env, league => {
+    const now = new Date().toISOString();
+    const order = S.waiverOrder(league, stats, players);
+    const queue = Object.fromEntries(ids.map(id => [id, (claims[id] || []).slice()]));
+    const awarded = [], failed = [];
+    const wk = S.weekKey(now);
+    league.swaps = league.swaps || [];
+    const usedThisWeek = id => league.swaps.filter(x => x.manager === id && (x.by === 'self' || x.by === 'waiver') && x.at && S.weekKey(x.at) === wk).length;
+    const opts2 = { roles: !!rules.rosterRules, teams: !!rules.teamLimit };
+    let progress = true;
+    while (progress) {
+      progress = false;
+      for (const id of order) {
+        const q = queue[id] || [];
+        while (q.length) {
+          const c = q.shift();
+          const own = S.ownership(league), ros = S.rosters(league)[id] || [];
+          let why = null;
+          if (!ros.includes(c.out)) why = 'abzugebender Spieler nicht mehr im Kader';
+          else if (own.has(c.in)) why = 'Spieler schon vergeben';
+          else if (!players.has(c.in)) why = 'Spieler nicht mehr im Pool';
+          else if (rules.perWeek > 0 && usedThisWeek(id) >= rules.perWeek) why = 'Wochenlimit erreicht';
+          else if (opts2.roles || opts2.teams) {
+            const before = new Set(S.rosterProblems(league, players, ros, opts2));
+            const added = S.rosterProblems(league, players, ros.filter(x => x !== c.out).concat(c.in), opts2).filter(x => !before.has(x));
+            if (added.length) why = added.join(', ');
+          }
+          if (why) { failed.push({ manager: id, in: c.in, out: c.out, why }); continue; }
+          league.swaps.push({ manager: id, out: c.out, in: c.in, at: now, by: 'waiver' });
+          awarded.push({ manager: id, in: c.in, out: c.out });
+          if (S.waiverRules(league).order === 'rolling') {
+            const o = S.waiverOrder(league, stats, players).filter(x => x !== id);
+            league.waiverOrder = o.concat(id);
+            order.splice(order.indexOf(id), 1); order.push(id);
+          }
+          progress = true;
+          break;   // one award, then start again from the top
+        }
+        if (progress) break;
+      }
+    }
+    league.waiverRuns = [{ at: now, awarded: awarded.length, failed: failed.length }].concat(league.waiverRuns || []).slice(0, 20);
+    result = { awarded, failed };
+    return league;
+  }, l => `waiver: ${result.awarded.length} Wechsel` + (result.awarded.length ? ' — ' + result.awarded.map(a => `${mgrName(l, a.manager)} holt ${(players.get(a.in) || {}).name || a.in}`).join(', ') : ''));
+  for (const id of ids) await env.LEAGUE.delete(`claims:${id}`);
+  return result;
+}
+
+// ── draft appointment ─────────────────────────────────────────────────────
+//   draft.scheduledAt (ISO) · draft.reminderMinutes (default 60, 0 = none)
+//   draft.autoStart (bool): lobby -> live at scheduledAt
+// Called by the cron every minute. Returns what happened for notifications.
+export async function draftSchedule(env, league) {
+  const d = league.draft || {};
+  if (S.draftStatus(league) !== 'lobby' || !d.scheduledAt) return null;
+  const at = Date.parse(d.scheduledAt), now = Date.now();
+  const remind = (d.reminderMinutes ?? 60) * 60000;
+  const out = {};
+  if (remind > 0 && now >= at - remind && now < at) {
+    const key = 'remind:' + d.scheduledAt;
+    if (!(await env.LEAGUE.get(key))) { await env.LEAGUE.put(key, '1', { expirationTtl: 14 * 86400 }); out.remind = true; }
+  }
+  if (d.autoStart && now >= at && (league.draft.order || []).length >= 2) {
+    const r = await writeLeague(env, l => {
+      if (S.draftStatus(l) !== 'lobby') return null;
+      l.draft.status = 'live'; l.draft.completed = false; l.draft.startedAt = new Date().toISOString();
+      return l;
+    }, 'draft: automatisch gestartet (Termin)');
+    if (r.changed) out.started = r.league;
+  }
   return out;
 }

@@ -31,6 +31,9 @@ def game_points(g, s):
         + g.get("a", 0) * s["assist"] + g.get("cs", 0) * s.get("cs10", 0)
     if g.get("win"):
         p += s["win"]
+    b = s.get("bonus") or {}
+    if b.get("enabled") and (g.get("k", 0) >= b["threshold"] or g.get("a", 0) >= b["threshold"]):
+        p += b["points"]
     return round(p, 2)
 
 

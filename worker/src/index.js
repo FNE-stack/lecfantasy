@@ -14,7 +14,7 @@
 import { S, HttpError, readLeague, playerIndex } from './store.js';
 import { setMemberPassword, verifyMember, newSession, sessionManager, endSession, adminLogin, isAdmin,
          safeEqual } from './auth.js';
-import { addMember, makePick, autoPickIfDue, deadline, tradeAction, nameKey } from './draft.js';
+import { addMember, makePick, autoPickIfDue, deadline, tradeAction, nameKey, claimsOf, runWaivers, draftSchedule } from './draft.js';
 import { runOp, adminState, rotateInvite, health, runStats, broadcast, leagueHistory } from './admin.js';
 import { subscribe, unsubscribe, notify } from './push.js';
 
@@ -49,6 +49,8 @@ async function memberState(env, me) {
     league, me: { id: m.id, name: m.name },
     status: S.draftStatus(league), onTheClock: S.currentPicker(league), progress: S.draftProgress(league),
     deadline: deadline(league), serverTime: new Date().toISOString(),
+    claims: S.transferRules(league).faMode === 'waiver' ? await claimsOf(env, me) : [],
+    nextWaiver: S.transferRules(league).faMode === 'waiver' ? S.nextWaiverRun(league) : null,
     autoPicked: auto && auto.changed ? { manager: auto.manager, player: auto.picked } : null,
   };
 }
@@ -175,10 +177,46 @@ export default {
   // Backstop for the pick timer: even with nobody's page open, an overdue
   // auto-pick happens within a minute.
   async scheduled(event, env, ctx) {
+    let data;
+    try { data = (await readLeague(env)).data; } catch (e) { console.error('cron read', e && e.message); return; }
+    const all = (data.managers || []).map(m => m.id);
     try {
-      const { data } = await readLeague(env);
       const r = await autoPickIfDue(env, data);
       if (r && r.changed) pingNext(env, ctx, r.league);
-    } catch (e) { console.error('cron', e && e.message); }
+    } catch (e) { console.error('cron autopick', e && e.message); }
+    // draft appointment: reminder + optional auto-start
+    try {
+      const d = await draftSchedule(env, data);
+      if (d && d.remind) {
+        const t = new Date(data.draft.scheduledAt).toLocaleTimeString('de-DE', { timeZone: 'Europe/Berlin', hour: '2-digit', minute: '2-digit' });
+        await notify(env, all, { title: 'Draft heute', body: `${data.name || 'LEC Fantasy'}: der Draft startet um ${t} Uhr.`, url: './#/draft', tag: 'draft-remind' });
+      }
+      if (d && d.started) {
+        await notify(env, all, { title: 'Der Draft läuft!', body: 'Ab jetzt wird gepickt.', url: './#/draft', tag: 'draft-start' });
+        pingNext(env, ctx, d.started);
+      }
+    } catch (e) { console.error('cron schedule', e && e.message); }
+    // waivers at their scheduled times (German time); each slot runs once
+    try {
+      const slot = S.lastWaiverSlot(data);
+      const rules = S.transferRules(data);
+      if (slot && rules.freeAgents && rules.faMode === 'waiver') {
+        const last = Number(await env.LEAGUE.get('waiver:last')) || 0;
+        // first run after deploy: only pick up a slot from the last 15 minutes
+        if (slot > last && (last || Date.now() - slot < 15 * 60000)) {
+          const r = await runWaivers(env);
+          await env.LEAGUE.put('waiver:last', String(slot));
+          if (r && (r.awarded || r.failed)) {
+            const by = {};
+            for (const a of r.awarded) (by[a.manager] = by[a.manager] || []).push('✓ ' + a.in);
+            for (const f of r.failed) (by[f.manager] = by[f.manager] || []).push('✗ ' + f.in);
+            for (const id of Object.keys(by)) {
+              const won = r.awarded.filter(a => a.manager === id).length;
+              await notify(env, [id], { title: 'Waiver-Ergebnis', body: won ? `Du hast ${won} Spieler bekommen.` : 'Diesmal kein Spieler für dich.', url: './#/transfers', tag: 'waiver' });
+            }
+          }
+        }
+      }
+    } catch (e) { console.error('cron waiver', e && e.message); }
   },
 };

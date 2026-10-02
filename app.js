@@ -229,7 +229,7 @@ function viewHome() {
   const members = L().managers || [];
   const mode = ui.table || L().standingsMode || 'points';
   let h = announcement();
-  const heroSub = st === 'lobby' ? `Anmeldung läuft — ${members.length} Manager dabei. Der Admin startet den Draft.`
+  const heroSub = st === 'lobby' ? `Anmeldung läuft — ${members.length} Manager dabei. ${L().draft.scheduledAt ? `Draft am <b>${esc(dt(L().draft.scheduledAt))}</b> — noch <b id="countdown" data-deadline="${esc(L().draft.scheduledAt)}">…</b>.` : 'Der Admin startet den Draft.'}`
     : st === 'live' ? (clock ? `Draft läuft · Pick ${prog.done + 1}/${prog.total} — <b>${esc(mgrName(clock))}</b> ist am Zug.` : 'Draft läuft.')
     : 'Kader stehen. Punkte kommen automatisch nach jedem LEC-Spieltag.';
   h += `<section class="hero">
@@ -353,9 +353,9 @@ function viewDraft() {
   h += `<div class="clock ${mine ? 'mine' : ''}">
     <div style="min-width:0"><div class="eyebrow">${st === 'lobby' ? 'Anmeldung' : st === 'done' ? 'Draft abgeschlossen' : `Runde ${prog.round} · Pick ${prog.done + 1}/${prog.total}`}</div>
     <div class="who">${st === 'lobby' ? 'Gleich geht\'s los' : st === 'done' ? 'Kader stehen' : mine ? 'Du bist dran' : esc(mgrName(clock)) + ' ist dran'}</div>
-    <div class="meta">${st === 'lobby' ? `${(lg.managers || []).length} Manager dabei — der Admin startet den Draft. Stell dir schon mal deine ★ Watchlist zusammen.`
+    <div class="meta">${st === 'lobby' ? `${(lg.managers || []).length} Manager dabei — ${lg.draft.scheduledAt ? 'Draft am <b>' + esc(dt(lg.draft.scheduledAt)) + '</b>' + (lg.draft.autoStart ? ', startet automatisch' : '') : 'der Admin startet den Draft'}. Stell dir schon mal deine ★ Watchlist zusammen.`
       : last ? `Letzter Pick: <b>${esc(mgrName(last.manager))}</b> → ${esc(U.playerName(D, last.player))}${last.by === 'auto' ? ' <span class="pill">Auto</span>' : ''}` : ''}</div></div>
-    <div class="timer">${st === 'live' && dl ? `<div class="big-num" id="countdown" data-deadline="${esc(dl)}">—</div><div class="meta">${timer.mode === 'auto' ? 'bis Auto-Pick' : 'Zeit für den Pick'}</div>`
+    <div class="timer">${st === 'lobby' && lg.draft.scheduledAt ? `<div class="big-num" id="countdown" data-deadline="${esc(lg.draft.scheduledAt)}">—</div><div class="meta">bis zum Draft</div>` : st === 'live' && dl ? `<div class="big-num" id="countdown" data-deadline="${esc(dl)}">—</div><div class="meta">${timer.mode === 'auto' ? 'bis Auto-Pick' : 'Zeit für den Pick'}</div>`
       : st === 'live' && last && last.at ? `<div class="big-num" id="elapsed" data-since="${esc(last.at)}">0:00</div><div class="meta">seit letztem Pick</div>` : ''}</div>
   </div>`;
 
@@ -497,7 +497,8 @@ function viewTransfers() {
   // free agents
   if (tr.freeAgents && done) {
     const wk = S.weekKey(new Date().toISOString());
-    const used = (lg.swaps || []).filter(x => x.manager === me() && x.by === 'self' && x.at && S.weekKey(x.at) === wk).length;
+    const used = (lg.swaps || []).filter(x => x.manager === me() && (x.by === 'self' || x.by === 'waiver') && x.at && S.weekKey(x.at) === wk).length;
+    const waiver = tr.faMode === 'waiver';
     const left = tr.perWeek > 0 ? Math.max(0, tr.perWeek - used) : null;
     const q = tx.faQ.toLowerCase();
     const free = D.players.players.filter(p => !own.has(p.id) && (!q || [p.name, p.realName, p.team, p.role].join(' ').toLowerCase().includes(q)))
@@ -506,14 +507,27 @@ function viewTransfers() {
       <label>Abgeben</label><select id="faOut" style="width:100%"><option value="">— eigenen Spieler wählen —</option>${mine.map(id => `<option value="${esc(id)}" ${tx.faOut === id ? 'selected' : ''}>${esc((D.P.get(id) || {}).name || id)} · ${esc((D.P.get(id) || {}).team || '')} ${esc((D.P.get(id) || {}).role || '')}</option>`).join('')}</select>
       <label>Holen</label><input id="faQ" placeholder="Freie Spieler suchen …" value="${esc(tx.faQ)}" style="width:100%"></div>
       <table class="pool"><tbody>${free.map(p => `<tr><td class="fill">${pcell(p.id, { photo: true, real: true })}</td><td class="num pts">${fmt(season(p.id).pts)}</td>
-        <td class="num" style="width:1%"><button class="btn gold sm" data-tx="fa" data-id="${esc(p.id)}" ${open && tx.faOut && left !== 0 ? '' : 'disabled'}>Holen</button></td></tr>`).join('') || '<tr><td class="empty">kein freier Spieler gefunden</td></tr>'}</tbody></table>`,
-      left === null ? 'unbegrenzt' : `noch ${left} diese Woche`);
+        <td class="num" style="width:1%"><button class="btn gold sm" data-tx="${waiver ? 'claim' : 'fa'}" data-id="${esc(p.id)}" ${open && tx.faOut && (waiver || left !== 0) ? '' : 'disabled'}>${waiver ? 'Anspruch' : 'Holen'}</button></td></tr>`).join('') || '<tr><td class="empty">kein freier Spieler gefunden</td></tr>'}</tbody></table>`,
+      (waiver ? 'Waiver · ' : '') + (left === null ? 'unbegrenzt' : `noch ${left} diese Woche`));
+    if (waiver) {
+      const claims = (LIVE && LIVE.claims) || [];
+      const next = LIVE && LIVE.nextWaiver;
+      const order = S.waiverOrder(lg, D.stats, D.P);
+      const wr = S.waiverRules(lg);
+      h += card('Meine Waiver-Ansprüche', (claims.length ? '<div class="best">' + claims.map((c, i) => `<div class="r"><span class="rl" style="width:22px;color:var(--dim)">${i + 1}</span>
+          <span style="flex:1;min-width:0">${pcell(c.in, { photo: true })} <span class="dim" style="font-size:12px">für ${esc(U.playerName(D, c.out))}</span></span>
+          <button class="btn sm" data-tx="cmove" data-i="${i}" data-dir="-1" ${i ? '' : 'disabled'}>↑</button><button class="btn sm" data-tx="cmove" data-i="${i}" data-dir="1" ${i < claims.length - 1 ? '' : 'disabled'}>↓</button><button class="btn sm" data-tx="unclaim" data-i="${i}">✕</button></div>`).join('') + '</div>'
+          : '<div class="empty">Keine Ansprüche. Wähl oben „Abgeben", dann bei einem freien Spieler „Anspruch".</div>')
+        + `<div class="card-b muted" style="font-size:12px;border-top:1px solid var(--line);line-height:1.6">Nächster Waiver-Lauf: <b style="color:var(--text)">${next ? esc(dt(new Date(next).toISOString())) : '—'}</b>. Deine Liste wird von oben abgearbeitet; niemand sieht deine Ansprüche.<br>
+          Priorität (${wr.order === 'rolling' ? 'rotierend' : 'Tabellenletzter zuerst'}): ${order.map((id, i) => `<span style="color:${id === me() ? 'var(--gold-hi)' : 'inherit'}">${i + 1}. ${esc(mgrName(id))}</span>`).join(' · ')}</div>`,
+        `${claims.length} offen`);
+    }
   }
 
   // history (league-wide, newest first)
   const hist = [];
   for (const t of lg.trades || []) if (t.status === 'accepted') hist.push({ at: t.decidedAt || t.at, html: `<b>${esc(mgrName(t.from))}</b> ⇄ <b>${esc(mgrName(t.to))}</b>: ${t.give.map(id => esc(U.playerName(D, id))).join(', ')} ⇄ ${t.get.map(id => esc(U.playerName(D, id))).join(', ')}` });
-  for (const x of lg.swaps || []) hist.push({ at: x.at || '', html: `<b>${esc(mgrName(x.manager))}</b>: ${esc(U.playerName(D, x.out))} → ${esc(U.playerName(D, x.in))} ${x.by === 'self' ? '<span class="pill">Free Agent</span>' : '<span class="pill">Admin</span>'}` });
+  for (const x of lg.swaps || []) hist.push({ at: x.at || '', html: `<b>${esc(mgrName(x.manager))}</b>: ${esc(U.playerName(D, x.out))} → ${esc(U.playerName(D, x.in))} ${x.by === 'self' ? '<span class="pill">Free Agent</span>' : x.by === 'waiver' ? '<span class="pill">Waiver</span>' : '<span class="pill">Admin</span>'}` });
   hist.sort((a, b) => (b.at || '').localeCompare(a.at || ''));
   h += card('Alle Transfers der Liga', hist.length ? '<div class="log">' + hist.slice(0, 40).map(x => `<div><span class="n" style="width:70px">${x.at ? esc(day(x.at)) : '—'}</span><span>${x.html}</span></div>`).join('') + '</div>' : '<div class="empty">noch keine</div>');
   return h;
@@ -619,6 +633,7 @@ function viewTeam(code) {
 function viewRules() {
   const lg = L(), s = lg.scoring;
   const rows = [['Kill', s.kill], ['Tod', s.death], ['Assist', s.assist], ['CS', `${String(s.cs10).replace('.', ',')} (= ${Math.round(s.cs10 * 100)} pro 100)`], ['Sieg', s.win]]
+    .concat(s.bonus && s.bonus.enabled ? [[`Bonus: ${s.bonus.threshold}+ Kills oder Assists`, s.bonus.points]] : [])
     .map(([k, v]) => `<tr><td>${k}</td><td class="num pts">${typeof v === 'number' ? (v > 0 ? '+' : '') + String(v).replace('.', ',') : v}</td></tr>`).join('');
   const t = lg.draft.timer || {};
   return pageHead('So funktioniert\'s', 'Regeln') + `<div class="grid g-2">
@@ -634,7 +649,7 @@ function viewRules() {
       Wechsel und Trades zählen ab ihrem Datum; vorherige Punkte bleiben beim alten Manager.</div>`)}
     ${card('Transfers', (() => { const tr = S.transferRules(lg), w = S.transferWindow(lg);
       return `<div class="card-b muted" style="line-height:1.7">${tr.enabled ? '<b style="color:var(--text)">Trades:</b> zwei Manager einigen sich, fertig' + (tr.adminApproval ? ' (plus Freigabe durch den Admin)' : '') + '.<br>' : 'Keine Trades.<br>'}
-        ${tr.freeAgents ? `<b style="color:var(--text)">Free Agents:</b> ungedraftete Spieler gegen eigene tauschen${tr.perWeek ? `, ${tr.perWeek}× pro Woche` : ''}.<br>` : ''}
+        ${tr.freeAgents ? `<b style="color:var(--text)">Free Agents:</b> ungedraftete Spieler gegen eigene tauschen${tr.perWeek ? `, ${tr.perWeek}× pro Woche` : ''}${tr.faMode === 'waiver' ? ` — über <b style="color:var(--text)">Waiver</b>: Ansprüche werden ${S.waiverRules(lg).days.map(d => ['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So'][d - 1]).join('/')} um ${esc(S.waiverRules(lg).time)} Uhr entschieden, ${S.waiverRules(lg).order === 'rolling' ? 'rotierende Priorität' : 'Tabellenletzter zuerst'}` : ', wer zuerst kommt'}.<br>` : ''}
         ${tr.mode === 'always' ? 'Jederzeit möglich.' : `Nur in Transferfenstern${w.open ? ' — gerade offen.' : w.next ? ' — nächstes ab ' + new Date(w.next.from).toLocaleDateString('de-DE') + '.' : '.'}`}
         ${tr.rosterRules ? '<br>Nach jedem Transfer muss jede Rolle besetzt bleiben.' : ''}${tr.teamLimit ? ` Max. ${lg.roster.maxPerTeam} Spieler pro LEC-Team.` : ''} Punkte zählen ab dem Transfer.</div>`; })())}
     ${card('Daten', `<div class="card-b muted" style="line-height:1.7">Stats kommen von der offiziellen lolesports-API, automatisch <b style="color:var(--text)">2× täglich</b>.
@@ -892,6 +907,9 @@ function bind() {
     if (a === 'accept' && confirm('Trade annehmen?')) return txAction({ action: 'respond', id, accept: true }, 'Trade angenommen.');
     if (a === 'decline') return txAction({ action: 'respond', id, accept: false }, 'Abgelehnt.');
     if (a === 'cancel') return txAction({ action: 'cancel', id }, 'Zurückgezogen.');
+    if (a === 'claim') return txAction({ action: 'claim', out: tx.faOut, in: id }, `Anspruch auf ${esc(U.playerName(D, id))} gestellt.`);
+    if (a === 'unclaim') return txAction({ action: 'unclaim', index: +b.dataset.i }, 'Anspruch entfernt.');
+    if (a === 'cmove') return txAction({ action: 'claimMove', index: +b.dataset.i, dir: +b.dataset.dir }, 'Reihenfolge geändert.');
     if (a === 'fa' && confirm(`${U.playerName(D, tx.faOut)} abgeben und ${U.playerName(D, id)} holen?`)) return txAction({ action: 'freeAgent', out: tx.faOut, in: id }, `${esc(U.playerName(D, id))} ist jetzt in deinem Kader.`);
   });
 }
@@ -989,7 +1007,8 @@ function yourTurn() {
   } catch (e) {}
 }
 function tick() {
-  const fmtS = s => s >= 3600 ? Math.floor(s / 3600) + 'h ' + String(Math.floor(s / 60) % 60).padStart(2, '0') + 'm' : Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0');
+  const fmtS = s => s >= 86400 ? Math.floor(s / 86400) + ' T ' + Math.floor(s % 86400 / 3600) + ' Std'
+    : s >= 3600 ? Math.floor(s / 3600) + 'h ' + String(Math.floor(s / 60) % 60).padStart(2, '0') + 'm' : Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0');
   const el = $('elapsed');
   if (el) el.textContent = fmtS(Math.max(0, Math.floor((Date.now() - new Date(el.dataset.since).getTime()) / 1000)));
   const cd = $('countdown');

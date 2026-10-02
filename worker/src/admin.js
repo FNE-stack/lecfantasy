@@ -10,7 +10,7 @@
 import { S, HttpError, cfg, writeLeague, readLeagueFresh, leagueHistory, leagueAt, playerIndex,
          pagesMeta, writeSiteFile, githubRaw } from './store.js';
 import { setMemberPassword, deleteMember, revokeSessions, sessionCounts, hasPassword, randomHex } from './auth.js';
-import { addMember, makePick, cleanName, nameKey, mgrName } from './draft.js';
+import { addMember, makePick, cleanName, nameKey, mgrName, runWaivers, claimsOf } from './draft.js';
 import { notify, subscriberCounts, pushEnabled } from './push.js';
 
 const now = () => new Date().toISOString();
@@ -134,7 +134,10 @@ const LEAGUE_OPS = {
   setScoring(l, op) {
     const s = op.scoring || {};
     for (const k of ['kill', 'death', 'assist', 'cs10', 'win']) need(typeof s[k] === 'number' && isFinite(s[k]), 'scoring.' + k + ' muss eine Zahl sein');
-    l.scoring = { kill: s.kill, death: s.death, assist: s.assist, cs10: s.cs10, win: s.win };
+    const b = s.bonus || {};
+    if (b.enabled) need(Number.isInteger(b.threshold) && b.threshold >= 1 && isFinite(b.points), 'Bonus: Schwelle (ganze Zahl ≥ 1) und Punkte angeben');
+    l.scoring = { kill: s.kill, death: s.death, assist: s.assist, cs10: s.cs10, win: s.win,
+      bonus: { enabled: !!b.enabled, threshold: b.threshold || 10, points: isFinite(b.points) ? b.points : 2 } };
     return 'Punkteregeln geändert';
   },
   setRoster(l, op) {
@@ -161,7 +164,14 @@ const LEAGUE_OPS = {
     }
     const per = Number(r.perWeek ?? 1);
     need(Number.isInteger(per) && per >= 0 && per <= 20, 'Free Agents pro Woche: 0–20 (0 = unbegrenzt)');
-    l.tradeRules = { enabled: !!r.enabled, freeAgents: !!r.freeAgents, perWeek: per, adminApproval: !!r.adminApproval,
+    need(['instant', 'waiver'].includes(r.faMode || 'instant'), 'Free-Agent-Modus: instant oder waiver');
+    const wv = r.waiver || {};
+    const days = [...new Set((wv.days || [2, 5]).map(Number))].filter(x => x >= 1 && x <= 7).sort();
+    need(days.length, 'Waiver: mindestens ein Wochentag');
+    need(/^([01]\d|2[0-3]):[0-5]\d$/.test(wv.time || '03:00'), 'Waiver-Uhrzeit als HH:MM');
+    need(['reverse', 'rolling'].includes(wv.order || 'reverse'), 'Waiver-Reihenfolge: reverse oder rolling');
+    l.tradeRules = { faMode: r.faMode || 'instant', waiver: { days, time: wv.time || '03:00', order: wv.order || 'reverse' },
+      enabled: !!r.enabled, freeAgents: !!r.freeAgents, perWeek: per, adminApproval: !!r.adminApproval,
       equalCount: r.equalCount !== false, rosterRules: r.rosterRules !== false, teamLimit: r.teamLimit !== false, mode: r.mode || 'windows',
       windows: windows.sort((a, b) => a.from.localeCompare(b.from)) };
     return `Transfers: Trades ${r.enabled ? 'an' : 'aus'}, Free Agents ${r.freeAgents ? 'an' : 'aus'}, `
@@ -178,6 +188,15 @@ const LEAGUE_OPS = {
     const text = String(op.text || '').trim().slice(0, 280);
     l.announcement = text ? { text, at: now() } : null;
     return text ? 'Ankündigung gesetzt' : 'Ankündigung entfernt';
+  },
+  setDraftSchedule(l, op) {
+    if (op.at) need(!isNaN(Date.parse(op.at)), 'Ungültiger Termin');
+    const rem = Number(op.reminderMinutes ?? 60);
+    need(Number.isInteger(rem) && rem >= 0 && rem <= 1440, 'Erinnerung: 0–1440 Minuten vorher');
+    l.draft.scheduledAt = op.at ? new Date(op.at).toISOString() : null;
+    l.draft.reminderMinutes = rem;
+    l.draft.autoStart = !!op.autoStart;
+    return op.at ? `Draft-Termin: ${new Date(op.at).toLocaleString('de-DE', { timeZone: 'Europe/Berlin', dateStyle: 'short', timeStyle: 'short' })}${op.autoStart ? ', startet automatisch' : ''}` : 'Draft-Termin entfernt';
   },
   setStandingsMode(l, op) {
     need(['points', 'h2h'].includes(op.mode), 'Modus: points oder h2h');
@@ -250,6 +269,11 @@ export async function runOp(env, op) {
       const r = await writeLeague(env, l => { l.tournament = t; return l; }, `admin: Turnier ${t}`);
       return { message: `Turnier: ${t} (gilt ab dem nächsten Stats-Update)`, league: r.league };
     }
+    case 'runWaivers': {
+      const r = await runWaivers(env, { force: true });
+      if (r.skipped) return { message: 'Waiver: ' + r.skipped };
+      return { message: `Waiver ausgeführt: ${r.awarded.length} Wechsel, ${r.failed.length} Ansprüche nicht erfüllt` };
+    }
     case 'fix':
       need(op.fix && op.fix.op, 'fix fehlt');
       return runOp(env, op.fix);
@@ -278,8 +302,10 @@ export async function adminState(env) {
       hasPassword: await hasPassword(env, m.id), sessions: sessions[m.id] || 0, push: pushSubs[m.id] || 0 });
   }
   const invite = await env.LEAGUE.get('invite', 'json');
+  const claims = {};
+  for (const id of ids) { const c = await claimsOf(env, id).catch(() => []); if (c.length) claims[id] = c; }
   return {
-    league, sha, members, invite,
+    league, sha, members, invite, claims, nextWaiver: S.nextWaiverRun(league),
     validation: S.validateLeague(league, players),
     capacity: players ? S.capacity(league, players) : null,
     onTheClock: S.currentPicker(league), progress: S.draftProgress(league),

@@ -171,7 +171,7 @@ let statsPick = null;
 
 function viewSettings() {
   const L = A.league, s = L.scoring, r = L.roster;
-  const tr = window.LECScoring.transferRules(L), win = window.LECScoring.transferWindow(L);
+  const tr = window.LECScoring.transferRules(L), win = window.LECScoring.transferWindow(L), wv = window.LECScoring.waiverRules(L);
   const t = L.draft.timer || { mode: 'off', seconds: 90 };
   const num = (id, v, step) => `<input id="${id}" type="number" step="${step || 'any'}" value="${v}" style="width:90px">`;
   const chk = (id, on, label) => `<label style="display:flex;gap:10px;align-items:flex-start;margin:0;color:var(--text)"><input type="checkbox" id="${id}" style="width:auto;margin-top:3px" ${on ? 'checked' : ''}><span>${label}</span></label>`;
@@ -188,9 +188,29 @@ function viewSettings() {
   return card('Pick-Timer', `<div class="card-b"><div class="row" style="flex-wrap:wrap"><select id="tMode">${['off', 'soft', 'auto'].map(m => `<option value="${m}" ${t.mode === m ? 'selected' : ''}>${{ off: 'aus', soft: 'nur Anzeige', auto: 'Auto-Pick' }[m]}</option>`).join('')}</select>
         ${num('tSec', t.seconds || 90, 1)} Sekunden ${btn('Speichern', 'timer', {}, 'gold')}</div>
         <p class="muted" style="font-size:12px;margin:10px 0 0">Auto-Pick: nach Ablauf pickt das System — zuerst der oberste freie Spieler aus der ★ Watchlist des Managers, sonst der beste Verfügbare nach Punkten.</p></div>`)
+    + card('Draft-Termin', (() => {
+        const d0 = L.draft || {};
+        const local = d0.scheduledAt ? new Date(new Date(d0.scheduledAt).getTime() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 16) : '';
+        return `<div class="card-b" style="display:flex;flex-direction:column;gap:10px">
+          <div class="row" style="flex-wrap:wrap"><label style="margin:0">Termin <input id="dAt" type="datetime-local" value="${local}" style="width:220px"></label>
+            <label style="margin:0">Erinnerung ${num('dRem', d0.reminderMinutes ?? 60, 5)} Minuten vorher (Push, 0 = keine)</label></div>
+          ${chk('dAuto', d0.autoStart, 'Draft zum Termin <b>automatisch starten</b> (sonst startest du ihn hier im Admin)')}
+          <div class="row">${btn('Termin speichern', 'schedule', {}, 'gold')}${d0.scheduledAt ? btn('Termin entfernen', 'scheduleClear') : ''}</div>
+          <p class="muted" style="font-size:12px;margin:0">Alle sehen einen Countdown auf der Übersicht und im Draft.</p></div>`;
+      })(), (L.draft || {}).scheduledAt ? '<span class="pill gold">' + new Date(L.draft.scheduledAt).toLocaleString('de-DE', { dateStyle: 'short', timeStyle: 'short' }) + '</span>' : '')
     + card('Transfers', `<div class="card-b" style="display:flex;flex-direction:column;gap:10px">
         ${chk('trOn', tr.enabled, '<b>Trades</b> zwischen Managern — die zwei Beteiligten einigen sich, fertig')}
-        ${chk('trFa', tr.freeAgents, '<b>Free Agents</b> — Spieler, die niemand gedraftet hat, gegen einen eigenen tauschen')}
+        ${chk('trFa', tr.freeAgents, '<b>Free Agents</b> an — Spieler, die niemand gedraftet hat, gegen einen eigenen tauschen')}
+        <div style="padding:10px 12px;border:1px solid var(--line);border-radius:6px;display:flex;flex-direction:column;gap:8px">
+          <div class="row" style="flex-wrap:wrap;gap:14px">
+            <label style="display:flex;gap:8px;align-items:center;margin:0;color:var(--text)"><input type="radio" name="faMode" value="instant" style="width:auto" ${tr.faMode !== 'waiver' ? 'checked' : ''}> <span><b>Sofort</b> — wer zuerst klickt</span></label>
+            <label style="display:flex;gap:8px;align-items:center;margin:0;color:var(--text)"><input type="radio" name="faMode" value="waiver" style="width:auto" ${tr.faMode === 'waiver' ? 'checked' : ''}> <span><b>Waiver</b> — Ansprüche sammeln, zu festen Zeiten entscheiden</span></label></div>
+          <div><span class="muted" style="font-size:12px">Waiver-Tage (deutsche Zeit)</span><div class="row" style="flex-wrap:wrap;gap:10px;margin-top:4px">
+            ${['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So'].map((n, i) => `<label style="display:flex;gap:5px;align-items:center;margin:0;color:var(--text)"><input type="checkbox" data-wday="${i + 1}" style="width:auto" ${(wv.days || []).includes(i + 1) ? 'checked' : ''}>${n}</label>`).join('')}</div></div>
+          <div class="row" style="flex-wrap:wrap;gap:14px"><label style="margin:0">um <input id="wvTime" type="time" value="${esc(wv.time || '03:00')}" style="width:120px"> Uhr</label>
+            <label style="margin:0">Reihenfolge <select id="wvOrder"><option value="reverse" ${wv.order !== 'rolling' ? 'selected' : ''}>Tabellenletzter zuerst</option><option value="rolling" ${wv.order === 'rolling' ? 'selected' : ''}>rotierend (wer bekommt, geht ans Ende)</option></select></label></div>
+          ${tr.faMode === 'waiver' ? `<div class="row" style="flex-wrap:wrap"><span class="muted" style="font-size:12px">Nächster Lauf: <b style="color:var(--text)">${A.nextWaiver ? new Date(A.nextWaiver).toLocaleString('de-DE', { weekday: 'short', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : '—'}</b></span>${opBtn('Waiver jetzt ausführen', { op: 'runWaivers' }, 'Alle offenen Ansprüche jetzt entscheiden?')}</div>` : ''}
+        </div>
         <label style="margin:0">Free-Agent-Wechsel pro Manager und Woche (Mo–So, 0 = unbegrenzt) ${num('trPer', tr.perWeek, 1)}</label>
         ${chk('trRos', tr.rosterRules, 'Jede Rolle muss nach einem Transfer besetzt bleiben')}
         ${chk('trTeam', tr.teamLimit, 'Team-Limit (max. ' + r.maxPerTeam + ' pro LEC-Team) gilt auch bei Transfers <span class="muted" style="font-size:12px">— blockiert in der Praxis viele Trades</span>')}
@@ -206,9 +226,14 @@ function viewSettings() {
         <label style="margin:0">von <input id="wFrom" type="date" style="width:160px"></label><label style="margin:0">bis <input id="wTo" type="date" style="width:160px"></label>
         ${btn('Fenster hinzufügen', 'winAdd', {}, 'gold')}</div>
         <p class="muted" style="font-size:12px;margin:0 16px 14px">Trag hier die Zeiträume ein, in denen laut LEC-Regelwerk Transfers erlaubt sind (bzw. was ihr absprecht). Von 00:00 bis 23:59 Uhr.</p>`)
+    + (tr.faMode === 'waiver' ? card('Offene Waiver-Ansprüche', Object.keys(A.claims || {}).length
+        ? '<table><tbody>' + Object.entries(A.claims).map(([id, cl]) => cl.map((c, i) => `<tr><td><b>${esc(mname(id))}</b></td><td class="dim">#${i + 1}</td><td class="fill">${esc(pname(c.in))} <span class="dim">für</span> ${esc(pname(c.out))}</td></tr>`).join('')).join('') + '</tbody></table>'
+        : '<div class="empty">keine</div>', 'nur du siehst die') : '')
     + card('Liga', `<div class="card-b row" style="flex-wrap:wrap"><input id="lgName" value="${esc(L.name || '')}" style="flex:1;min-width:200px" maxlength="40">${btn('Name speichern', 'name')}</div>`)
     + card('Punkte pro Spiel', `<div class="card-b"><div class="row" style="flex-wrap:wrap;gap:14px">
         <label>Kill ${num('sK', s.kill)}</label><label>Tod ${num('sD', s.death)}</label><label>Assist ${num('sA', s.assist)}</label><label>CS ${num('sC', s.cs10, '0.005')}</label><label>Sieg ${num('sW', s.win)}</label></div>
+        <div class="row" style="flex-wrap:wrap;gap:12px;margin-top:12px">${chk('bOn', (s.bonus || {}).enabled, '<b>Bonus</b> für ein großes Spiel:')}
+          <label style="margin:0">ab ${num('bTh', (s.bonus || {}).threshold || 10, 1)} Kills <i>oder</i> Assists</label><label style="margin:0">+ ${num('bPts', (s.bonus || {}).points ?? 2, 0.5)} Punkte</label></div>
         <div style="margin-top:12px">${btn('Punkte speichern', 'scoring', {}, 'gold')} <span class="muted" style="font-size:12px">wirkt rückwirkend auf alle Spiele</span></div></div>`)
     + card('Kader', `<div class="card-b row" style="flex-wrap:wrap;gap:14px"><span class="muted">Rollen: ${esc(r.slots.join(', '))}</span><label>Bank ${num('rB', r.bench, 1)}</label><label>max. pro Team ${num('rM', r.maxPerTeam, 1)}</label>${btn('Speichern', 'roster', {}, 'gold')}</div>`)
     + card('Haupttabelle', `<div class="card-b row">${opBtn('Gesamtpunkte', { op: 'setStandingsMode', mode: 'points' }, '', (L.standingsMode || 'points') === 'points' ? 'gold' : '')}${opBtn('Head-to-Head', { op: 'setStandingsMode', mode: 'h2h' }, '', L.standingsMode === 'h2h' ? 'gold' : '')}</div>`);
@@ -366,13 +391,21 @@ async function act(a, d, el) {
     case 'ovExRow': return op({ op: 'override', entry: { op: 'exclude', game: d.game, player: statsPick } }, 'Diese Spieler-Zeile aus der Wertung nehmen?');
     case 'ovExGame': return op({ op: 'override', entry: { op: 'exclude', game: d.game } }, 'Das ganze Spiel (alle 10 Spieler) aus der Wertung nehmen?');
     case 'name': return op({ op: 'setName', name: val('lgName') });
-    case 'scoring': return op({ op: 'setScoring', scoring: { kill: +val('sK'), death: +val('sD'), assist: +val('sA'), cs10: +val('sC'), win: +val('sW') } }, 'Punkte ändern? Gilt rückwirkend für alle Spiele.');
+    case 'scoring': return op({ op: 'setScoring', scoring: { kill: +val('sK'), death: +val('sD'), assist: +val('sA'), cs10: +val('sC'), win: +val('sW'),
+      bonus: { enabled: document.getElementById('bOn').checked, threshold: parseInt(val('bTh'), 10), points: +val('bPts') } } }, 'Punkte ändern? Gilt rückwirkend für alle Spiele.');
+    case 'schedule': {
+      if (!val('dAt')) { flash = { ok: false, text: 'Termin wählen' }; return draw(); }
+      return op({ op: 'setDraftSchedule', at: new Date(val('dAt')).toISOString(), reminderMinutes: parseInt(val('dRem'), 10) || 0, autoStart: document.getElementById('dAuto').checked });
+    }
+    case 'scheduleClear': return op({ op: 'setDraftSchedule', at: null, reminderMinutes: 60, autoStart: false }, 'Draft-Termin entfernen?');
     case 'roster': return op({ op: 'setRoster', roster: { slots: L.roster.slots, bench: +val('rB'), maxPerTeam: +val('rM') }, force: true }, (L.draft.picks || []).length ? 'Kaderregeln nach Draftbeginn ändern?' : null);
     case 'trades': case 'winAdd': case 'winDel': {
       const cur = window.LECScoring.transferRules(L);
       const g = id => document.getElementById(id);
       const rules = a === 'trades' ? {
         enabled: g('trOn').checked, freeAgents: g('trFa').checked, perWeek: Math.max(0, parseInt(val('trPer'), 10) || 0),
+        faMode: (root.querySelector('input[name="faMode"]:checked') || {}).value || 'instant',
+        waiver: { days: [...root.querySelectorAll('[data-wday]')].filter(x => x.checked).map(x => +x.dataset.wday), time: val('wvTime') || '03:00', order: val('wvOrder') || 'reverse' },
         rosterRules: g('trRos').checked, teamLimit: g('trTeam').checked, equalCount: g('trEq').checked, adminApproval: g('trAdm').checked,
         mode: (root.querySelector('input[name="trMode"]:checked') || {}).value || 'windows', windows: cur.windows,
       } : Object.assign({}, cur);

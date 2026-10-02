@@ -381,6 +381,110 @@ tests.transfers = async () => {
   return 'off by default, closed without window, says when it opens, roster rules, 2 managers suffice, free agents 1/week';
 };
 
+tests.waivers = async () => {
+  const { a, tok, ids } = await liveLeague(['Ann', 'Ben', 'Cem']);
+  const S = globalThis.LECScoring;
+  const idx = new Map(PLAYERS.players.map(p => [p.id, p]));
+  const op = b => call('POST', '/api/admin/op', { token: a, body: b });
+  const trade = (who, b) => call('POST', '/api/trade', { token: tok[who], body: b });
+  for (;;) {
+    const L = league(), m = S.currentPicker(L);
+    if (!m) break;
+    const lvl = S.relaxLevel(L, idx, m);
+    const r = await op({ op: 'pickFor', player: PLAYERS.players.find(p => !S.pickError(L, idx, m, p.id, lvl)).id });
+    assert(r.status === 200, 'draft: ' + r.body.error);
+  }
+  const base = { enabled: false, freeAgents: true, perWeek: 1, mode: 'always', rosterRules: true, teamLimit: false };
+  let r = await op({ op: 'setTradeRules', rules: Object.assign({}, base, { faMode: 'waiver', waiver: { days: [], time: '03:00' } }) });
+  assert(r.status === 400, 'no waiver day refused');
+  r = await op({ op: 'setTradeRules', rules: Object.assign({}, base, { faMode: 'waiver', waiver: { days: [1, 2, 3, 4, 5, 6, 7], time: '25:00' } }) });
+  assert(r.status === 400, 'bad time refused');
+  r = await op({ op: 'setTradeRules', rules: Object.assign({}, base, { faMode: 'waiver', waiver: { days: [1, 2, 3, 4, 5, 6, 7], time: '03:00', order: 'reverse' } }) });
+  assert(r.status === 200, 'waiver rules: ' + r.body.error);
+
+  const L = league(), ros = S.rosters(L), own = S.ownership(L);
+  const free = PLAYERS.players.filter(p => !own.has(p.id));
+  const X = free.find(p => ['Ann', 'Ben'].every(n => ros[ids[n]].some(q => idx.get(q).role === p.role)));
+  const outOf = (n, role) => ros[ids[n]].find(q => idx.get(q).role === role);
+  const other = (n, not) => free.find(p => p.id !== X.id && p.id !== not && ros[ids[n]].some(q => idx.get(q).role === p.role));
+  const Y = other('Ben'), Z = other('Ann', Y.id);
+  r = await trade('Ann', { action: 'freeAgent', out: outOf('Ann', X.role), in: X.id });
+  assert(r.status === 409 && /Waiver/.test(r.body.error), 'instant pickup refused in waiver mode');
+  for (const [n, P] of [['Ann', X], ['Ann', Z], ['Ben', X], ['Ben', Y]]) {
+    r = await trade(n, { action: 'claim', out: outOf(n, P.role), in: P.id });
+    assert(r.status === 200, `claim ${n} ${P.id}: ${r.body.error}`);
+  }
+  r = await trade('Ann', { action: 'claim', out: outOf('Ann', X.role), in: X.id });
+  assert(r.status === 409, 'duplicate claim refused');
+  const st = await call('GET', '/api/state', { token: tok.Ann });
+  assert(st.body.claims.length === 2 && st.body.nextWaiver, 'state shows my claims + next run');
+  const order = S.waiverOrder(league(), STATS, idx).filter(id => id === ids.Ann || id === ids.Ben);
+  r = await op({ op: 'runWaivers' });
+  assert(r.status === 200 && /2 Wechsel/.test(r.body.message), 'run: ' + JSON.stringify(r.body));
+  const after = league(), own2 = S.ownership(after);
+  assert(own2.get(X.id) === order[0], 'the contested player went to the manager with priority');
+  const per = id => after.swaps.filter(s => s.manager === id && s.by === 'waiver').length;
+  assert(per(ids.Ann) === 1 && per(ids.Ben) === 1, 'winner hit the weekly limit, loser got their 2nd claim');
+  assert(!(await env.LEAGUE.get(`claims:${ids.Ann}`)) && !(await env.LEAGUE.get(`claims:${ids.Ben}`)), 'claims cleared after the run');
+  assert(/waiver: 2 Wechsel/.test(gh.messages('league.json').pop()), 'one commit for the whole run');
+
+  // rolling order: the winner moves to the back
+  await op({ op: 'setTradeRules', rules: Object.assign({}, base, { perWeek: 0, faMode: 'waiver', waiver: { days: [1, 2, 3, 4, 5, 6, 7], time: '03:00', order: 'rolling' } }) });
+  const L2 = league(), ros2 = S.rosters(L2), own3 = S.ownership(L2);
+  const F = PLAYERS.players.find(p => !own3.has(p.id) && ['Ann', 'Ben', 'Cem'].every(n => ros2[ids[n]].some(q => idx.get(q).role === p.role)));
+  for (const n of ['Ann', 'Ben', 'Cem']) await trade(n, { action: 'claim', out: ros2[ids[n]].find(q => idx.get(q).role === F.role), in: F.id });
+  const first = S.waiverOrder(league(), STATS, idx)[0];
+  await op({ op: 'runWaivers' });
+  const L3 = league();
+  assert(S.ownership(L3).get(F.id) === first, 'rolling: first in order wins');
+  assert(L3.waiverOrder[L3.waiverOrder.length - 1] === first, 'rolling: winner moves to the back');
+  return 'contested claim goes by priority, loser gets 2nd claim, weekly limit, claims cleared, one commit; rolling order rotates';
+};
+
+tests.scheduler = async () => {
+  const S = globalThis.LECScoring;
+  const { a, tok, ids } = await liveLeague(['Ann', 'Ben']);
+  const op = b => call('POST', '/api/admin/op', { token: a, body: b });
+  const idx = new Map(PLAYERS.players.map(p => [p.id, p]));
+  for (;;) {
+    const L = league(), m = S.currentPicker(L);
+    if (!m) break;
+    const lvl = S.relaxLevel(L, idx, m);
+    await op({ op: 'pickFor', player: PLAYERS.players.find(p => !S.pickError(L, idx, m, p.id, lvl)).id });
+  }
+  // a waiver slot two minutes ago (German time) -> the cron runs it once
+  const bp = S.berlinParts(Date.now() - 120000);
+  const hhmm = String(bp.h).padStart(2, '0') + ':' + String(bp.mi).padStart(2, '0');
+  await op({ op: 'setTradeRules', rules: { freeAgents: true, perWeek: 0, mode: 'always', rosterRules: true, teamLimit: false, faMode: 'waiver', waiver: { days: [1, 2, 3, 4, 5, 6, 7], time: hhmm } } });
+  const L = league(), ros = S.rosters(L), own = S.ownership(L);
+  const F = PLAYERS.players.find(p => !own.has(p.id) && ros[ids.Ann].some(q => idx.get(q).role === p.role));
+  await call('POST', '/api/trade', { token: tok.Ann, body: { action: 'claim', out: ros[ids.Ann].find(q => idx.get(q).role === F.role), in: F.id } });
+  const ctx = { waitUntil() {} };
+  await worker.scheduled({}, env, ctx);
+  assert(S.ownership(league()).get(F.id) === ids.Ann, 'cron ran the due waiver slot');
+  const commits = gh.messages('league.json').length;
+  await worker.scheduled({}, env, ctx);
+  assert(gh.messages('league.json').length === commits, 'same slot never runs twice');
+
+  // draft appointment on a fresh league: reminder once, then auto-start
+  await setup();
+  const b = await liveLeague(['Ann', 'Ben']);
+  await call('POST', '/api/admin/op', { token: b.a, body: { op: 'resetDraft' } });
+  let r = await call('POST', '/api/admin/op', { token: b.a, body: { op: 'setDraftSchedule', at: new Date(Date.now() + 30 * 60000).toISOString(), reminderMinutes: 60, autoStart: true } });
+  assert(r.status === 200, 'schedule: ' + r.body.error);
+  await worker.scheduled({}, env, ctx);
+  assert(await env.LEAGUE.get('remind:' + league().draft.scheduledAt), 'reminder fired inside the 60 min window');
+  assert(league().draft.status === 'lobby', 'not started early');
+  await call('POST', '/api/admin/op', { token: b.a, body: { op: 'setDraftSchedule', at: new Date(Date.now() - 60000).toISOString(), reminderMinutes: 60, autoStart: true } });
+  await worker.scheduled({}, env, ctx);
+  assert(league().draft.status === 'live', 'auto-started at the appointment');
+  r = await call('POST', '/api/admin/op', { token: b.a, body: { op: 'setScoring', scoring: { kill: 3, death: -1, assist: 1.5, cs10: 0.02, win: 2, bonus: { enabled: true, threshold: 10, points: 2 } } } });
+  assert(r.status === 200 && league().scoring.bonus.enabled, 'bonus saved');
+  r = await call('POST', '/api/admin/op', { token: b.a, body: { op: 'setScoring', scoring: { kill: 3, death: -1, assist: 1.5, cs10: 0.02, win: 2, bonus: { enabled: true, threshold: 0, points: 2 } } } });
+  assert(r.status === 400, 'bonus threshold 0 refused');
+  return 'due waiver slot runs once via cron; draft reminder in its window; auto-start at the appointment; bonus validated';
+};
+
 tests.github_hiccups_are_safe = async () => {
   const { a, tok } = await liveLeague(['Ann', 'Ben']);
   await call('POST', '/api/pick', { token: tok.Ann, body: { player: 'G2_TOP' } });

@@ -20,6 +20,9 @@
     p += (g.a || 0) * s.assist;
     p += (g.cs || 0) * (s.cs10 || 0);
     if (g.win) p += s.win;
+    // bonus like Riot's Fantasy LCS: +points for a big game (10+ kills OR assists)
+    const b = s.bonus;
+    if (b && b.enabled && ((g.k || 0) >= b.threshold || (g.a || 0) >= b.threshold)) p += b.points;
     return r2(p);
   }
 
@@ -346,7 +349,7 @@
   // }
   function transferRules(league) {
     return Object.assign({ enabled: false, freeAgents: false, perWeek: 1, adminApproval: false,
-      equalCount: true, rosterRules: true, teamLimit: true, mode: 'windows', windows: [] }, league.tradeRules || {});
+      equalCount: true, rosterRules: true, teamLimit: true, mode: 'windows', windows: [], faMode: 'instant' }, league.tradeRules || {});
   }
 
   // {open, current, next} at time `now` (ISO). No window entered = closed.
@@ -377,6 +380,73 @@
     const max = (league.roster && league.roster.maxPerTeam) || 99;
     if (opts.teams) for (const [t, n] of Object.entries(teams)) if (n > max) out.push(n + ' von ' + t + ' (max. ' + max + ')');
     return out;
+  }
+
+  // ── waivers ────────────────────────────────────────────────────────────
+  // tradeRules.faMode: 'instant' (first click wins) | 'waiver' (claims are
+  // collected and resolved at scheduled times). tradeRules.waiver:
+  //   days   [1..7] Mon..Sun, German time     time 'HH:MM' German time
+  //   order  'reverse' = lowest total points picks first (recomputed each run)
+  //          'rolling' = whoever gets a player moves to the back
+  // Times are Europe/Berlin because that is where the league lives; the
+  // Worker runs on UTC, so convert explicitly (DST included).
+  const TZ = 'Europe/Berlin';
+  function berlinParts(ms) {
+    const f = new Intl.DateTimeFormat('en-GB', { timeZone: TZ, year: 'numeric', month: '2-digit', day: '2-digit',
+      hour: '2-digit', minute: '2-digit', weekday: 'short', hour12: false });
+    const o = {};
+    for (const p of f.formatToParts(new Date(ms))) o[p.type] = p.value;
+    const wd = { Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6, Sun: 7 }[o.weekday];
+    return { y: +o.year, mo: +o.month, d: +o.day, h: +o.hour % 24, mi: +o.minute, wd };
+  }
+  // UTC ms for a German wall-clock time on the date of `ms` (in Berlin)
+  function berlinAt(ms, hh, mm) {
+    const p = berlinParts(ms);
+    let guess = Date.UTC(p.y, p.mo - 1, p.d, hh, mm);
+    for (let i = 0; i < 3; i++) {   // correct for the Berlin offset (1 or 2 h)
+      const q = berlinParts(guess);
+      const diff = ((q.h * 60 + q.mi) - (hh * 60 + mm)) + (q.d !== p.d ? (q.d > p.d || q.mo > p.mo ? 1440 : -1440) : 0);
+      if (!diff) break;
+      guess -= diff * 60000;
+    }
+    return guess;
+  }
+  function waiverRules(league) {
+    const r = transferRules(league);
+    return Object.assign({ days: [2, 5], time: '03:00', order: 'reverse' }, r.waiver || {});
+  }
+  // scheduled run times within [fromMs, toMs], ascending
+  function waiverSlots(league, fromMs, toMs) {
+    const w = waiverRules(league);
+    const [hh, mm] = String(w.time || '03:00').split(':').map(Number);
+    const out = [];
+    for (let day = fromMs - 864e5; day <= toMs + 864e5 && out.length < 400; day += 864e5) {
+      const t = berlinAt(day, hh, mm);
+      if (t >= fromMs && t <= toMs && (w.days || []).includes(berlinParts(t).wd) && !out.includes(t)) out.push(t);
+    }
+    return out.sort((a, b) => a - b);
+  }
+  function nextWaiverRun(league, nowMs) {
+    const now = nowMs || Date.now();
+    return waiverSlots(league, now + 1, now + 8 * 864e5)[0] || null;
+  }
+  function lastWaiverSlot(league, nowMs) {
+    const now = nowMs || Date.now();
+    const s = waiverSlots(league, now - 8 * 864e5, now);
+    return s.length ? s[s.length - 1] : null;
+  }
+  // priority, first = picks first. 'reverse': lowest standing first (ties:
+  // reverse draft order); 'rolling': league.waiverOrder, new members appended.
+  function waiverOrder(league, stats, playerIndex) {
+    const ids = (league.managers || []).map(m => m.id);
+    const draftOrder = ((league.draft && league.draft.order) || ids).slice().reverse();
+    if (waiverRules(league).order === 'rolling') {
+      const base = (league.waiverOrder || []).filter(id => ids.includes(id));
+      return base.concat(draftOrder.filter(id => !base.includes(id))).concat(ids.filter(id => !base.includes(id) && !draftOrder.includes(id)));
+    }
+    const tot = {};
+    for (const r of standings(league, stats || { games: [] }, playerIndex)) tot[r.manager] = r.total;
+    return ids.slice().sort((a, b) => (tot[a] || 0) - (tot[b] || 0) || draftOrder.indexOf(a) - draftOrder.indexOf(b));
   }
 
   // Monday 00:00 UTC of the week `iso` falls in - the key for perWeek.
@@ -463,7 +533,8 @@
     rosterEvents, ownership, rosters, standings, weeklyPoints,
     h2hPairs, h2h,
     pickError, relaxLevel, currentPicker, draftProgress, validateLeague,
-    transferRules, transferWindow, rosterProblems, weekKey
+    transferRules, transferWindow, rosterProblems, weekKey,
+    berlinParts, berlinAt, waiverRules, waiverSlots, nextWaiverRun, lastWaiverSlot, waiverOrder
   };
 // `this` is undefined in an ES module, so a Cloudflare Worker importing this
 // file would crash on a bare `this`. globalThis works in every place these
