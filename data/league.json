@@ -28,11 +28,6 @@
   "standingsMode": "points",
   "managers": [
     {
-      "id": "m92d35aee",
-      "name": "Bot Alpha",
-      "joined": "2026-10-02T12:31:37.641Z"
-    },
-    {
       "id": "mc14b0116",
       "name": "Bot Bravo",
       "joined": "2026-10-02T12:31:38.937Z"
@@ -50,7 +45,6 @@
   ],
   "draft": {
     "order": [
-      "m92d35aee",
       "mc14b0116",
       "m1bc5e872",
       "m9d3c374b"
