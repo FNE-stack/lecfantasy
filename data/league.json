@@ -6,7 +6,12 @@
     "death": -1,
     "assist": 1.5,
     "cs10": 0.02,
-    "win": 2
+    "win": 2,
+    "bonus": {
+      "enabled": true,
+      "threshold": 10,
+      "points": 2
+    }
   },
   "roster": {
     "slots": [
