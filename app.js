@@ -32,7 +32,14 @@ let lastPickCount = null, wasMyTurn = false, routeKey = '', liveNow = [];
 
 // ── helpers ───────────────────────────────────────────────────────────────
 const L = () => D && D.league;
-const loggedIn = () => !!(session && LIVE && D.league);
+// The admin logs in through the same form but has no team. While only the
+// admin is logged in, the site shows the whole league read-only instead of
+// looking logged out on every page outside #/admin.
+const adminTok = () => { try { const t = JSON.parse(localStorage.getItem('lf.admin') || 'null'); return t && t.exp * 1000 > Date.now() ? t.token : null; } catch (e) { return null; } };
+const asAdmin = () => !session && !!adminTok();
+const loggedIn = () => !!((session || asAdmin()) && LIVE && D.league && (session ? !LIVE.admin : LIVE.admin));
+const adminOnly = () => loggedIn() && !!LIVE.admin;
+let liveErr = null;
 const me = () => (LIVE && LIVE.me ? LIVE.me.id : '');
 const status = () => (L() ? S.draftStatus(L()) : 'lobby');
 const mgr = id => ((L() && L().managers) || []).find(m => m.id === id);
@@ -1085,6 +1092,8 @@ function nav() {
   const liveDot = liveNow.length ? '<span class="live-dot"></span>' : '';
   if (!loggedIn()) return [['#/', 'Saison', 'home', /^\/?$/], ['#/live', 'Live' + liveDot, 'live', /^\/live/], ['#/lec', 'LEC', 'shield', /^\/(lec|team)/], ['#/spieler', 'Spieler', 'players', /^\/spieler/]];
   const draftDone = status() === 'done';
+  if (adminOnly()) return [['#/', 'Übersicht', 'home', /^\/?$/], ...(draftDone ? [] : [['#/draft', 'Draft' + (status() === 'live' ? '<span class="live-dot"></span>' : ''), 'draft', /^\/draft$/]]),
+    ['#/live', 'Live' + liveDot, 'live', /^\/live/], ['#/spieler', 'Spieler', 'players', /^\/spieler/], ['#/lec', 'LEC', 'shield', /^\/(lec|team)/]];
   const middle = draftDone ? [['#/pickem', 'Pick\'em', 'book', /^\/pickem/]] : [['#/draft', 'Draft' + (status() === 'live' ? '<span class="live-dot"></span>' : ''), 'draft', /^\/draft$/]];
   return [['#/', 'Übersicht', 'home', /^\/?$/], ['#/mein-team', 'Mein Team' + (pendingForMe() ? '<span class="live-dot" style="background:var(--gold);animation:none"></span>' : ''), 'user', /^\/(mein-team|manager\/.+|transfers)$/],
     ...middle,
@@ -1095,7 +1104,9 @@ function chrome() {
   const p = path(), items = nav();
   $('nav').innerHTML = items.map(([h, l, , re]) => `<a href="${h}" class="${re.test(p) ? 'on' : ''}">${l}</a>`).join('');
   $('tabbar').innerHTML = items.filter(n => n[2]).slice(0, 6).map(([h, l, ic, re]) => `<a href="${h}" class="${re.test(p) ? 'on' : ''}">${icon(ic)}${l}</a>`).join('');
-  $('user').innerHTML = loggedIn()
+  $('user').innerHTML = adminOnly()
+    ? `<a class="userchip" href="#/admin" title="Als Admin angemeldet"><span class="av" style="background:var(--gold);color:#111">A</span><span class="hide-s">Admin</span></a>`
+    : loggedIn()
     ? `<a class="userchip" href="#/mein-team"><span class="av">${esc(initials(LIVE.me.name))}</span><span class="hide-s">${esc(LIVE.me.name)}</span></a>`
     : (p === '/' ? '' : `<a class="btn sm" href="#/">Einloggen</a>`);
   if (D.teams.league && D.teams.league.logo) { $('brandlogo').src = D.teams.league.logo; $('brandlogo').hidden = false; }
@@ -1109,6 +1120,14 @@ function chrome() {
   wasMyTurn = !!mine;
 }
 
+let adminLoading = false;
+function viewAdminNote() {
+  return pageHead('Admin', 'Kein eigenes Team') + card('Als Admin angemeldet', `<div class="card-b">
+    <p style="margin-top:0">Der Admin-Account hat kein Team — du siehst die Liga hier nur zum Zuschauen.
+    Für dein eigenes Team, Pick'em und Transfers meldest du dich mit deinem <b>Spieler-Account</b> an.</p>
+    <div class="row" style="gap:10px;flex-wrap:wrap"><a class="btn gold" href="#/admin">Zum Admin-Bereich</a>
+    <button class="btn" id="adminToPlayer">Admin abmelden &amp; als Spieler einloggen</button></div></div>`);
+}
 function render() {
   if (!D) return;
   const p = path();
@@ -1118,7 +1137,11 @@ function render() {
   if (window.LECAdmin) window.LECAdmin.leave();
   let m, html;
   if ((m = p.match(/^\/join\/([\w-]+)$/))) html = viewJoin(m[1]);
-  else if (session && !LIVE) html = '<div class="empty">lädt …</div>';
+  else if (session && !LIVE) html = liveErr
+    ? card('Verbindung', `<div class="empty">Server gerade nicht erreichbar (${esc(liveErr)}). Du bist weiter eingeloggt. <a href="#" onclick="location.reload();return false">Neu laden</a></div>`)
+    : '<div class="empty">lädt …</div>';
+  else if (asAdmin() && !loggedIn() && !liveErr) { html = '<div class="empty">lädt …</div>'; if (!adminLoading) { adminLoading = true; pollAdmin().finally(() => { adminLoading = false; }); } }
+  else if (adminOnly() && /^\/(mein-team|transfers|pickem)$/.test(p)) html = viewAdminNote();
   else if (PRIVATE.test(p) && !loggedIn()) html = viewLanding();
   else if (p === '/' || p === '/login') html = loggedIn() ? viewHome() : viewLanding();
   else if (p === '/draft') html = viewDraft();
@@ -1153,6 +1176,7 @@ function bind() {
   on('tAvail', 'onclick', () => { ui.avail = !ui.avail; render(); });
   on('tWatch', 'onclick', () => { ui.watch = !ui.watch; render(); });
   on('logout', 'onclick', () => logout());
+  on('adminToPlayer', 'onclick', () => { try { localStorage.removeItem('lf.admin'); } catch (e) {} LIVE = null; if (D) D.league = null; liveSig = ''; location.hash = '#/'; render(); });
   on('pushOn', 'onclick', async () => { unlockAudio(); try { await enablePush(); toast('Benachrichtigungen an ✓'); } catch (e) { toast(`<span style="color:#ffb1b3">${esc(e.message)}</span>`); } render(); });
   on('pushOff', 'onclick', async () => { await disablePush(); render(); });
   on('pushTest', 'onclick', async () => { try { const r = await api('/api/push/test', { method: 'POST' }); toast(r.sent ? 'Test gesendet ✓' : 'Kein Gerät erreicht — bitte neu aktivieren.'); } catch (e) { toast(esc(e.message)); } });
@@ -1255,8 +1279,21 @@ async function doPick(id) {
 }
 
 let liveSig = '';
+async function pollAdmin() {
+  const tok = adminTok();
+  try {
+    const r = await fetch(WORKER + '/api/admin/state', { headers: { Authorization: 'Bearer ' + tok } });
+    if (r.status === 401) { try { localStorage.removeItem('lf.admin'); } catch (e) {} LIVE = null; render(); return; }
+    if (!r.ok) throw new Error('Fehler ' + r.status);
+    const s = await r.json();
+    const sig = JSON.stringify(s.league);
+    LIVE = { admin: true, me: null, league: s.league, nextWaiver: s.nextWaiver, claims: [] }; liveErr = null;
+    if (sig !== liveSig) { D.league = s.league; SEASON = new Map(); liveSig = sig; }
+    render();
+  } catch (e) { liveErr = e.message; render(); }
+}
 async function pollLive(force) {
-  if (!session) return;
+  if (!session) { if (asAdmin()) await pollAdmin(); return; }
   try {
     const s = await api('/api/state');
     const picks = s.league.draft.picks || [];
@@ -1268,12 +1305,13 @@ async function pollLive(force) {
     lastPickCount = picks.length;
     const sig = JSON.stringify([s.league, s.me]);
     LIVE = s;
+    liveErr = null;
     if (D.league === null || sig !== liveSig || force) { D.league = s.league; SEASON = new Map(); liveSig = sig; render(); }
-  } catch (e) { render(); }
+  } catch (e) { if (session) liveErr = e.message; render(); }
 }
 function schedulePoll() {
   const st = loggedIn() ? status() : null;
-  const delay = !session ? 60000 : st === 'live' ? (path() === '/draft' ? 4000 : 12000) : st === 'lobby' ? 30000 : 300000;
+  const delay = !session ? (asAdmin() ? 30000 : 60000) : st === 'live' ? (path() === '/draft' ? 4000 : 12000) : st === 'lobby' ? 30000 : 300000;
   setTimeout(async () => { if (!document.hidden) await pollLive(); schedulePoll(); }, delay);
 }
 
@@ -1325,8 +1363,7 @@ function tick() {
   setInterval(() => { if (path() === '/live' && !document.hidden) refreshLive(); }, 20000);
   setInterval(async () => { try { const league = D.league; D = await U.load(); D.league = league; rebuild(); render(); } catch (e) {} }, 180000);
   checkLiveBadge(); setInterval(checkLiveBadge, 120000);
-  if (session) await pollLive(true);
-  if (session && !LIVE) { session = ''; store.del('lf.session'); render(); }
+  if (session || asAdmin()) await pollLive(true);
   schedulePoll();
 })();
 })();
