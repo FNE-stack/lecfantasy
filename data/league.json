@@ -20,17 +20,9 @@
     "maxPerTeam": 2
   },
   "standingsMode": "points",
-  "managers": [
-    {
-      "id": "m81f26dd0",
-      "name": "QA Ben",
-      "joined": "2026-10-02T08:16:58.176Z"
-    }
-  ],
+  "managers": [],
   "draft": {
-    "order": [
-      "m81f26dd0"
-    ],
+    "order": [],
     "snake": true,
     "picks": [],
     "status": "lobby",
