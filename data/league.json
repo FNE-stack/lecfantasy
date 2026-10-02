@@ -325,49 +325,6 @@
     "captain": 1.5
   },
   "pickems": {
-    "lec_split_3_2026": {
-      "questions": [
-        {
-          "id": "q1",
-          "type": "champion",
-          "points": 10
-        },
-        {
-          "id": "q2",
-          "type": "finalist",
-          "points": 5
-        },
-        {
-          "id": "q3",
-          "type": "firstRegular",
-          "points": 5
-        },
-        {
-          "id": "q4",
-          "type": "lastRegular",
-          "points": 5
-        },
-        {
-          "id": "q5",
-          "type": "mostKills",
-          "points": 5
-        },
-        {
-          "id": "q6",
-          "type": "mostPicked",
-          "points": 5
-        },
-        {
-          "id": "q7",
-          "type": "longestGame",
-          "points": 5
-        }
-      ],
-      "revealed": true,
-      "lockAt": null,
-      "picks": {},
-      "revealedAt": "2026-10-02T13:44:28.248Z"
-    },
     "lec_split_1_2026": {
       "questions": [
         {
