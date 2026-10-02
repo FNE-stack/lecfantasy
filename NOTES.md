@@ -32,6 +32,11 @@ Admin-Tabs; ausgeloggt keine Mitgliedsdaten sichtbar.
 - **Trades:** nur die zwei Manager müssen zustimmen (Admin-Veto bleibt).
 - **Free Agents** (ungedraftete Spieler): 1 Wechsel pro Woche (Mo–So).
 - Alles nur **in Transferfenstern**, die Fabian einträgt (LEC-Regelwerk / Absprache).
+- **Free Agents über Waiver**: Di + Fr 03:00 (deutsche Zeit), Tabellenletzter zuerst, 1 pro Woche.
+- **Bonus** +2 für 10+ Kills oder Assists. Alles unter Admin → Einstellungen änderbar.
+- Bot-Probelauf 02.10.2026 auf dem Live-System mit echtem Cron: Draft-Autostart
+  (46 s nach Termin), Auto-Pick nach 30-s-Timer, Waiver-Lauf zum Slot korrekt
+  (umkämpfter Spieler nach Priorität), Trade, Konsistenz 0/0. Danach aufgeräumt.
 - Kaderregeln bei Transfers: Rollen bleiben besetzt **an**, Team-Limit **an** —
   Letzteres blockiert in einer vollen Liga fast jeden 1:1-Trade (im QA-Draft gab
   es keinen einzigen legalen). Bei Bedarf in den Einstellungen abschalten.
