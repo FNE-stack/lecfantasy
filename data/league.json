@@ -347,7 +347,8 @@
           "id": "q8",
           "type": "manualChamp",
           "points": 3,
-          "label": "Meistgebannter Champion"
+          "label": "Meistgebannter Champion",
+          "answer": "Ahri"
         }
       ],
       "revealed": true,
