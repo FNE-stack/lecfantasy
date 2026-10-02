@@ -26,9 +26,17 @@
     "perRole": 2
   },
   "standingsMode": "points",
-  "managers": [],
+  "managers": [
+    {
+      "id": "m92d35aee",
+      "name": "Bot Alpha",
+      "joined": "2026-10-02T12:31:37.641Z"
+    }
+  ],
   "draft": {
-    "order": [],
+    "order": [
+      "m92d35aee"
+    ],
     "snake": true,
     "picks": [],
     "status": "lobby",
