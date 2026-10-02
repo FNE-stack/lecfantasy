@@ -71,5 +71,9 @@
       "awarded": 2,
       "failed": 1
     }
-  ]
+  ],
+  "lineup": {
+    "enabled": true,
+    "captain": 1.5
+  }
 }
