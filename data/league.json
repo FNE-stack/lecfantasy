@@ -20,9 +20,17 @@
     "maxPerTeam": 2
   },
   "standingsMode": "points",
-  "managers": [],
+  "managers": [
+    {
+      "id": "m65d261bb",
+      "name": "QA Anna",
+      "joined": "2026-10-02T08:16:56.996Z"
+    }
+  ],
   "draft": {
-    "order": [],
+    "order": [
+      "m65d261bb"
+    ],
     "snake": true,
     "picks": [],
     "status": "lobby",
