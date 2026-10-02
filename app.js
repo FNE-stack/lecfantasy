@@ -423,12 +423,20 @@ const pickLabel = (q, v) => {
   if (kind === 'champion') return U.champIcon(D, v, 20) + ' ' + esc((D.champs.names || {})[v] || v);
   return esc(v);
 };
+// the admin has no tips: lock state straight from the league, fresh each time
+function adminPK() {
+  const now = new Date().toISOString();
+  return Object.fromEntries(Object.keys(L().pickems || {}).map(sp => { const lock = S.pickemLock(L(), D.schedule, sp); return [sp, { lockAt: lock, locked: !!(lock && lock <= now), mine: {} }]; }));
+}
 function viewPickem() {
+  if (adminOnly()) PK = adminPK();
   if (PK === null) { loadPickem(); return pageHead('Pick\'em', 'Pick\'em') + card('Pick\'em', '<div class="empty">lädt …</div>'); }
   const lg = L();
   const splits = Object.keys(lg.pickems || {}).sort((a, b) => a.localeCompare(b));
   let h = pageHead(esc(tourLabel()), 'Pick\'em', '<span class="dim" style="font-size:12px">Punkte zählen zur Fantasy-Wertung</span>');
-  if (!splits.length) return h + card('Pick\'em', '<div class="empty">Noch kein Pick\'em offen — der Admin öffnet ihn vor jedem Split.</div>');
+  if (!splits.length) return h + card('Pick\'em', adminOnly()
+    ? '<div class="empty">Noch kein Pick\'em offen. Du öffnest ihn unter <a href="#/admin">Admin → Pick\'em</a> — Fragen und Punkte wählst du dort.</div>'
+    : '<div class="empty">Noch kein Pick\'em offen — der Admin öffnet ihn vor jedem Split.</div>');
   const pts = S.pickemPoints(lg, D.stats, D.schedule, D.P, D.standings);
   for (const split of splits.reverse()) {
     const pe = lg.pickems[split], st = (PK || {})[split] || {};
@@ -438,7 +446,10 @@ function viewPickem() {
     const mine = pkForm[split] || (pkForm[split] = Object.assign({}, st.mine || {}));
     const max = (pe.questions || []).reduce((n, q) => n + (Number(q.points) || 0), 0);
     let body;
-    if (!locked) {
+    if (!locked && adminOnly()) {
+      body = '<table class="tight"><tbody>' + (pe.questions || []).map(q => `<tr><td class="fill" style="white-space:normal"><b>${esc(q.label || S.PICKEM_TYPES[q.type].label)}</b></td><td class="num"><span class="pill">${q.points} Pkt</span></td></tr>`).join('') + '</tbody></table>'
+        + `<div class="card-b muted" style="font-size:12px">Die Spieler tippen bis zum ersten Spiel — <b id="countdown" data-deadline="${esc(st.lockAt || '')}">…</b>. Ihre Tipps siehst du danach hier. Als Admin tippst du nicht mit; Fragen ändern unter <a href="#/admin">Admin → Pick'em</a>.</div>`;
+    } else if (!locked) {
       body = '<table class="tight"><tbody>' + (pe.questions || []).map(q => `<tr><td class="fill" style="white-space:normal"><b>${esc(q.label || S.PICKEM_TYPES[q.type].label)}</b> <span class="pill">${q.points} Pkt</span></td>
         <td style="width:45%">${pickemInput(split, q, mine[q.id])}</td></tr>`).join('') + '</tbody></table>'
         + `<div class="card-b row" style="flex-wrap:wrap"><button class="btn gold" data-pksave="${esc(split)}">Tipps speichern</button>
@@ -1094,7 +1105,8 @@ function nav() {
   if (!loggedIn()) return [['#/', 'Saison', 'home', /^\/?$/], ['#/live', 'Live' + liveDot, 'live', /^\/live/], ['#/lec', 'LEC', 'shield', /^\/(lec|team)/], ['#/spieler', 'Spieler', 'players', /^\/spieler/]];
   const draftDone = status() === 'done';
   if (adminOnly()) return [['#/', 'Übersicht', 'home', /^\/(|chat|rueckblick|ruhmeshalle)$/], ...(draftDone ? [] : [['#/draft', 'Draft' + (status() === 'live' ? '<span class="live-dot"></span>' : ''), 'draft', /^\/draft$/]]),
-    ['#/live', 'Live' + liveDot, 'live', /^\/live/], ['#/spieler', 'Spieler', 'players', /^\/spieler/], ['#/lec', 'LEC', 'shield', /^\/(lec|team)/]];
+    ['#/pickem', 'Pick\'em', 'book', /^\/pickem/],
+    ['#/live', 'Live' + liveDot, draftDone ? 'live' : '', /^\/live/], ['#/spieler', 'Spieler', 'players', /^\/spieler/], ['#/lec', 'LEC', 'shield', /^\/(lec|team)/]];
   // Pick'em is always there (tips happen before the split, often before the
   // draft). The phone tab bar holds 6: until the draft is done, Live is only in
   // the desktop nav (no team yet, so nothing personal to watch live).
@@ -1134,7 +1146,7 @@ let adminLoading = false;
 function viewAdminNote() {
   return pageHead('Admin', 'Kein eigenes Team') + card('Als Admin angemeldet', `<div class="card-b">
     <p style="margin-top:0">Der Admin-Account hat kein Team — du siehst die Liga hier nur zum Zuschauen.
-    Für dein eigenes Team, Pick'em und Transfers meldest du dich mit deinem <b>Spieler-Account</b> an.</p>
+    Für dein eigenes Team, deine Pick'em-Tipps und Transfers meldest du dich mit deinem <b>Spieler-Account</b> an.</p>
     <div class="row" style="gap:10px;flex-wrap:wrap"><a class="btn gold" href="#/admin">Zum Admin-Bereich</a>
     <button class="btn" id="adminToPlayer">Admin abmelden &amp; als Spieler einloggen</button></div></div>`);
 }
@@ -1151,7 +1163,7 @@ function render() {
     ? card('Verbindung', `<div class="empty">Server gerade nicht erreichbar (${esc(liveErr)}). Du bist weiter eingeloggt. <a href="#" onclick="location.reload();return false">Neu laden</a></div>`)
     : '<div class="empty">lädt …</div>';
   else if (asAdmin() && !loggedIn() && !liveErr) { html = '<div class="empty">lädt …</div>'; if (!adminLoading) { adminLoading = true; pollAdmin().finally(() => { adminLoading = false; }); } }
-  else if (adminOnly() && /^\/(mein-team|transfers|pickem)$/.test(p)) html = viewAdminNote();
+  else if (adminOnly() && /^\/(mein-team|transfers)$/.test(p)) html = viewAdminNote();
   else if (PRIVATE.test(p) && !loggedIn()) html = viewLanding();
   else if (p === '/' || p === '/login') html = loggedIn() ? viewHome() : viewLanding();
   else if (p === '/draft') html = viewDraft();
@@ -1196,7 +1208,7 @@ function bind() {
   on('chatMute', 'onclick', async () => { try { const r = await api('/api/chat/mute', { method: 'POST', body: { mute: !CHAT.muted } }); CHAT.muted = r.muted; render(); } catch (e) { toast(esc(e.message)); } });
   document.querySelectorAll('[data-chatdel]').forEach(a => a.onclick = async e => { e.preventDefault(); if (!confirm('Nachricht löschen?')) return; try { await chatCall('DELETE', { id: a.dataset.chatdel }); await loadChat(); } catch (er) { toast(esc(er.message)); } });
   const box = $('chatBox'); if (box) box.scrollTop = box.scrollHeight;
-  on('adminToPlayer', 'onclick', () => { try { localStorage.removeItem('lf.admin'); } catch (e) {} LIVE = null; if (D) D.league = null; liveSig = ''; location.hash = '#/'; render(); });
+  on('adminToPlayer', 'onclick', () => { try { localStorage.removeItem('lf.admin'); } catch (e) {} LIVE = null; CHAT = null; PK = null; if (D) D.league = null; liveSig = ''; location.hash = '#/'; render(); });
   on('pushOn', 'onclick', async () => { unlockAudio(); try { await enablePush(); toast('Benachrichtigungen an ✓'); } catch (e) { toast(`<span style="color:#ffb1b3">${esc(e.message)}</span>`); } render(); });
   on('pushOff', 'onclick', async () => { await disablePush(); render(); });
   on('pushTest', 'onclick', async () => { try { const r = await api('/api/push/test', { method: 'POST' }); toast(r.sent ? 'Test gesendet ✓' : 'Kein Gerät erreicht — bitte neu aktivieren.'); } catch (e) { toast(esc(e.message)); } });
@@ -1432,14 +1444,14 @@ async function api(p, opt) {
   return data;
 }
 async function startSession(token) {
-  session = token; store.set('lf.session', token);
+  session = token; store.set('lf.session', token); PK = null; CHAT = null;
   unlockAudio();
   await pollLive(true);
   syncQueue();
 }
 function logout(silent) {
   if (session && !silent) api('/api/logout', { method: 'POST' }).catch(() => {});
-  session = ''; LIVE = null; CHAT = null; if (D) D.league = null; store.del('lf.session');
+  session = ''; LIVE = null; CHAT = null; PK = null; if (D) D.league = null; store.del('lf.session');
   SEASON = new Map(); lastPickCount = null;
   if (!silent) location.hash = '#/';
   render();
@@ -1462,7 +1474,9 @@ async function doPick(id) {
 }
 
 let liveSig = '';
+let lastPollAt = 0;
 async function pollAdmin() {
+  lastPollAt = Date.now();
   const tok = adminTok();
   try {
     const r = await fetch(WORKER + '/api/admin/state', { headers: { Authorization: 'Bearer ' + tok } });
@@ -1477,6 +1491,7 @@ async function pollAdmin() {
 }
 async function pollLive(force) {
   if (!session) { if (asAdmin()) await pollAdmin(); return; }
+  lastPollAt = Date.now();
   try {
     const s = await api('/api/state');
     const picks = s.league.draft.picks || [];
@@ -1540,7 +1555,10 @@ function tick() {
   catch (e) { $('view').innerHTML = card('Fehler', '<div class="empty">Daten konnten nicht geladen werden.</div>'); return; }
   rebuild();
   render();
-  window.addEventListener('hashchange', () => { joinInfo = null; if (path() === '/chat' && CHAT) { loadChat(); markChatRead(); } render(); if (path() === '/live') refreshLive(true); });
+  window.addEventListener('hashchange', () => {
+    // fresh league data when moving between pages (e.g. back from the admin area)
+    if ((session || asAdmin()) && path() !== '/admin' && Date.now() - lastPollAt > 5000) pollLive();
+    joinInfo = null; if (path() === '/chat' && CHAT) { loadChat(); markChatRead(); } render(); if (path() === '/live') refreshLive(true); });
   document.addEventListener('visibilitychange', () => { if (!document.hidden) pollLive(); });
   setInterval(tick, 1000);
   setInterval(() => { if (path() === '/live' && !document.hidden) refreshLive(); }, 20000);
