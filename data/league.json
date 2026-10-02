@@ -26,17 +26,9 @@
     "perRole": 2
   },
   "standingsMode": "points",
-  "managers": [
-    {
-      "id": "m1b85f150",
-      "name": "Bot Delta",
-      "joined": "2026-10-02T12:01:35.711Z"
-    }
-  ],
+  "managers": [],
   "draft": {
-    "order": [
-      "m1b85f150"
-    ],
+    "order": [],
     "snake": true,
     "picks": [],
     "status": "lobby",
