@@ -321,27 +321,59 @@ tests.timer_autopick = async () => {
   return 'timer runs out -> queue first, else best available; marked [auto]';
 };
 
-tests.trades_backbone = async () => {
+tests.transfers = async () => {
   const { a, tok, ids } = await liveLeague(['Ann', 'Ben']);
+  const rules = r => call('POST', '/api/admin/op', { token: a, body: { op: 'setTradeRules', rules: r } });
   const pickFor = pl => call('POST', '/api/admin/op', { token: a, body: { op: 'pickFor', player: pl } });
-  // snake for two: Ann, Ben, Ben, Ann, Ann, Ben, ... - legal for both (≤2 per team)
+  // snake for two: Ann, Ben, Ben, Ann, ... - legal for both (<=2 per team)
   const order = ['G2_TOP', 'FNC_TOP', 'FNC_JNG', 'G2_JNG', 'KC_MID', 'MKOI_MID', 'MKOI_BOT', 'KC_BOT', 'TH_SUP', 'VIT_SUP', 'TH_TOP', 'VIT_TOP'];
   for (const p of order) { const r = await pickFor(p); assert(r.status === 200, 'draft ' + p + ': ' + r.body.error); }
   assert(league().draft.completed, 'draft locked when full');
-  let r = await call('POST', '/api/trade', { token: tok.Ann, body: { action: 'propose', to: ids.Ben, give: ['G2_TOP'], get: ['FNC_TOP'] } });
+  const trade = (who, body) => call('POST', '/api/trade', { token: tok[who], body });
+
+  let r = await trade('Ann', { action: 'propose', to: ids.Ben, give: ['G2_TOP'], get: ['FNC_TOP'] });
   assert(r.status === 403, 'trades off by default');
-  await call('POST', '/api/admin/op', { token: a, body: { op: 'setTradeRules', rules: { enabled: true } } });
-  r = await call('POST', '/api/trade', { token: tok.Ann, body: { action: 'propose', to: ids.Ben, give: ['FNC_TOP'], get: ['G2_TOP'] } });
+  // enabled, but no window entered -> closed
+  await rules({ enabled: true, freeAgents: true, perWeek: 1, mode: 'windows', windows: [] });
+  r = await trade('Ann', { action: 'propose', to: ids.Ben, give: ['G2_TOP'], get: ['FNC_TOP'] });
+  assert(r.status === 409 && /zu/.test(r.body.error), 'no window = closed: ' + r.body.error);
+  // a window that is over, and one that opens later -> closed, says when
+  const day = 864e5, iso = x => new Date(x).toISOString();
+  await rules({ enabled: true, freeAgents: true, perWeek: 1, windows: [
+    { from: iso(Date.now() - 9 * day), to: iso(Date.now() - 2 * day), label: 'vorbei' },
+    { from: iso(Date.now() + 5 * day), to: iso(Date.now() + 9 * day), label: 'spaeter' }] });
+  r = await trade('Ann', { action: 'propose', to: ids.Ben, give: ['G2_TOP'], get: ['FNC_TOP'] });
+  assert(r.status === 409 && /nächste öffnet/.test(r.body.error), 'tells when it opens: ' + r.body.error);
+  // the admin's window check rejects nonsense
+  assert((await rules({ enabled: true, windows: [{ from: iso(Date.now() + day), to: iso(Date.now()) }] })).status === 400, 'from after to refused');
+  // open window now
+  await rules({ enabled: true, freeAgents: true, perWeek: 1, windows: [{ from: iso(Date.now() - day), to: iso(Date.now() + day), label: 'offen' }] });
+  r = await trade('Ann', { action: 'propose', to: ids.Ben, give: ['FNC_TOP'], get: ['G2_TOP'] });
   assert(r.status === 400, 'cannot offer players you do not own');
-  r = await call('POST', '/api/trade', { token: tok.Ann, body: { action: 'propose', to: ids.Ben, give: ['G2_TOP'], get: ['FNC_TOP'] } });
+  // roster rules: Ann gives her only SUP for a TOP -> refused
+  r = await trade('Ann', { action: 'propose', to: ids.Ben, give: ['TH_SUP'], get: ['FNC_TOP'] });
+  assert(r.status === 422 && /keine SUP/.test(r.body.error), 'trading away the only SUP refused: ' + r.body.error);
+  r = await trade('Ann', { action: 'propose', to: ids.Ben, give: ['G2_TOP'], get: ['FNC_TOP'] });
+  assert(r.status === 200, 'legal trade proposed: ' + r.body.error);
   const id = r.body.trade.id;
-  r = await call('POST', '/api/trade', { token: tok.Ann, body: { action: 'respond', id, accept: true } });
-  assert(r.status === 403, 'proposer cannot accept own trade');
-  r = await call('POST', '/api/trade', { token: tok.Ben, body: { action: 'respond', id, accept: true } });
-  assert(r.status === 200 && r.body.trade.status === 'accepted', 'accepted');
+  assert((await trade('Ann', { action: 'respond', id, accept: true })).status === 403, 'proposer cannot accept');
+  r = await trade('Ben', { action: 'respond', id, accept: true });
+  assert(r.status === 200 && r.body.trade.status === 'accepted', 'two managers are enough');
   const ros = globalThis.LECScoring.rosters(league());
   assert(ros[ids.Ann].includes('FNC_TOP') && ros[ids.Ben].includes('G2_TOP'), 'rosters swapped');
-  return 'off by default, ownership checked, only the receiver accepts, rosters swap';
+  // free agents: one per week, must be free, roster rules apply
+  r = await trade('Ann', { action: 'freeAgent', out: 'VIT_TOP', in: 'SK_TOP' });
+  assert(r.status === 400, 'unknown player refused');
+  r = await trade('Ann', { action: 'freeAgent', out: 'VIT_TOP', in: 'G2_TOP' });
+  assert(r.status === 409 && /nicht mehr frei/.test(r.body.error), 'owned player refused');
+  r = await trade('Ann', { action: 'freeAgent', out: 'TH_SUP', in: 'MKOI_TOP' });
+  assert(r.status === 422, 'free agent that drops the only SUP refused');
+  r = await trade('Ann', { action: 'freeAgent', out: 'VIT_TOP', in: 'MKOI_TOP' });
+  assert(r.status === 200 && globalThis.LECScoring.rosters(league())[ids.Ann].includes('MKOI_TOP'), 'free agent picked up: ' + r.body.error);
+  r = await trade('Ann', { action: 'freeAgent', out: 'MKOI_TOP', in: 'MKOI_JNG' });
+  assert(r.status === 409 && /Woche/.test(r.body.error), 'second pickup this week refused: ' + r.body.error);
+  assert(/holt MKOI TOP für VIT TOP/.test(gh.messages('league.json').pop()), 'readable commit message');
+  return 'off by default, closed without window, says when it opens, roster rules, 2 managers suffice, free agents 1/week';
 };
 
 tests.github_hiccups_are_safe = async () => {

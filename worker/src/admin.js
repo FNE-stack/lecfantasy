@@ -153,8 +153,19 @@ const LEAGUE_OPS = {
   },
   setTradeRules(l, op) {
     const r = op.rules || {};
-    l.tradeRules = { enabled: !!r.enabled, adminApproval: !!r.adminApproval, equalCount: r.equalCount !== false, deadline: r.deadline || null };
-    return 'Trade-Regeln ' + (r.enabled ? 'aktiviert' : 'deaktiviert');
+    need(['windows', 'always'].includes(r.mode || 'windows'), 'Modus: windows oder always');
+    const windows = (r.windows || []).map(w => ({ from: w.from, to: w.to, label: String(w.label || '').slice(0, 40) }));
+    for (const w of windows) {
+      need(!isNaN(Date.parse(w.from)) && !isNaN(Date.parse(w.to)), 'Fenster braucht gültiges Von und Bis');
+      need(w.from < w.to, `Fenster „${w.label || w.from.slice(0, 10)}": Von muss vor Bis liegen`);
+    }
+    const per = Number(r.perWeek ?? 1);
+    need(Number.isInteger(per) && per >= 0 && per <= 20, 'Free Agents pro Woche: 0–20 (0 = unbegrenzt)');
+    l.tradeRules = { enabled: !!r.enabled, freeAgents: !!r.freeAgents, perWeek: per, adminApproval: !!r.adminApproval,
+      equalCount: r.equalCount !== false, rosterRules: r.rosterRules !== false, mode: r.mode || 'windows',
+      windows: windows.sort((a, b) => a.from.localeCompare(b.from)) };
+    return `Transfers: Trades ${r.enabled ? 'an' : 'aus'}, Free Agents ${r.freeAgents ? 'an' : 'aus'}, `
+      + (l.tradeRules.mode === 'always' ? 'immer offen' : `${windows.length} Fenster`);
   },
   decideTrade(l, op) {
     const t = (l.trades || []).find(x => x.id === op.id);

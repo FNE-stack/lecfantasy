@@ -169,6 +169,23 @@ tests.validator_finds_problems = () => {
   return 'duplicates, order, bad scoring, ghost managers all caught, with fixes';
 };
 
+tests.transfer_window_and_roster = () => {
+  const L = league(2);
+  assert(!S.transferWindow(L).open, 'no rules = closed');
+  L.tradeRules = { mode: 'windows', windows: [{ from: '2027-01-10T00:00:00Z', to: '2027-01-20T23:59:59Z' }, { from: '2027-04-01T00:00:00Z', to: '2027-04-05T00:00:00Z' }] };
+  const at = x => S.transferWindow(L, x);
+  assert(!at('2027-01-05T00:00:00Z').open && at('2027-01-05T00:00:00Z').next.from.startsWith('2027-01-10'), 'before: closed, next known');
+  assert(at('2027-01-15T12:00:00Z').open, 'inside: open');
+  assert(!at('2027-02-01T00:00:00Z').open && at('2027-02-01T00:00:00Z').next.from.startsWith('2027-04'), 'between: closed, next is April');
+  L.tradeRules.mode = 'always';
+  assert(S.transferWindow(L, '2030-01-01T00:00:00Z').open, 'always: open');
+  const pi = new Map([['a', { role: 'TOP', team: 'G2' }], ['b', { role: 'JNG', team: 'G2' }], ['c', { role: 'MID', team: 'G2' }], ['d', { role: 'BOT', team: 'FNC' }], ['e', { role: 'SUP', team: 'FNC' }]]);
+  const probs = S.rosterProblems(L, pi, ['a', 'b', 'c', 'd']);
+  assert(probs.some(x => /SUP/.test(x)) && probs.some(x => /3 von G2/.test(x)), JSON.stringify(probs));
+  assert(S.weekKey('2027-01-13T22:00:00Z') === '2027-01-11' && S.weekKey('2027-01-17T23:00:00Z') === '2027-01-11', 'Mon-Sun weeks');
+  return 'windows (before/inside/between/always), roster problems, week keys';
+};
+
 function assert(c, m) { if (!c) throw new Error(m); }
 let failed = 0;
 for (const [n, t] of Object.entries(tests)) {

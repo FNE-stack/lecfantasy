@@ -331,6 +331,60 @@
     return { done: done, total: total, round: Math.floor(done / Math.max(1, order.length)) + 1 };
   }
 
+  // ── transfers: trades + free-agent pickups ──────────────────────────────
+  // league.tradeRules = {
+  //   enabled        trades between managers
+  //   freeAgents     pick up players nobody drafted
+  //   perWeek        free-agent pickups per manager per calendar week (0 = no limit)
+  //   adminApproval  admin must confirm trades the two managers agreed on
+  //   equalCount     same number of players on both sides
+  //   rosterRules    after a transfer every roster must still cover each
+  //                  starting role and respect the per-team limit
+  //   mode           'windows' = only inside windows[] (the LEC transfer
+  //                  periods the admin enters) · 'always'
+  //   windows        [{from, to, label}] ISO dates, inclusive
+  // }
+  function transferRules(league) {
+    return Object.assign({ enabled: false, freeAgents: false, perWeek: 1, adminApproval: false,
+      equalCount: true, rosterRules: true, mode: 'windows', windows: [] }, league.tradeRules || {});
+  }
+
+  // {open, current, next} at time `now` (ISO). No window entered = closed.
+  function transferWindow(league, now) {
+    const r = transferRules(league);
+    const t = now || new Date().toISOString();
+    if (r.mode === 'always') return { open: true, current: null, next: null };
+    const ws = (r.windows || []).filter(w => w && w.from && w.to).slice()
+      .sort((a, b) => a.from.localeCompare(b.from));
+    const current = ws.find(w => w.from <= t && t <= w.to) || null;
+    const next = ws.find(w => w.from > t) || null;
+    return { open: !!current, current, next };
+  }
+
+  // Problems a roster would have (empty list = fine). Used for transfers:
+  // every starting role covered, nobody over the per-team limit.
+  function rosterProblems(league, playerIndex, ids) {
+    const out = [], roles = {}, teams = {};
+    for (const id of ids) {
+      const p = playerIndex.get(id);
+      if (!p) continue;
+      roles[p.role] = (roles[p.role] || 0) + 1;
+      teams[p.team] = (teams[p.team] || 0) + 1;
+    }
+    for (const r of (league.roster && league.roster.slots) || []) if (!roles[r]) out.push('keine ' + r + ' mehr');
+    const max = (league.roster && league.roster.maxPerTeam) || 99;
+    for (const [t, n] of Object.entries(teams)) if (n > max) out.push(n + ' von ' + t + ' (max. ' + max + ')');
+    return out;
+  }
+
+  // Monday 00:00 UTC of the week `iso` falls in - the key for perWeek.
+  function weekKey(iso) {
+    const d = new Date(iso);
+    const day = (d.getUTCDay() + 6) % 7;
+    d.setUTCDate(d.getUTCDate() - day); d.setUTCHours(0, 0, 0, 0);
+    return d.toISOString().slice(0, 10);
+  }
+
   // ── consistency check (admin) ───────────────────────────────────────────
   // errors: the file is broken, writes are refused · warnings: legal but odd
   // (usually the result of an admin override), each with a suggested fix.
@@ -406,7 +460,8 @@
     draftStatus, rosterSize, capacity,
     rosterEvents, ownership, rosters, standings, weeklyPoints,
     h2hPairs, h2h,
-    pickError, relaxLevel, currentPicker, draftProgress, validateLeague
+    pickError, relaxLevel, currentPicker, draftProgress, validateLeague,
+    transferRules, transferWindow, rosterProblems, weekKey
   };
 // `this` is undefined in an ES module, so a Cloudflare Worker importing this
 // file would crash on a bare `this`. globalThis works in every place these

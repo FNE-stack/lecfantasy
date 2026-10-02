@@ -133,7 +133,17 @@ async function route(request, env, ctx) {
     }
     return { queue: (await env.LEAGUE.get(`queue:${me}`, 'json')) || [] };
   }
-  if (p === '/api/trade' && method === 'POST') return { trade: await tradeAction(env, me, body) };
+  if (p === '/api/trade' && method === 'POST') {
+    const t = await tradeAction(env, me, body);
+    // tell the other side (best effort, never blocks the answer)
+    if (t && t.id && ctx && ctx.waitUntil) {
+      const who = body.action === 'propose' ? t.to : body.action === 'respond' ? t.from : null;
+      const text = body.action === 'propose' ? 'Du hast ein Trade-Angebot.' : t.status === 'accepted' ? 'Dein Trade wurde angenommen.'
+        : t.status === 'agreed' ? 'Dein Trade wurde angenommen und wartet auf den Admin.' : 'Dein Trade wurde abgelehnt.';
+      if (who) ctx.waitUntil(notify(env, [who], { title: 'Transfers', body: text, url: './#/transfers', tag: 'trade' }).catch(() => {}));
+    }
+    return { trade: t };
+  }
   if (p === '/api/push/key' && method === 'GET') return { key: env.VAPID_PUBLIC || null };
   if (p === '/api/push' && method === 'POST') return { devices: await subscribe(env, me, body.subscription) };
   if (p === '/api/push' && method === 'DELETE') { await unsubscribe(env, me, body.endpoint); return { ok: true }; }

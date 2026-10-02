@@ -316,6 +316,11 @@ function viewManager(id, isMe) {
     ${isMe ? '<div class="cta"><button class="btn" id="logout">Abmelden</button></div>' : ''}
   </section>`;
   if (isMe) h += pushCard();
+  if (isMe && status() === 'done') {
+    const tr = S.transferRules(L()), win = S.transferWindow(L()), n = pendingForMe();
+    if (tr.enabled || tr.freeAgents) h += `<a class="note" href="#/transfers" style="display:flex;align-items:center;gap:12px;color:inherit">
+      <span>⇄</span><div style="flex:1">${n ? `<b>${n} Trade-Angebot${n > 1 ? 'e' : ''} für dich.</b> ` : ''}Transfers: ${tr.mode === 'always' || win.open ? '<b>Fenster offen</b>' : 'Fenster zu'} — Trades und Free Agents.</div><span class="btn gold sm">Öffnen</span></a>`;
+  }
   h += `<div class="grid g-main" style="margin-bottom:18px">
     <div class="stack">${card('Kader', ids.length ? `<table><thead><tr><th>Spieler</th><th class="hide-s">Nächstes Spiel</th><th class="hide-s">Form</th><th class="num hide-s">Letztes</th><th class="num">Punkte</th></tr></thead><tbody>${rosterRows}</tbody></table>`
         : `<div class="empty">Noch kein Kader. ${status() !== 'done' ? '<a href="#/draft">Zum Draft →</a>' : ''}</div>`)}
@@ -432,6 +437,91 @@ function board() {
   return h + '</div></div>';
 }
 
+// ── transfers (trades + free agents) ──────────────────────────────────────
+const tx = { partner: '', give: [], get: [], faOut: '', faIn: '', faQ: '', busy: false };
+function pendingForMe() {
+  return ((L() && L().trades) || []).filter(t => t.status === 'proposed' && t.to === me()).length;
+}
+function viewTransfers() {
+  const lg = L(), tr = S.transferRules(lg), win = S.transferWindow(lg);
+  const d = iso => new Date(iso).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' });
+  const ros = S.rosters(lg), mine = ros[me()] || [], own = S.ownership(lg);
+  const done = status() === 'done';
+  const statusLine = !done ? 'Transfers gibt es erst nach dem Draft.'
+    : !tr.enabled && !tr.freeAgents ? 'In dieser Liga sind keine Transfers erlaubt.'
+    : tr.mode === 'always' ? 'Transfers sind jederzeit möglich.'
+    : win.open ? `Transferfenster <b>${esc(win.current.label || '')}</b> ist offen bis <b>${d(win.current.to)}</b>.`
+    : win.next ? `Transferfenster ist zu — das nächste öffnet am <b>${d(win.next.from)}</b>${win.next.label ? ' (' + esc(win.next.label) + ')' : ''}.`
+    : 'Transferfenster ist zu.';
+  const open = done && (tr.mode === 'always' || win.open);
+  let h = pageHead('Mein Team', 'Transfers') + `<div class="note">${statusLine}</div>`;
+
+  // offers
+  const trades = (lg.trades || []).filter(t => t.from === me() || t.to === me());
+  const pl = ids => ids.map(id => pcell(id, { photo: true })).join('<br>');
+  const offerRows = trades.filter(t => ['proposed', 'agreed'].includes(t.status)).map(t => {
+    const incoming = t.to === me();
+    const actions = t.status === 'agreed' ? '<span class="pill gold">wartet auf Admin</span>'
+      : incoming ? `<button class="btn gold sm" data-tx="accept" data-id="${esc(t.id)}" ${open ? '' : 'disabled'}>Annehmen</button> <button class="btn sm" data-tx="decline" data-id="${esc(t.id)}">Ablehnen</button>`
+      : `<button class="btn sm" data-tx="cancel" data-id="${esc(t.id)}">Zurückziehen</button>`;
+    return `<tr><td style="white-space:nowrap"><b>${incoming ? 'von ' + esc(mgrName(t.from)) : 'an ' + esc(mgrName(t.to))}</b><div class="dim" style="font-size:11px">${d(t.at)}</div></td>
+      <td class="fill"><div class="dim" style="font-size:11px">${incoming ? 'du bekommst' : 'du gibst'}</div>${pl(incoming ? t.give : t.give)}</td>
+      <td class="fill"><div class="dim" style="font-size:11px">${incoming ? 'du gibst' : 'du bekommst'}</div>${pl(t.get)}</td>
+      <td class="num" style="white-space:nowrap">${actions}</td></tr>`;
+  }).join('');
+  if (tr.enabled) h += card('Angebote', offerRows ? `<table class="tight"><tbody>${offerRows}</tbody></table>` : '<div class="empty">Keine offenen Angebote.</div>');
+
+  // new trade
+  if (tr.enabled && done) {
+    const others = (lg.managers || []).filter(m => m.id !== me());
+    const theirs = tx.partner ? ros[tx.partner] || [] : [];
+    const pick = (ids, key) => ids.map(id => `<label class="row" style="padding:7px 0;gap:10px;margin:0;color:var(--text);cursor:pointer;border-bottom:1px solid var(--line)">
+        <input type="checkbox" data-txpick="${key}" value="${esc(id)}" style="width:auto" ${tx[key].includes(id) ? 'checked' : ''}><span style="flex:1;min-width:0">${pcell(id, { photo: true })}</span><span class="pts">${fmt(season(id).pts)}</span></label>`).join('');
+    h += card('Neuer Trade', `<div class="card-b">
+      <label>Mit wem?</label><select id="txPartner" style="width:100%"><option value="">— Manager wählen —</option>${others.map(m => `<option value="${esc(m.id)}" ${tx.partner === m.id ? 'selected' : ''}>${esc(m.name)}</option>`).join('')}</select>
+      ${tx.partner ? `<div class="grid g-2" style="margin-top:14px;gap:14px"><div><div class="eyebrow" style="margin-bottom:6px">Du gibst</div>${pick(mine, 'give')}</div>
+        <div><div class="eyebrow" style="margin-bottom:6px">Du bekommst</div>${pick(theirs, 'get')}</div></div>
+        <div class="row" style="margin-top:14px;flex-wrap:wrap"><button class="btn gold" data-tx="propose" ${open && tx.give.length && tx.get.length ? '' : 'disabled'}>Angebot schicken</button>
+        <span class="muted" style="font-size:12px">${tr.equalCount ? 'Gleich viele Spieler auf beiden Seiten. ' : ''}${tr.rosterRules ? 'Jede Rolle muss danach besetzt bleiben.' : ''}</span></div>` : ''}
+    </div>`);
+  }
+
+  // free agents
+  if (tr.freeAgents && done) {
+    const wk = S.weekKey(new Date().toISOString());
+    const used = (lg.swaps || []).filter(x => x.manager === me() && x.by === 'self' && x.at && S.weekKey(x.at) === wk).length;
+    const left = tr.perWeek > 0 ? Math.max(0, tr.perWeek - used) : null;
+    const q = tx.faQ.toLowerCase();
+    const free = D.players.players.filter(p => !own.has(p.id) && (!q || [p.name, p.realName, p.team, p.role].join(' ').toLowerCase().includes(q)))
+      .sort((a, b) => season(b.id).pts - season(a.id).pts).slice(0, 25);
+    h += card('Free Agents', `<div class="card-b">
+      <label>Abgeben</label><select id="faOut" style="width:100%"><option value="">— eigenen Spieler wählen —</option>${mine.map(id => `<option value="${esc(id)}" ${tx.faOut === id ? 'selected' : ''}>${esc((D.P.get(id) || {}).name || id)} · ${esc((D.P.get(id) || {}).team || '')} ${esc((D.P.get(id) || {}).role || '')}</option>`).join('')}</select>
+      <label>Holen</label><input id="faQ" placeholder="Freie Spieler suchen …" value="${esc(tx.faQ)}" style="width:100%"></div>
+      <table class="pool"><tbody>${free.map(p => `<tr><td class="fill">${pcell(p.id, { photo: true, real: true })}</td><td class="num pts">${fmt(season(p.id).pts)}</td>
+        <td class="num" style="width:1%"><button class="btn gold sm" data-tx="fa" data-id="${esc(p.id)}" ${open && tx.faOut && left !== 0 ? '' : 'disabled'}>Holen</button></td></tr>`).join('') || '<tr><td class="empty">kein freier Spieler gefunden</td></tr>'}</tbody></table>`,
+      left === null ? 'unbegrenzt' : `noch ${left} diese Woche`);
+  }
+
+  // history (league-wide, newest first)
+  const hist = [];
+  for (const t of lg.trades || []) if (t.status === 'accepted') hist.push({ at: t.decidedAt || t.at, html: `<b>${esc(mgrName(t.from))}</b> ⇄ <b>${esc(mgrName(t.to))}</b>: ${t.give.map(id => esc(U.playerName(D, id))).join(', ')} ⇄ ${t.get.map(id => esc(U.playerName(D, id))).join(', ')}` });
+  for (const x of lg.swaps || []) hist.push({ at: x.at || '', html: `<b>${esc(mgrName(x.manager))}</b>: ${esc(U.playerName(D, x.out))} → ${esc(U.playerName(D, x.in))} ${x.by === 'self' ? '<span class="pill">Free Agent</span>' : '<span class="pill">Admin</span>'}` });
+  hist.sort((a, b) => (b.at || '').localeCompare(a.at || ''));
+  h += card('Alle Transfers der Liga', hist.length ? '<div class="log">' + hist.slice(0, 40).map(x => `<div><span class="n" style="width:70px">${x.at ? esc(day(x.at)) : '—'}</span><span>${x.html}</span></div>`).join('') + '</div>' : '<div class="empty">noch keine</div>');
+  return h;
+}
+async function txAction(body, okText) {
+  if (tx.busy) return;
+  tx.busy = true;
+  try {
+    await api('/api/trade', { method: 'POST', body });
+    toast(okText);
+    if (body.action === 'propose') { tx.give = []; tx.get = []; }
+    if (body.action === 'freeAgent') { tx.faOut = ''; }
+  } catch (e) { toast(`<span style="color:#ffb1b3">${esc(e.message)}</span>`); }
+  finally { tx.busy = false; await pollLive(true); }
+}
+
 // ── players & teams (public data; ownership only when logged in) ──────────
 function viewPlayers() {
   const showOwner = loggedIn();
@@ -534,6 +624,11 @@ function viewRules() {
     ${card('Tabelle', `<div class="card-b muted" style="line-height:1.7"><b style="color:var(--text)">Punkte:</b> Summe aller Punkte deiner Spieler.<br>
       <b style="color:var(--text)">Head-to-Head:</b> jede LEC-Woche spielst du gegen einen anderen Manager — mehr Punkte in der Woche gewinnt.<br>
       Wechsel und Trades zählen ab ihrem Datum; vorherige Punkte bleiben beim alten Manager.</div>`)}
+    ${card('Transfers', (() => { const tr = S.transferRules(lg), w = S.transferWindow(lg);
+      return `<div class="card-b muted" style="line-height:1.7">${tr.enabled ? '<b style="color:var(--text)">Trades:</b> zwei Manager einigen sich, fertig' + (tr.adminApproval ? ' (plus Freigabe durch den Admin)' : '') + '.<br>' : 'Keine Trades.<br>'}
+        ${tr.freeAgents ? `<b style="color:var(--text)">Free Agents:</b> ungedraftete Spieler gegen eigene tauschen${tr.perWeek ? `, ${tr.perWeek}× pro Woche` : ''}.<br>` : ''}
+        ${tr.mode === 'always' ? 'Jederzeit möglich.' : `Nur in Transferfenstern${w.open ? ' — gerade offen.' : w.next ? ' — nächstes ab ' + new Date(w.next.from).toLocaleDateString('de-DE') + '.' : '.'}`}
+        ${tr.rosterRules ? '<br>Nach jedem Transfer muss jede Rolle besetzt bleiben.' : ''} Punkte zählen ab dem Transfer.</div>`; })())}
     ${card('Daten', `<div class="card-b muted" style="line-height:1.7">Stats kommen von der offiziellen lolesports-API, automatisch <b style="color:var(--text)">2× täglich</b>.
       Sieger pro Spiel werden aus den offiziellen Serienergebnissen abgeleitet. Passwort vergessen? Dem Admin Bescheid geben.</div>`)}
   </div>`;
@@ -680,7 +775,7 @@ async function disablePush() {
 }
 
 // ── routing & chrome ──────────────────────────────────────────────────────
-const PRIVATE = /^\/(mein-team|draft|manager\/.+|regeln)$/;
+const PRIVATE = /^\/(mein-team|draft|manager\/.+|regeln|transfers)$/;
 const ICONS = {
   home: '<path d="M3 11l9-7 9 7v9a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/>',
   user: '<circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 4-6 8-6s8 2 8 6"/>',
@@ -694,7 +789,7 @@ function path() { return ((location.hash || '#/').replace(/^#/, '').split('?')[0
 function nav() {
   const liveDot = liveNow.length ? '<span class="live-dot"></span>' : '';
   if (!loggedIn()) return [['#/', 'Saison', 'home', /^\/?$/], ['#/live', 'Live' + liveDot, 'live', /^\/live/], ['#/teams', 'Teams', 'shield', /^\/team/], ['#/spieler', 'Spieler', 'players', /^\/spieler/]];
-  return [['#/', 'Übersicht', 'home', /^\/?$/], ['#/mein-team', 'Mein Team', 'user', /^\/(mein-team|manager\/.+)$/],
+  return [['#/', 'Übersicht', 'home', /^\/?$/], ['#/mein-team', 'Mein Team' + (pendingForMe() ? '<span class="live-dot" style="background:var(--gold);animation:none"></span>' : ''), 'user', /^\/(mein-team|manager\/.+|transfers)$/],
     ['#/draft', 'Draft' + (status() === 'live' ? '<span class="live-dot"></span>' : ''), 'draft', /^\/draft$/],
     ['#/live', 'Live' + liveDot, 'live', /^\/live/], ['#/spieler', 'Spieler', 'players', /^\/spieler/], ['#/teams', 'Teams', 'shield', /^\/team/], ['#/regeln', 'Regeln', null, /^\/regeln$/]];
 }
@@ -711,7 +806,7 @@ function chrome() {
   const mine = loggedIn() && status() === 'live' && S.currentPicker(L()) === me();
   $('turnbar').className = 'turnbar' + (mine ? ' on' : '');
   $('turnbar').innerHTML = mine ? (p === '/draft' ? 'Du bist dran — wähle deinen Spieler' : 'Du bist dran! <a href="#/draft">Jetzt picken →</a>') : '';
-  const title = { '/': loggedIn() ? 'Übersicht' : 'Saison', '/draft': 'Draft', '/spieler': 'Spieler', '/teams': 'Teams', '/regeln': 'Regeln', '/mein-team': 'Mein Team', '/live': 'Live', '/admin': 'Admin' }[p] || '';
+  const title = { '/': loggedIn() ? 'Übersicht' : 'Saison', '/draft': 'Draft', '/spieler': 'Spieler', '/teams': 'Teams', '/regeln': 'Regeln', '/mein-team': 'Mein Team', '/live': 'Live', '/admin': 'Admin', '/transfers': 'Transfers' }[p] || '';
   document.title = (mine ? '▶ Du bist dran · ' : '') + 'LEC Fantasy' + (title ? ' — ' + title : '');
   if (mine && !wasMyTurn) yourTurn();
   wasMyTurn = !!mine;
@@ -731,6 +826,7 @@ function render() {
   else if (p === '/' || p === '/login') html = loggedIn() ? viewHome() : viewLanding();
   else if (p === '/draft') html = viewDraft();
   else if (p === '/mein-team') html = viewMine();
+  else if (p === '/transfers') html = viewTransfers();
   else if (p === '/spieler') html = viewPlayers();
   else if (p === '/teams') html = viewTeams();
   else if (p === '/regeln') html = viewRules();
@@ -774,6 +870,22 @@ function bind() {
     render();
   });
   document.querySelectorAll('[data-pick]').forEach(b => b.onclick = () => doPick(b.dataset.pick));
+  on('txPartner', 'onchange', e => { tx.partner = e.target.value; tx.get = []; render(); });
+  on('faOut', 'onchange', e => { tx.faOut = e.target.value; render(); });
+  on('faQ', 'oninput', e => { tx.faQ = e.target.value; render(); });
+  document.querySelectorAll('[data-txpick]').forEach(c => c.onchange = () => {
+    const k = c.dataset.txpick;
+    tx[k] = c.checked ? tx[k].concat(c.value) : tx[k].filter(x => x !== c.value);
+    render();
+  });
+  document.querySelectorAll('[data-tx]').forEach(b => b.onclick = () => {
+    const a = b.dataset.tx, id = b.dataset.id;
+    if (a === 'propose') return txAction({ action: 'propose', to: tx.partner, give: tx.give, get: tx.get }, 'Angebot verschickt.');
+    if (a === 'accept' && confirm('Trade annehmen?')) return txAction({ action: 'respond', id, accept: true }, 'Trade angenommen.');
+    if (a === 'decline') return txAction({ action: 'respond', id, accept: false }, 'Abgelehnt.');
+    if (a === 'cancel') return txAction({ action: 'cancel', id }, 'Zurückgezogen.');
+    if (a === 'fa' && confirm(`${U.playerName(D, tx.faOut)} abgeben und ${U.playerName(D, id)} holen?`)) return txAction({ action: 'freeAgent', out: tx.faOut, in: id }, `${esc(U.playerName(D, id))} ist jetzt in deinem Kader.`);
+  });
 }
 
 // ── worker ────────────────────────────────────────────────────────────────

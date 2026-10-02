@@ -166,21 +166,48 @@ function viewStats() {
 }
 let statsPick = null;
 
-function viewLeague() {
-  const L = A.league, s = L.scoring, r = L.roster, tr = L.tradeRules || {};
+function viewSettings() {
+  const L = A.league, s = L.scoring, r = L.roster;
+  const tr = window.LECScoring.transferRules(L), win = window.LECScoring.transferWindow(L);
+  const t = L.draft.timer || { mode: 'off', seconds: 90 };
   const num = (id, v, step) => `<input id="${id}" type="number" step="${step || 'any'}" value="${v}" style="width:90px">`;
-  return card('Liga', `<div class="card-b row" style="flex-wrap:wrap"><input id="lgName" value="${esc(L.name || '')}" style="flex:1;min-width:200px" maxlength="40">${btn('Name speichern', 'name')}</div>`)
+  const chk = (id, on, label) => `<label style="display:flex;gap:8px;align-items:center;margin:0"><input type="checkbox" id="${id}" style="width:auto" ${on ? 'checked' : ''}> ${label}</label>`;
+  const d = iso => new Date(iso).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' });
+  const now = new Date().toISOString();
+  const winRows = (tr.windows || []).map((w, i) => {
+    const state = w.from <= now && now <= w.to ? '<span class="pill teal">offen</span>' : w.to < now ? '<span class="pill">vorbei</span>' : '<span class="pill gold">kommt</span>';
+    return `<tr><td>${state}</td><td class="fill"><b>${esc(w.label || 'Fenster')}</b> <span class="muted">${d(w.from)} – ${d(w.to)}</span></td>
+      <td class="num">${btn('✕', 'winDel', { i })}</td></tr>`;
+  }).join('');
+  const status = tr.mode === 'always' ? '<span class="pill teal">immer offen</span>'
+    : win.open ? `<span class="pill teal">offen bis ${d(win.current.to)}</span>`
+    : win.next ? `<span class="pill gold">zu · öffnet ${d(win.next.from)}</span>` : '<span class="pill live">zu · kein Fenster eingetragen</span>';
+  return card('Pick-Timer', `<div class="card-b"><div class="row" style="flex-wrap:wrap"><select id="tMode">${['off', 'soft', 'auto'].map(m => `<option value="${m}" ${t.mode === m ? 'selected' : ''}>${{ off: 'aus', soft: 'nur Anzeige', auto: 'Auto-Pick' }[m]}</option>`).join('')}</select>
+        ${num('tSec', t.seconds || 90, 1)} Sekunden ${btn('Speichern', 'timer', {}, 'gold')}</div>
+        <p class="muted" style="font-size:12px;margin:10px 0 0">Auto-Pick: nach Ablauf pickt das System — zuerst der oberste freie Spieler aus der ★ Watchlist des Managers, sonst der beste Verfügbare nach Punkten.</p></div>`)
+    + card('Transfers', `<div class="card-b" style="display:flex;flex-direction:column;gap:10px">
+        ${chk('trOn', tr.enabled, '<b>Trades</b> zwischen Managern — die zwei Beteiligten einigen sich, fertig')}
+        ${chk('trFa', tr.freeAgents, '<b>Free Agents</b> — Spieler, die niemand gedraftet hat, gegen einen eigenen tauschen')}
+        <label style="margin:0">Free-Agent-Wechsel pro Manager und Woche (Mo–So, 0 = unbegrenzt) ${num('trPer', tr.perWeek, 1)}</label>
+        ${chk('trRos', tr.rosterRules, 'Kaderregeln auch bei Transfers (jede Rolle bleibt besetzt, max. ' + r.maxPerTeam + ' pro Team)')}
+        ${chk('trEq', tr.equalCount, 'Trades nur mit gleich vielen Spielern auf beiden Seiten')}
+        ${chk('trAdm', tr.adminApproval, 'Admin muss Trades zusätzlich freigeben')}
+        <div class="row" style="flex-wrap:wrap;gap:14px;margin-top:4px">
+          <label style="display:flex;gap:8px;align-items:center;margin:0"><input type="radio" name="trMode" value="windows" style="width:auto" ${tr.mode !== 'always' ? 'checked' : ''}> nur in Transferfenstern</label>
+          <label style="display:flex;gap:8px;align-items:center;margin:0"><input type="radio" name="trMode" value="always" style="width:auto" ${tr.mode === 'always' ? 'checked' : ''}> immer</label></div>
+        <div>${btn('Transfer-Regeln speichern', 'trades', {}, 'gold')}</div></div>`, status)
+    + card('Transferfenster', (winRows ? `<table><tbody>${winRows}</tbody></table>` : '<div class="empty">Noch kein Fenster — Transfers sind zu, bis du eins einträgst.</div>')
+      + `<div class="card-b row" style="flex-wrap:wrap;border-top:1px solid var(--line)">
+        <input id="wLabel" placeholder="Name, z. B. Winter-Transferfenster" maxlength="40" style="flex:1;min-width:180px">
+        <label style="margin:0">von <input id="wFrom" type="date" style="width:160px"></label><label style="margin:0">bis <input id="wTo" type="date" style="width:160px"></label>
+        ${btn('Fenster hinzufügen', 'winAdd', {}, 'gold')}</div>
+        <p class="muted" style="font-size:12px;margin:0 16px 14px">Trag hier die Zeiträume ein, in denen laut LEC-Regelwerk Transfers erlaubt sind (bzw. was ihr absprecht). Von 00:00 bis 23:59 Uhr.</p>`)
+    + card('Liga', `<div class="card-b row" style="flex-wrap:wrap"><input id="lgName" value="${esc(L.name || '')}" style="flex:1;min-width:200px" maxlength="40">${btn('Name speichern', 'name')}</div>`)
     + card('Punkte pro Spiel', `<div class="card-b"><div class="row" style="flex-wrap:wrap;gap:14px">
         <label>Kill ${num('sK', s.kill)}</label><label>Tod ${num('sD', s.death)}</label><label>Assist ${num('sA', s.assist)}</label><label>CS ${num('sC', s.cs10, '0.005')}</label><label>Sieg ${num('sW', s.win)}</label></div>
         <div style="margin-top:12px">${btn('Punkte speichern', 'scoring', {}, 'gold')} <span class="muted" style="font-size:12px">wirkt rückwirkend auf alle Spiele</span></div></div>`)
     + card('Kader', `<div class="card-b row" style="flex-wrap:wrap;gap:14px"><span class="muted">Rollen: ${esc(r.slots.join(', '))}</span><label>Bank ${num('rB', r.bench, 1)}</label><label>max. pro Team ${num('rM', r.maxPerTeam, 1)}</label>${btn('Speichern', 'roster', {}, 'gold')}</div>`)
-    + card('Haupttabelle', `<div class="card-b row">${opBtn('Gesamtpunkte', { op: 'setStandingsMode', mode: 'points' }, '', (L.standingsMode || 'points') === 'points' ? 'gold' : '')}${opBtn('Head-to-Head', { op: 'setStandingsMode', mode: 'h2h' }, '', L.standingsMode === 'h2h' ? 'gold' : '')}</div>`)
-    + card('Trades (Gerüst — Regeln noch offen)', `<div class="card-b" style="display:flex;flex-direction:column;gap:8px">
-        <label style="display:flex;gap:8px;align-items:center"><input type="checkbox" id="trOn" style="width:auto" ${tr.enabled ? 'checked' : ''}> Trades erlauben</label>
-        <label style="display:flex;gap:8px;align-items:center"><input type="checkbox" id="trAdm" style="width:auto" ${tr.adminApproval ? 'checked' : ''}> Admin muss bestätigen</label>
-        <label style="display:flex;gap:8px;align-items:center"><input type="checkbox" id="trEq" style="width:auto" ${tr.equalCount !== false ? 'checked' : ''}> gleich viele Spieler pro Seite</label>
-        <label>Deadline <input id="trDl" type="date" value="${tr.deadline ? tr.deadline.slice(0, 10) : ''}" style="width:170px"></label>
-        <div>${btn('Speichern', 'trades', {}, 'gold')}</div></div>`);
+    + card('Haupttabelle', `<div class="card-b row">${opBtn('Gesamtpunkte', { op: 'setStandingsMode', mode: 'points' }, '', (L.standingsMode || 'points') === 'points' ? 'gold' : '')}${opBtn('Head-to-Head', { op: 'setStandingsMode', mode: 'h2h' }, '', L.standingsMode === 'h2h' ? 'gold' : '')}</div>`);
 }
 
 function viewHistory() {
@@ -217,13 +244,13 @@ function viewEmergency() {
       : `Aktuell öffentlich in ${esc(repo)}. Für echte Privatsphäre: privates Repo <code>lecfantasy-data</code> anlegen, Token darauf erweitern, dann <code>DATA_REPO</code> setzen und neu deployen.`}</div>`);
 }
 
-const TABS = [['overview', 'Übersicht'], ['draft', 'Draft'], ['members', 'Mitglieder'], ['points', 'Punkte'], ['stats', 'Stats'], ['league', 'Liga'], ['history', 'Verlauf'], ['raw', 'Rohdaten'], ['emergency', 'Notfall']];
+const TABS = [['overview', 'Übersicht'], ['draft', 'Draft'], ['members', 'Mitglieder'], ['points', 'Punkte'], ['stats', 'Stats'], ['settings', 'Einstellungen'], ['history', 'Verlauf'], ['raw', 'Rohdaten'], ['emergency', 'Notfall']];
 function draw() {
   if (!root) return;
   if (!tokenGet()) { root.innerHTML = viewLogin(flash && !flash.ok ? flash.text : ''); bind(); return; }
   if (!A) { root.innerHTML = '<div class="empty">lade Admin …</div>'; return; }
   const issues = A.validation.errors.length;
-  const body = { overview: viewOverview, draft: viewDraft, members: viewMembers, points: viewPoints, stats: viewStats, league: viewLeague, history: viewHistory, raw: viewRaw, emergency: viewEmergency }[tab]();
+  const body = { overview: viewOverview, draft: viewDraft, members: viewMembers, points: viewPoints, stats: viewStats, settings: viewSettings, history: viewHistory, raw: viewRaw, emergency: viewEmergency }[tab]();
   root.innerHTML = `<div class="row" style="justify-content:space-between;flex-wrap:wrap;gap:12px;margin-bottom:14px">
       <div><div class="eyebrow">${esc(A.league.name || 'LEC Fantasy')} · ${{ lobby: 'Anmeldung', live: 'Draft läuft', done: 'Saison' }[window.LECScoring.draftStatus(A.league)]}</div><h1 style="font-size:40px">Admin</h1></div>
       <div class="row">${issues ? `<span class="pill live">${issues} Fehler</span>` : '<span class="pill teal">konsistent</span>'}${btn('Neu laden', 'reload')}${btn('Admin abmelden', 'alogout')}</div></div>
@@ -337,7 +364,21 @@ async function act(a, d, el) {
     case 'name': return op({ op: 'setName', name: val('lgName') });
     case 'scoring': return op({ op: 'setScoring', scoring: { kill: +val('sK'), death: +val('sD'), assist: +val('sA'), cs10: +val('sC'), win: +val('sW') } }, 'Punkte ändern? Gilt rückwirkend für alle Spiele.');
     case 'roster': return op({ op: 'setRoster', roster: { slots: L.roster.slots, bench: +val('rB'), maxPerTeam: +val('rM') }, force: true }, (L.draft.picks || []).length ? 'Kaderregeln nach Draftbeginn ändern?' : null);
-    case 'trades': return op({ op: 'setTradeRules', rules: { enabled: document.getElementById('trOn').checked, adminApproval: document.getElementById('trAdm').checked, equalCount: document.getElementById('trEq').checked, deadline: val('trDl') ? new Date(val('trDl') + 'T23:59:59').toISOString() : null } });
+    case 'trades': case 'winAdd': case 'winDel': {
+      const cur = window.LECScoring.transferRules(L);
+      const g = id => document.getElementById(id);
+      const rules = a === 'trades' ? {
+        enabled: g('trOn').checked, freeAgents: g('trFa').checked, perWeek: Math.max(0, parseInt(val('trPer'), 10) || 0),
+        rosterRules: g('trRos').checked, equalCount: g('trEq').checked, adminApproval: g('trAdm').checked,
+        mode: (root.querySelector('input[name="trMode"]:checked') || {}).value || 'windows', windows: cur.windows,
+      } : Object.assign({}, cur);
+      if (a === 'winAdd') {
+        if (!val('wFrom') || !val('wTo')) { flash = { ok: false, text: 'Von und Bis angeben' }; return draw(); }
+        rules.windows = (cur.windows || []).concat({ from: new Date(val('wFrom') + 'T00:00:00').toISOString(), to: new Date(val('wTo') + 'T23:59:59').toISOString(), label: val('wLabel') });
+      }
+      if (a === 'winDel') rules.windows = (cur.windows || []).filter((_, k) => k !== +d.i);
+      return op({ op: 'setTradeRules', rules }, a === 'winDel' ? 'Fenster löschen?' : null);
+    }
     case 'rawCheck': case 'rawSave': {
       let obj;
       try { obj = JSON.parse(val('raw')); } catch (e) { document.getElementById('rawMsg').innerHTML = `<div class="msg err">Kein gültiges JSON: ${esc(e.message)}</div>`; return; }

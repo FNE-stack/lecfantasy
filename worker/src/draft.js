@@ -105,32 +105,79 @@ export async function autoPickIfDue(env, league) {
   catch (e) { return null; }   // someone picked meanwhile - fine
 }
 
-// ── trades (backbone; disabled until the rules are agreed) ────────────────
-//   league.tradeRules = { enabled, adminApproval, equalCount, deadline }
-//   league.trades[]   = { id, from, to, give[], get[], status, at, decidedAt }
-//   status: proposed -> accepted | rejected | cancelled | vetoed
-//                       (adminApproval: proposed -> agreed -> accepted)
-function tradeRules(league) {
-  return Object.assign({ enabled: false, adminApproval: false, equalCount: true, deadline: null }, league.tradeRules || {});
+// ── transfers: trades between managers + free-agent pickups ──────────────
+// Rules live in league.tradeRules (see scoring.js transferRules). Every check
+// runs inside writeLeague, i.e. against the freshest league on every retry.
+//   league.trades[] = { id, from, to, give[], get[], status, at, decidedAt }
+//     status: proposed -> accepted | rejected | cancelled | vetoed
+//             (adminApproval: proposed -> agreed -> accepted by the admin)
+//   free-agent pickup = league.swaps[] entry { manager, out, in, at, by:'self' }
+function windowGuard(league, rules) {
+  if (S.draftStatus(league) !== 'done') throw new HttpError(409, 'Transfers gibt es erst nach dem Draft.');
+  const w = S.transferWindow(league, new Date().toISOString());
+  if (!w.open) {
+    throw new HttpError(409, w.next
+      ? `Das Transferfenster ist zu — das nächste öffnet am ${new Date(w.next.from).toLocaleDateString('de-DE')}.`
+      : 'Das Transferfenster ist zu.');
+  }
 }
+// Only blocks problems a transfer CREATES: a roster that was already off
+// (an emergency pick in the draft) must still be able to trade its way back.
+function rosterGuard(league, players, rules, rostersAfter) {
+  if (!rules.rosterRules) return;
+  const now = S.rosters(league);
+  for (const [mgr, ids] of Object.entries(rostersAfter)) {
+    const before = new Set(S.rosterProblems(league, players, now[mgr] || []));
+    const added = S.rosterProblems(league, players, ids).filter(x => !before.has(x));
+    if (added.length) throw new HttpError(422, `Danach hätte ${mgrName(league, mgr)}: ${added.join(', ')}.`);
+  }
+}
+
 export async function tradeAction(env, me, body) {
   const action = body.action;
+  const players = await playerIndex(env);
   let out = null;
   await writeLeague(env, league => {
-    const rules = tradeRules(league);
-    if (!rules.enabled) throw new HttpError(403, 'Trades sind (noch) nicht aktiviert.');
-    if (rules.deadline && Date.now() > new Date(rules.deadline).getTime()) throw new HttpError(409, 'Die Trade-Deadline ist vorbei.');
-    if (S.draftStatus(league) !== 'done') throw new HttpError(409, 'Trades gibt es erst nach dem Draft.');
+    const rules = S.transferRules(league);
     league.trades = league.trades || [];
+    league.swaps = league.swaps || [];
     const ros = S.rosters(league);
+    const now = new Date().toISOString();
+
+    if (action === 'freeAgent') {
+      if (!rules.freeAgents) throw new HttpError(403, 'Free Agents sind in dieser Liga nicht erlaubt.');
+      windowGuard(league, rules);
+      const own = S.ownership(league);
+      if (!ros[me] || !ros[me].includes(body.out)) throw new HttpError(400, 'Du kannst nur einen eigenen Spieler abgeben.');
+      if (!players.has(body.in)) throw new HttpError(400, 'Unbekannter Spieler.');
+      if (own.has(body.in)) throw new HttpError(409, 'Der Spieler ist nicht mehr frei.');
+      if (rules.perWeek > 0) {
+        const wk = S.weekKey(now);
+        const used = league.swaps.filter(x => x.manager === me && x.by === 'self' && x.at && S.weekKey(x.at) === wk).length;
+        if (used >= rules.perWeek) throw new HttpError(409, `Diese Woche schon ${used} Free-Agent-Wechsel — erlaubt sind ${rules.perWeek}.`);
+      }
+      rosterGuard(league, players, rules, { [me]: ros[me].filter(x => x !== body.out).concat(body.in) });
+      out = { manager: me, out: body.out, in: body.in, at: now, by: 'self' };
+      league.swaps.push(out);
+      return league;
+    }
+
+    if (!rules.enabled) throw new HttpError(403, 'Trades sind in dieser Liga nicht erlaubt.');
     if (action === 'propose') {
+      windowGuard(league, rules);
       const give = [...new Set(body.give || [])], get = [...new Set(body.get || [])];
       if (!body.to || body.to === me || !ros[body.to]) throw new HttpError(400, 'Unbekannter Tauschpartner');
       if (!give.length || !get.length) throw new HttpError(400, 'Beide Seiten müssen mindestens einen Spieler geben');
       if (rules.equalCount && give.length !== get.length) throw new HttpError(400, 'Gleich viele Spieler auf beiden Seiten');
       if (!give.every(p => ros[me].includes(p))) throw new HttpError(400, 'Du kannst nur eigene Spieler anbieten');
       if (!get.every(p => ros[body.to].includes(p))) throw new HttpError(400, 'Die Spieler gehören nicht dem Tauschpartner');
-      out = { id: 't' + randomHex(4), from: me, to: body.to, give, get, status: 'proposed', at: new Date().toISOString() };
+      if (league.trades.some(t => t.status === 'proposed' && t.from === me && t.to === body.to
+          && t.give.join() === give.join() && t.get.join() === get.join())) throw new HttpError(409, 'Genau diesen Trade hast du schon angeboten.');
+      rosterGuard(league, players, rules, {
+        [me]: ros[me].filter(x => !give.includes(x)).concat(get),
+        [body.to]: ros[body.to].filter(x => !get.includes(x)).concat(give),
+      });
+      out = { id: 't' + randomHex(4), from: me, to: body.to, give, get, status: 'proposed', at: now };
       league.trades.push(out);
       return league;
     }
@@ -139,21 +186,28 @@ export async function tradeAction(env, me, body) {
     if (t.status !== 'proposed') throw new HttpError(409, 'Der Trade ist schon entschieden');
     if (action === 'cancel') {
       if (t.from !== me) throw new HttpError(403, 'Nur wer vorschlägt, kann zurückziehen');
-      t.status = 'cancelled'; t.decidedAt = new Date().toISOString();
+      t.status = 'cancelled'; t.decidedAt = now;
     } else if (action === 'respond') {
       if (t.to !== me) throw new HttpError(403, 'Der Trade ist nicht an dich');
       if (body.accept) {
-        // still valid? rosters may have changed since the proposal
+        windowGuard(league, rules);
+        // rosters may have changed since the proposal - check again
         if (!t.give.every(p => ros[t.from].includes(p)) || !t.get.every(p => ros[t.to].includes(p))) {
-          t.status = 'rejected'; t.note = 'nicht mehr gültig';
+          t.status = 'rejected'; t.note = 'nicht mehr gültig — ein Spieler ist nicht mehr im Kader';
         } else {
+          rosterGuard(league, players, rules, {
+            [t.from]: ros[t.from].filter(x => !t.give.includes(x)).concat(t.get),
+            [t.to]: ros[t.to].filter(x => !t.get.includes(x)).concat(t.give),
+          });
           t.status = rules.adminApproval ? 'agreed' : 'accepted';
         }
       } else t.status = 'rejected';
-      t.decidedAt = new Date().toISOString();
-    } else throw new HttpError(400, 'Unbekannte Trade-Aktion');
+      t.decidedAt = now;
+    } else throw new HttpError(400, 'Unbekannte Aktion');
     out = t;
     return league;
-  }, l => `trade: ${action} ${body.id || ''}`.trim());
+  }, l => action === 'freeAgent'
+    ? `transfer: ${mgrName(l, me)} holt ${(players.get(body.in) || {}).name || body.in} für ${(players.get(body.out) || {}).name || body.out}`
+    : `trade: ${action} ${body.id || (out && out.id) || ''}`.trim());
   return out;
 }
