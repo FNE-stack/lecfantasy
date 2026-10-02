@@ -41,13 +41,19 @@
       "id": "ma4340991",
       "name": "Bot Chris",
       "joined": "2026-10-02T16:18:18.070Z"
+    },
+    {
+      "id": "mf329663f",
+      "name": "Fabi Test",
+      "joined": "2026-10-02T16:18:20.032Z"
     }
   ],
   "draft": {
     "order": [
       "maf23e52a",
       "m368246d3",
-      "ma4340991"
+      "ma4340991",
+      "mf329663f"
     ],
     "snake": true,
     "picks": [],
