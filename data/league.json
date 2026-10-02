@@ -26,17 +26,9 @@
     "perRole": 2
   },
   "standingsMode": "points",
-  "managers": [
-    {
-      "id": "mfd44289e",
-      "name": "QA Nav",
-      "joined": "2026-10-02T12:23:24.461Z"
-    }
-  ],
+  "managers": [],
   "draft": {
-    "order": [
-      "mfd44289e"
-    ],
+    "order": [],
     "snake": true,
     "picks": [],
     "status": "lobby",
