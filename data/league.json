@@ -121,8 +121,10 @@
           "points": 5
         }
       ],
-      "revealed": false,
-      "lockAt": null
+      "revealed": true,
+      "lockAt": null,
+      "picks": {},
+      "revealedAt": "2026-10-02T13:44:28.248Z"
     },
     "lec_split_1_2026": {
       "questions": [
@@ -162,8 +164,10 @@
           "points": 5
         }
       ],
-      "revealed": false,
-      "lockAt": null
+      "revealed": true,
+      "lockAt": null,
+      "picks": {},
+      "revealedAt": "2026-10-02T13:44:28.248Z"
     }
   },
   "faab": {
