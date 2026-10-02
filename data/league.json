@@ -41,13 +41,19 @@
       "id": "m3a8a07a5",
       "name": "Bot Charlie",
       "joined": "2026-10-02T12:01:34.504Z"
+    },
+    {
+      "id": "m1b85f150",
+      "name": "Bot Delta",
+      "joined": "2026-10-02T12:01:35.711Z"
     }
   ],
   "draft": {
     "order": [
       "mf4fbad69",
       "m9212e962",
-      "m3a8a07a5"
+      "m3a8a07a5",
+      "m1b85f150"
     ],
     "snake": true,
     "picks": [],
