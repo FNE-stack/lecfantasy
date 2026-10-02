@@ -26,9 +26,29 @@
     "perRole": 2
   },
   "standingsMode": "points",
-  "managers": [],
+  "managers": [
+    {
+      "id": "mb6bd4d83",
+      "name": "Bot Anna",
+      "joined": "2026-10-02T22:05:07.212Z"
+    },
+    {
+      "id": "m6d5760d0",
+      "name": "Bot Ben",
+      "joined": "2026-10-02T22:05:07.212Z"
+    },
+    {
+      "id": "m1fe09710",
+      "name": "Bot Chris",
+      "joined": "2026-10-02T22:05:07.212Z"
+    }
+  ],
   "draft": {
-    "order": [],
+    "order": [
+      "mb6bd4d83",
+      "m6d5760d0",
+      "m1fe09710"
+    ],
     "snake": true,
     "picks": [],
     "status": "lobby",
@@ -62,7 +82,7 @@
     "rosterRules": true,
     "teamLimit": true,
     "autoWindows": true,
-    "mode": "windows",
+    "mode": "always",
     "windows": []
   },
   "announcement": null,
@@ -87,5 +107,15 @@
     "budget": 100,
     "resetEachSplit": false
   },
-  "hall": {}
+  "hall": {},
+  "testMode": {
+    "on": true,
+    "startedAt": "2026-10-02T22:05:07.212Z",
+    "backupId": "2026-10-03",
+    "bots": [
+      "mb6bd4d83",
+      "m6d5760d0",
+      "m1fe09710"
+    ]
+  }
 }
