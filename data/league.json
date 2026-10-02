@@ -122,7 +122,21 @@
   },
   "adjustments": [],
   "swaps": [],
-  "trades": [],
+  "trades": [
+    {
+      "id": "t706e0ad2",
+      "from": "m65d261bb",
+      "to": "m81f26dd0",
+      "give": [
+        "103536968833612789"
+      ],
+      "get": [
+        "109461265532592848"
+      ],
+      "status": "proposed",
+      "at": "2026-10-02T08:21:19.537Z"
+    }
+  ],
   "tradeRules": {
     "enabled": true,
     "freeAgents": true,
