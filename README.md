@@ -27,10 +27,13 @@ Profi-Stats) und den Login. Mitglieder, Kader und Picks gibt es nur nach dem Log
 | | |
 |---|---|
 | **Übersicht** | Tabelle (Punkte oder Head-to-Head), Duelle der Woche, Top-Spieler, Ergebnisse, Spielplan |
-| **Mein Team** | Platz, Punkte, Ø/Woche, Kader mit nächstem Spiel und Form, Punkte pro Woche, dein Duell, nächste Spiele, Push an/aus |
+| **Mein Team** | Aufstellung der Woche (5 Starter, Kapitän ×1,5, Vize, Auto-Wechsel), Platz, Punkte, Ø/Woche, Kader mit nächstem Spiel und Form, Punkte pro Woche, dein Duell, nächste Spiele, Push an/aus |
 | **Draft** | Uhr, Pool nach Punkten, ★ Watchlist (= Auto-Pick-Reihenfolge), bester Verfügbarer pro Rolle, Draft Board |
+| **Pick'em** | Saison-Tipps vor jedem Split (Fragen + Punkte vom Admin), danach Auflösung; zählt zur Wertung |
+| **Transfers** | Trades, Free Agents über Waiver (Reihenfolge oder FAAB-Gebote), Fenster automatisch zwischen den Splits |
 | **Live** | Live-Punkte während LEC-Spielen, auch pro Manager |
-| **Spieler / Teams** | alle Profis mit Form, Champion-Pool, Game-Log; alle Teams mit Bilanz und Spielen |
+| **LEC** | Spielplan (Filter, „nur meine Spieler“, Kalender-Export .ics), offizielle Tabelle, Playoff-Baum, Teams — je Split |
+| **Spieler** | alle Profis mit Form, Champion-Pool, Game-Log |
 | **Admin** `#/admin` | eigenes Passwort, siehe unten |
 
 ## Admin — eingreifen bei jedem Fehler
@@ -78,12 +81,14 @@ Repo `lecfantasy-data` (privat) anlegen, Token darauf erweitern, in `worker/wran
 ## Daten
 
 lolesports-API (ohne Login): Teams, Kürzel, Logos, Spieler, echte Namen, Fotos, Spielplan,
-K/D/A/CS/Sieg pro Spiel. Sieger pro Spiel aus dem offiziellen Serienstand (Summer 2026:
-53/53 korrekt). Live-Daten direkt aus dem Live-Feed (hängt dem Stream ein paar Minuten nach).
+K/D/A/CS/Sieg pro Spiel, offizielle Tabellen und Playoffs. Eine Saison = alle drei Splits
+eines Jahres. Sieger pro Spiel aus dem offiziellen Serienstand (Saison 2026: 186/186 Serien
+korrekt; ein Spiel ohne Feed-Daten wird gemeldet statt mitgezählt). Live-Daten direkt aus dem Live-Feed (hängt dem Stream ein paar Minuten nach).
 
 ## Punkte
 
-Kill 3 · Tod −1 · Assist 1,5 · CS 0,02 · Sieg 2 — im Admin änderbar. `scoring.js` ist die
+Kill 3 · Tod −1 · Assist 1,5 · CS 0,02 · Sieg 2, +2 bei 10+ Kills oder Assists — im Admin
+änderbar. Mit Aufstellung punkten nur die 5 Starter; dazu kommen Pick'em-Punkte. `scoring.js` ist die
 einzige Stelle mit Regeln; Seite, Admin und Worker benutzen dieselbe Datei.
 
 ## Tests

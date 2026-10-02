@@ -6,7 +6,8 @@ Punkte, Entscheidungen und Fallen, in die man schon getreten ist.
 ## Stand
 
 **LIVE, leer, bereit.** Liga im Status *Anmeldung*, 0 Mitglieder, frischer
-Einladungslink im Admin. Alle Tests grün (Regeln 10/10, Worker 13/13, Punkte 4/4).
+Einladungslink im Admin. Alle Tests grün (Regeln 16/16, Worker 18/18, Punkte 4/4).
+Saison 2026 komplett geladen (3 Splits, 382 Spiele, 186/186 Serien = offiziell).
 Live per echtem Browser geprüft: Einladung → Beitreten → Login → Draft → Pick →
 Admin-Pick → Undo → Restore → Health; Layout auf 5 Breiten × alle Seiten × alle
 Admin-Tabs; ausgeloggt keine Mitgliedsdaten sichtbar.
@@ -23,8 +24,11 @@ Admin-Tabs; ausgeloggt keine Mitgliedsdaten sichtbar.
    Admin-Knopf „Stats jetzt aktualisieren" nicht (403). Der Zeitplan läuft trotzdem.
 3. **Privates Daten-Repo** (`DATA_REPO`) — siehe README. Bis dahin ist league.json
    im öffentlichen Repo lesbar.
-4. **Transferfenster eintragen** (Admin → Einstellungen → Transferfenster), sobald
-   das LEC-Regelwerk 2027 die Zeiträume nennt. Ohne Fenster sind Transfers zu.
+4. **Transferfenster:** automatisch zwischen den Splits (6 h nach dem letzten Spiel
+   bis 1 h vor dem ersten des nächsten; nach dem letzten Split 30 Tage). Eigene
+   Fenster zusätzlich unter Admin → Einstellungen.
+5. **Saison 2027** unter Admin → Einstellungen → Saison umstellen, sobald Riot sie
+   anlegt; dann pro Split Pick'em öffnen (Admin → Pick'em).
 
 ## Abgesprochene Regeln (02.10.2026)
 
@@ -40,6 +44,26 @@ Admin-Tabs; ausgeloggt keine Mitgliedsdaten sichtbar.
 - Kaderregeln bei Transfers: Rollen bleiben besetzt **an**, Team-Limit **an** —
   Letzteres blockiert in einer vollen Liga fast jeden 1:1-Trade (im QA-Draft gab
   es keinen einzigen legalen). Bei Bedarf in den Einstellungen abschalten.
+
+## Saison, Aufstellung, Pick'em (02.10.2026)
+
+- Saison = alle LEC-Turniere eines Jahres (`data/season.json`), offizielle Tabelle
+  + Playoffs je Split in `data/standings.json`. Gesamtwertung über alle Splits.
+- **Kader 10 = 2 pro Rolle**, **wöchentliche Aufstellung**: 5 Starter punkten,
+  Kapitän ×1,5, Vize übernimmt, wenn der Kapitän nicht spielt; Auto-Wechsel von der
+  Bank bei gleicher Rolle; ohne Eingabe gilt die letzte Aufstellung, sonst die
+  beste nach Schnitt. Sperre beim ersten Spiel der Woche.
+- **Pick'em pro Split**: Fragen + Punkte wählt der Admin; Tipps liegen bis zur
+  Sperre nur im KV (niemand sieht fremde), der Cron deckt auf; Auswertung nach
+  Split-Ende automatisch, eigene Fragen per Admin-Antwort. Punkte zählen zur Wertung.
+- **FAAB** als dritte Waiver-Reihenfolge (Budget 100, Gleichstand → schlechter
+  Platzierter). Standard bleibt „Tabellenletzter zuerst".
+- **LEC-Tab**: Spielplan (Filter, „meine Spieler", .ics), Tabelle, Playoffs, Teams.
+  Die API liefert keine Verknüpfung der Playoff-Spiele — der Baum wird aus dem
+  Weg der Teams gebaut (Niederlage oder voriges Lower-Spiel = Lower Bracket).
+- Probelauf 02.10.2026 live mit 4 Bots: 10er-Draft (je 2/Rolle, Cron-Auto-Pick),
+  Pick'em mit Cron-Aufdeckung 49 s nach Sperre, Auswertung gegen echte Ergebnisse,
+  FAAB-Lauf, Aufstellungen über 23 Wochen (30 Auto-Wechsel, 14× Vize). Aufgeräumt.
 
 ## Dateien
 
@@ -92,5 +116,4 @@ Admin-Tabs; ausgeloggt keine Mitgliedsdaten sichtbar.
 
 ## Ideen für später
 
-- Spieltags-Ansicht, Lineups pro Spieltag, Trades-UI (nach Regel-Entscheidung)
 - Zusätzliche Wertungen aus dem `details`-Feed (Vision, Damage-Share, KP)
