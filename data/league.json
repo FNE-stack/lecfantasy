@@ -60,7 +60,7 @@
     "completed": false,
     "timer": {
       "mode": "auto",
-      "seconds": 90
+      "seconds": 30
     }
   },
   "adjustments": [],
