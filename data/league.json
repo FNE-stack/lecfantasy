@@ -281,7 +281,7 @@
         5
       ],
       "time": "03:00",
-      "order": "reverse"
+      "order": "faab"
     },
     "enabled": true,
     "freeAgents": true,
@@ -290,6 +290,7 @@
     "equalCount": true,
     "rosterRules": true,
     "teamLimit": true,
+    "autoWindows": true,
     "mode": "windows",
     "windows": []
   },
