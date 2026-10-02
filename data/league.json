@@ -252,10 +252,15 @@
         "manager": "m9212e962",
         "player": "103495716738607011",
         "at": "2026-10-02T12:03:15.548Z"
+      },
+      {
+        "manager": "mf4fbad69",
+        "player": "99322214629661297",
+        "at": "2026-10-02T12:03:16.965Z"
       }
     ],
-    "status": "live",
-    "completed": false,
+    "status": "done",
+    "completed": true,
     "timer": {
       "mode": "auto",
       "seconds": 30
