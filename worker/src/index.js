@@ -14,7 +14,8 @@
 import { S, HttpError, readLeague, playerIndex } from './store.js';
 import { setMemberPassword, verifyMember, newSession, sessionManager, endSession, adminLogin, isAdmin,
          safeEqual } from './auth.js';
-import { addMember, makePick, autoPickIfDue, deadline, tradeAction, nameKey, claimsOf, runWaivers, draftSchedule } from './draft.js';
+import { addMember, makePick, autoPickIfDue, deadline, tradeAction, nameKey, claimsOf, runWaivers, draftSchedule,
+         setLineup, pickemState, savePickem, revealPickems } from './draft.js';
 import { runOp, adminState, rotateInvite, health, runStats, broadcast, leagueHistory } from './admin.js';
 import { subscribe, unsubscribe, notify } from './push.js';
 
@@ -149,6 +150,9 @@ async function route(request, env, ctx) {
     }
     return { trade: t };
   }
+  if (p === '/api/lineup' && method === 'POST') return setLineup(env, me, body);
+  if (p === '/api/pickem' && method === 'GET') return { pickems: await pickemState(env, me) };
+  if (p === '/api/pickem' && method === 'POST') return savePickem(env, me, body);
   if (p === '/api/push/key' && method === 'GET') return { key: env.VAPID_PUBLIC || null };
   if (p === '/api/push' && method === 'POST') return { devices: await subscribe(env, me, body.subscription) };
   if (p === '/api/push' && method === 'DELETE') { await unsubscribe(env, me, body.endpoint); return { ok: true }; }
@@ -196,6 +200,8 @@ export default {
         pingNext(env, ctx, d.started);
       }
     } catch (e) { console.error('cron schedule', e && e.message); }
+    // pick'em: reveal everyone's picks once a split has started
+    try { await revealPickems(env); } catch (e) { console.error('cron pickem', e && e.message); }
     // waivers at their scheduled times (German time); each slot runs once
     try {
       const slot = S.lastWaiverSlot(data);

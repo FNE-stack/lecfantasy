@@ -87,15 +87,19 @@ const LEAGUE = {
   swaps: [], trades: [], adjustments: [],
 };
 const SECRET_TOKEN = 'ghp_SECRET_never_leaves', ADMIN_PW = 'admin-pass-123456';
+let SCHEDULE = { events: [] }, SEASON = { tournaments: [] };
 
 let worker, env, gh, realFetch = globalThis.fetch;
 async function setup() {
   gh = makeGitHub({ 'league.json': JSON.parse(JSON.stringify(LEAGUE)) });
+  SCHEDULE = { events: [] }; SEASON = { tournaments: [] };
   globalThis.fetch = async (url, init) => {
     const u = String(url);
     if (u.startsWith('https://api.github.com/')) return gh.handle(u.replace('https://api.github.com', 'https://x'), init);
     if (u.startsWith('https://pages.test/data/players.json')) return J(PLAYERS);
     if (u.startsWith('https://pages.test/data/stats.json')) return J(STATS);
+    if (u.startsWith('https://pages.test/data/schedule.json')) return J(SCHEDULE);
+    if (u.startsWith('https://pages.test/data/season.json')) return J(SEASON);
     if (u.startsWith('https://pages.test/data/')) return J({ updated: Math.floor(Date.now() / 1000), tournament: 't' });
     return new Response('unexpected fetch ' + u, { status: 599 });
   };
@@ -483,6 +487,95 @@ tests.scheduler = async () => {
   r = await call('POST', '/api/admin/op', { token: b.a, body: { op: 'setScoring', scoring: { kill: 3, death: -1, assist: 1.5, cs10: 0.02, win: 2, bonus: { enabled: true, threshold: 0, points: 2 } } } });
   assert(r.status === 400, 'bonus threshold 0 refused');
   return 'due waiver slot runs once via cron; draft reminder in its window; auto-start at the appointment; bonus validated';
+};
+
+async function draftAll(a) {
+  const S = globalThis.LECScoring, idx = new Map(PLAYERS.players.map(p => [p.id, p]));
+  for (;;) {
+    const L = league(), m = S.currentPicker(L);
+    if (!m) break;
+    const lvl = S.relaxLevel(L, idx, m);
+    const r = await call('POST', '/api/admin/op', { token: a, body: { op: 'pickFor', player: PLAYERS.players.find(p => !S.pickError(L, idx, m, p.id, lvl)).id } });
+    if (r.status !== 200) throw new Error('draft: ' + r.body.error);
+  }
+}
+
+tests.lineups = async () => {
+  const S = globalThis.LECScoring, idx = new Map(PLAYERS.players.map(p => [p.id, p]));
+  const { a, tok, ids } = await liveLeague(['Ann', 'Ben']);
+  let r = await call('POST', '/api/admin/op', { token: a, body: { op: 'setRoster', roster: { slots: ROLES, perRole: 2, maxPerTeam: 3 }, force: true } });
+  assert(r.status === 200 && /2 pro Rolle/.test(r.body.message), 'perRole roster: ' + JSON.stringify(r.body));
+  await draftAll(a);
+  const ros = S.rosters(league())[ids.Ann];
+  assert(ros.length === 10, 'Ann holds 10');
+  await call('POST', '/api/admin/op', { token: a, body: { op: 'setLineupRules', enabled: true, captain: 1.5 } });
+  const soon = new Date(Date.now() + 864e5).toISOString(), past = new Date(Date.now() - 864e5).toISOString();
+  SCHEDULE = { events: [{ match: 'W1', start: past, state: 'completed', block: 'Week 1', tournament: 'sp', teams: [] },
+                        { match: 'W2', start: soon, state: 'unstarted', block: 'Week 2', tournament: 'sp', teams: [] }] };
+  const byRole = r0 => ros.filter(id => idx.get(id).role === r0);
+  const starters = ROLES.map(r0 => byRole(r0)[0]);
+  const set = b => call('POST', '/api/lineup', { token: tok.Ann, body: b });
+  r = await set({ block: 'sp|Week 2', starters, captain: starters[2], vice: starters[0] });
+  assert(r.status === 200, 'lineup saved: ' + r.body.error);
+  assert(league().lineups[ids.Ann]['sp|Week 2'].captain === starters[2], 'stored');
+  r = await set({ block: 'sp|Week 2', starters: [byRole('TOP')[0], byRole('TOP')[1], starters[2], starters[3], starters[4]], captain: starters[2], vice: starters[3] });
+  assert(r.status === 400 && /Rolle/.test(r.body.error), 'two TOPs refused');
+  r = await set({ block: 'sp|Week 2', starters, captain: starters[2], vice: starters[2] });
+  assert(r.status === 400, 'captain = vice refused');
+  r = await set({ block: 'sp|Week 1', starters, captain: starters[2], vice: starters[0] });
+  assert(r.status === 409 && /gesperrt/.test(r.body.error), 'started week locked');
+  r = await call('POST', '/api/lineup', { token: tok.Ben, body: { block: 'sp|Week 2', starters, captain: starters[2], vice: starters[0] } });
+  assert(r.status === 400, 'cannot line up someone else\'s players');
+  return '10-man roster 2 per role, lineup saved, wrong roles / captain=vice / locked week / foreign players refused';
+};
+
+tests.pickem_hidden_until_lock = async () => {
+  const { a, tok, ids } = await liveLeague(['Ann', 'Ben']);
+  const lockSoon = new Date(Date.now() + 3600e3).toISOString();
+  let r = await call('POST', '/api/admin/op', { token: a, body: { op: 'pickemOpen', split: 'sp', lockAt: lockSoon,
+    questions: [{ type: 'champion', points: 10 }, { type: 'longestGame', points: 5 }, { type: 'manualChamp', points: 3, label: 'Meistgebannt' }] } });
+  assert(r.status === 200, 'open: ' + r.body.error);
+  r = await call('POST', '/api/admin/op', { token: a, body: { op: 'pickemOpen', split: 'sp', questions: [{ type: 'nonsense', points: 1 }] } });
+  assert(r.status === 400, 'unknown question type refused');
+  await call('POST', '/api/pickem', { token: tok.Ann, body: { split: 'sp', picks: { q1: 'G2', q2: '41', q3: 'Ahri', bogus: 'x' } } });
+  await call('POST', '/api/pickem', { token: tok.Ben, body: { split: 'sp', picks: { q1: 'KC' } } });
+  let s = (await call('GET', '/api/pickem', { token: tok.Ben })).body.pickems.sp;
+  assert(s.mine.q1 === 'KC' && !s.mine.q2 && !s.revealed, 'Ben sees only his own picks');
+  assert(!JSON.stringify(league()).includes('"G2"'), 'Ann\'s picks are not in the league file before the lock');
+  // lock passes -> the cron reveals
+  await call('POST', '/api/admin/op', { token: a, body: { op: 'pickemOpen', split: 'sp', lockAt: new Date(Date.now() - 1000).toISOString(),
+    questions: [{ type: 'champion', points: 10 }, { type: 'longestGame', points: 5 }, { type: 'manualChamp', points: 3, label: 'Meistgebannt' }] } });
+  await worker.scheduled({}, env, { waitUntil() {} });
+  const pe = league().pickems.sp;
+  assert(pe.revealed && pe.picks[ids.Ann].q1 === 'G2' && pe.picks[ids.Ben].q1 === 'KC' && !pe.picks[ids.Ann].bogus, 'revealed at the lock, unknown keys dropped');
+  r = await call('POST', '/api/pickem', { token: tok.Ann, body: { split: 'sp', picks: { q1: 'KC' } } });
+  assert(r.status === 409, 'no changes after the lock');
+  r = await call('POST', '/api/admin/op', { token: a, body: { op: 'pickemAnswer', split: 'sp', qid: 'q3', answer: 'Ahri' } });
+  assert(r.status === 200 && league().pickems.sp.questions[2].answer === 'Ahri', 'manual answer');
+  r = await call('POST', '/api/admin/op', { token: a, body: { op: 'pickemAnswer', split: 'sp', qid: 'q1', answer: 'G2' } });
+  assert(r.status === 400, 'automatic questions take no manual answer');
+  return 'picks private in KV, unknown types refused, revealed by the cron at the lock, frozen after, manual answers';
+};
+
+tests.faab = async () => {
+  const S = globalThis.LECScoring, idx = new Map(PLAYERS.players.map(p => [p.id, p]));
+  const { a, tok, ids } = await liveLeague(['Ann', 'Ben']);
+  await draftAll(a);
+  await call('POST', '/api/admin/op', { token: a, body: { op: 'setFaab', budget: 100 } });
+  await call('POST', '/api/admin/op', { token: a, body: { op: 'setTradeRules', rules: { freeAgents: true, perWeek: 0, mode: 'always', rosterRules: true, teamLimit: false,
+    faMode: 'waiver', waiver: { days: [1, 2, 3, 4, 5, 6, 7], time: '03:00', order: 'faab' } } } });
+  const L = league(), ros = S.rosters(L), own = S.ownership(L);
+  const X = PLAYERS.players.find(p => !own.has(p.id) && ['Ann', 'Ben'].every(n => ros[ids[n]].some(q => idx.get(q).role === p.role)));
+  const out = n => ros[ids[n]].find(q => idx.get(q).role === X.role);
+  let r = await call('POST', '/api/trade', { token: tok.Ann, body: { action: 'claim', out: out('Ann'), in: X.id, bid: 150 } });
+  assert(r.status === 400 && /zu hoch/.test(r.body.error), 'bid above budget refused');
+  await call('POST', '/api/trade', { token: tok.Ann, body: { action: 'claim', out: out('Ann'), in: X.id, bid: 30 } });
+  await call('POST', '/api/trade', { token: tok.Ben, body: { action: 'claim', out: out('Ben'), in: X.id, bid: 50 } });
+  r = await call('POST', '/api/admin/op', { token: a, body: { op: 'runWaivers' } });
+  assert(r.status === 200 && /1 Wechsel/.test(r.body.message), 'run: ' + JSON.stringify(r.body));
+  assert(S.ownership(league()).get(X.id) === ids.Ben, 'higher bid wins');
+  assert(S.faabLeft(league(), ids.Ben) === 50 && S.faabLeft(league(), ids.Ann) === 100, 'only the winner pays');
+  return 'bid above budget refused, highest bid wins, only the winner pays';
 };
 
 tests.github_hiccups_are_safe = async () => {

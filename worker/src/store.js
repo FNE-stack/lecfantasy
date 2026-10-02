@@ -184,6 +184,10 @@ async function pagesJson(env, file, ttl) {
   if (!r.ok) throw new HttpError(502, `${file} nicht ladbar (${r.status})`);
   return r.json();
 }
+// any public data file (season.json, schedule.json ...), edge-cached
+export async function publicData(env, file, ttl) {
+  try { return await pagesJson(env, file, ttl || 120); } catch (e) { return null; }
+}
 export async function playerIndex(env) {
   const p = await pagesJson(env, 'players.json', 120);
   return new Map((p.players || []).map(x => [x.id, x]));

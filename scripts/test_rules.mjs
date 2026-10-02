@@ -141,15 +141,122 @@ tests.h2h_round_robin = () => {
 tests.h2h_table = () => {
   const L = league(4);
   L.draft.picks = [{ manager: 'm1', player: 'a' }, { manager: 'm2', player: 'b' }, { manager: 'm3', player: 'c' }, { manager: 'm4', player: 'd' }];
-  const weekOf = new Map([['M1', 'Week 1'], ['M2', 'Week 1'], ['M3', 'Week 1'], ['M4', 'Week 1']]);
-  const stats = { games: [g('1', 'a', 't', 4), g('2', 'b', 't', 1), g('3', 'c', 't', 2), g('4', 'd', 't', 3)] };
-  const r = S.h2h(L, stats, weekOf, ['Week 1', 'Week 2']);
+  const sched = { events: ['M1', 'M2', 'M3', 'M4'].map(m => ({ match: m, start: '2026-01-10T17:00:00Z', state: 'completed', block: 'Week 1', tournament: 'sp1', teams: [] }))
+    .concat([{ match: 'M9', start: '2099-01-17T17:00:00Z', state: 'unstarted', block: 'Week 2', tournament: 'sp1', teams: [] }]) };
+  const stats = { games: [g('1', 'a', '2026-01-10T17:00:00Z', 4), g('2', 'b', '2026-01-10T17:00:00Z', 1), g('3', 'c', '2026-01-10T17:00:00Z', 2), g('4', 'd', '2026-01-10T17:00:00Z', 3)] };
+  const r = S.h2h(L, stats, sched, new Map());
   const sum = r.table.reduce((t, x) => t + x.w + x.l + x.t, 0);
   assert(sum === 4, `4 results in week 1, got ${sum}`);
   assert(r.weeks[1].played === false, 'week 2 not played');
-  const top = r.table[0];
-  assert(top.w === 1, 'leader has a win');
+  assert(r.table[0].w === 1, 'leader has a win');
   return `week 1 decided (${r.table.map(t => t.name + ' ' + t.w + '-' + t.l).join(', ')}), week 2 pending`;
+};
+
+tests.two_per_role_draft = () => {
+  for (const n of [4, 5]) {
+    const L = league(n); L.roster = { slots: ['TOP', 'JNG', 'MID', 'BOT', 'SUP'], perRole: 2, maxPerTeam: 2 };
+    while (S.currentPicker(L)) {
+      const m = S.currentPicker(L), lvl = S.relaxLevel(L, idx, m);
+      const p = players.find(p => !S.pickError(L, idx, m, p.id, lvl));
+      assert(p, `${n} managers stuck at pick ${L.draft.picks.length + 1}`);
+      L.draft.picks.push({ manager: m, player: p.id });
+    }
+    const ros = S.rosters(L);
+    for (const [m, ids] of Object.entries(ros)) {
+      assert(ids.length === 10, `${m} has ${ids.length}`);
+      const per = {}; for (const id of ids) per[idx.get(id).role] = (per[idx.get(id).role] || 0) + 1;
+      assert(Object.values(per).every(v => v === 2), `${m} roles ${JSON.stringify(per)}`);
+    }
+  }
+  const L = league(4); L.roster = { slots: ['TOP', 'JNG', 'MID', 'BOT', 'SUP'], perRole: 2, maxPerTeam: 2 };
+  return `10-man rosters, exactly 2 per role, 4 and 5 managers never stuck; suggested capacity ${S.suggestedCapacity(L, idx)}`;
+};
+
+// fixture for lineups: one manager, two players per role (TOP/MID only to keep it small)
+function lineupLeague() {
+  const L = league(1);
+  L.roster = { slots: ['TOP', 'MID'], perRole: 2, maxPerTeam: 9 };
+  L.draft.picks = ['t1', 't2', 'm1x', 'm2x'].map(p => ({ manager: 'm1', player: p }));
+  L.lineup = { enabled: true, captain: 1.5 };
+  const pi = new Map([['t1', { role: 'TOP' }], ['t2', { role: 'TOP' }], ['m1x', { role: 'MID' }], ['m2x', { role: 'MID' }]]);
+  const sched = { events: [
+    { match: 'A', start: '2026-01-10T17:00:00Z', state: 'completed', block: 'Week 1', tournament: 'sp', teams: [] },
+    { match: 'B', start: '2026-01-17T17:00:00Z', state: 'completed', block: 'Week 2', tournament: 'sp', teams: [] }] };
+  return { L, pi, sched };
+}
+const gg = (game, match, player, ts, k) => ({ game, match, player, ts, k, d: 0, a: 0, cs: 0, win: false });
+
+tests.lineup_auto_captain_autosub = () => {
+  const { L, pi, sched } = lineupLeague();
+  // week 1: everyone plays. t1 better than t2, m1x better than m2x
+  const stats = { games: [gg('g1', 'A', 't1', '2026-01-10T17:00:00Z', 10), gg('g1', 'A', 't2', '2026-01-10T17:00:00Z', 1),
+                          gg('g1', 'A', 'm1x', '2026-01-10T17:00:00Z', 5), gg('g1', 'A', 'm2x', '2026-01-10T17:00:00Z', 2),
+  // week 2: t1 (the best TOP, auto starter + captain) does NOT play; t2 plays
+                          gg('g2', 'B', 't2', '2026-01-17T17:00:00Z', 4), gg('g2', 'B', 'm1x', '2026-01-17T17:00:00Z', 6),
+                          gg('g2', 'B', 'm2x', '2026-01-17T17:00:00Z', 9)] };
+  const book = S.scoreBook(L, stats, pi, sched).m1;
+  // week 1 auto: no history before -> tie-break by id: starters t1, m1x; captain t1 (id order) ...
+  const w1 = book.lineups['sp|Week 1'];
+  assert(w1.auto && w1.starters.length === 2, 'week 1 auto lineup');
+  // week 2 auto: by average BEFORE week 2 -> t1 (30) and m1x (15) start, t1 captain, m1x vice
+  const w2 = book.lineups['sp|Week 2'];
+  assert(w2.starters.includes('t1') && w2.starters.includes('m1x') && w2.captain === 't1' && w2.vice === 'm1x', 'week 2 auto by prior average: ' + JSON.stringify(w2.starters));
+  assert(w2.subs.length === 1 && w2.subs[0].out === 't1' && w2.subs[0].in === 't2', 'auto-sub t2 for t1');
+  assert(w2.captainScored === 'm1x', 'vice inherits the captaincy');
+  // week 2 points: t2 4*3=12, m1x 6*3=18 x1.5=27, m2x (bench) not counted
+  assert(book.byBlock['sp|Week 2'] === 39, 'week 2 = 12 + 27, got ' + book.byBlock['sp|Week 2']);
+  assert(book.perPlayer.m2x.benchPts === 33, 'bench points tracked (week 1: 6, week 2: 27), not counted, got ' + book.perPlayer.m2x.benchPts);
+  // a saved lineup is respected
+  L.lineups = { m1: { 'sp|Week 2': { starters: ['t2', 'm2x'], captain: 'm2x', vice: 't2' } } };
+  const b2 = S.scoreBook(L, stats, pi, sched).m1;
+  assert(b2.byBlock['sp|Week 2'] === 12 + 40.5, 'saved lineup: t2 12 + m2x 27x1.5, got ' + b2.byBlock['sp|Week 2']);
+  // set in week 1 only -> carried into week 2
+  L.lineups = { m1: { 'sp|Week 1': { starters: ['t2', 'm2x'], captain: 'm2x', vice: 't2' } } };
+  assert(S.scoreBook(L, stats, pi, sched).m1.byBlock['sp|Week 2'] === 12 + 40.5, 'week 1 lineup carried into week 2');
+  // lineups off -> everyone counts
+  L.lineup.enabled = false;
+  assert(S.scoreBook(L, stats, pi, sched).m1.byBlock['sp|Week 2'] === 12 + 18 + 27, 'lineups off: all count');
+  return 'auto lineup from prior averages, auto-sub, vice inherits captain, bench not counted, saved lineup wins, off = all count';
+};
+
+tests.pickem = () => {
+  const L = league(2);
+  const ev = (m, block, a, b, aw, start) => ({ match: m, start, state: 'completed', block, tournament: 'sp',
+    teams: [{ code: a, outcome: aw ? 'win' : 'loss', wins: aw ? 1 : 0 }, { code: b, outcome: aw ? 'loss' : 'win', wins: aw ? 0 : 1 }] });
+  const sched = { events: [ev('1', 'Week 1', 'G2', 'FNC', true, '2026-01-10T17:00:00Z'), ev('2', 'Week 1', 'KC', 'FNC', true, '2026-01-11T17:00:00Z'),
+    ev('3', 'Week 1', 'G2', 'KC', true, '2026-01-12T17:00:00Z'), ev('4', 'Finals', 'KC', 'G2', true, '2026-01-20T17:00:00Z')] };
+  const row = (game, player, champ, k, dur) => ({ game, match: '1', player, champ, k, d: 1, a: 0, cs: 0, win: false, tournament: 'sp', dur, ts: '2026-01-10T17:00:00Z' });
+  const stats = { games: [row('x', 'p1', 'Ahri', 9, 1800), row('x', 'p2', 'Ahri', 2, 1800), row('y', 'p1', 'Zed', 1, 2400), row('y', 'p2', 'Ahri', 3, 2400)] };
+  const t = S.pickemTruth(L, stats, sched, 'sp', new Map());
+  assert(t.champion.has('KC') && t.finalist.has('G2') && t.firstRegular.has('G2') && t.lastRegular.has('FNC'), 'teams');
+  assert(t.mostKills.has('p1') && t.mostPicked.has('Ahri') && t.longestGame === 40 && t.bloodiest === 11, 'stats ' + JSON.stringify([t.longestGame, t.bloodiest]));
+  L.pickems = { sp: { revealed: true, questions: [{ id: 'q1', type: 'champion', points: 10 }, { id: 'q2', type: 'longestGame', points: 5 }, { id: 'q3', type: 'manualChamp', points: 3, answer: 'Zed' }],
+    picks: { m1: { q1: 'KC', q2: '38', q3: 'Zed' }, m2: { q1: 'G2', q2: '45', q3: 'Ahri' } } } };
+  const pts = S.pickemPoints(L, stats, sched, new Map());
+  assert(pts.m1.total === 18 && pts.m2.total === 0, 'm1 18 (10+5 closest+3 manual), m2 0: ' + JSON.stringify(pts));
+  const st = S.standings(L, stats, new Map(), sched);
+  assert(st.find(r => r.manager === 'm1').pickem === 18 && st.find(r => r.manager === 'm1').total === 18, 'pickem added to total');
+  // not before the split is over
+  sched.events.push({ match: '5', start: '2099-01-01T00:00:00Z', state: 'unstarted', block: 'Finals', tournament: 'sp', teams: [] });
+  assert(!S.pickemPoints(L, stats, sched, new Map()).m1, 'nothing counts while the split runs');
+  return 'champion/finalist/regular season/stats truths, closest guess, manual answer, added to totals only after the split';
+};
+
+tests.auto_windows_and_faab = () => {
+  const season = { tournaments: [
+    { slug: 'lec_split_1_2027', start: '2027-01-10', lastMatch: '2027-03-01T17:00:00Z', firstMatch: '2027-01-11T17:00:00Z' },
+    { slug: 'lec_split_2_2027', start: '2027-03-25', firstMatch: '2027-03-28T16:00:00Z', lastMatch: null }] };
+  const L = league(2); L.tradeRules = { mode: 'windows', windows: [], autoWindows: true };
+  const w = S.autoWindows(season);
+  assert(w.length === 1 && w[0].from === '2027-03-01T23:00:00.000Z' && w[0].to === '2027-03-28T15:00:00.000Z', JSON.stringify(w));
+  assert(S.transferWindow(L, '2027-03-10T12:00:00Z', season).open, 'open between splits');
+  assert(!S.transferWindow(L, '2027-02-10T12:00:00Z', season).open, 'closed during split 1');
+  L.tradeRules.autoWindows = false;
+  assert(!S.transferWindow(L, '2027-03-10T12:00:00Z', season).open, 'auto off -> closed');
+  L.faab = { budget: 100 };
+  L.swaps = [{ manager: 'm1', by: 'waiver', bid: 30, at: '2027-01-20T00:00:00Z' }, { manager: 'm1', by: 'waiver', bid: 15, at: '2027-03-30T00:00:00Z' }];
+  assert(S.faabLeft(L, 'm1') === 55 && S.faabLeft(L, 'm2') === 100, 'budget left');
+  return 'window from 6 h after a split to 1 h before the next, toggle, FAAB budget';
 };
 
 tests.validator_finds_problems = () => {

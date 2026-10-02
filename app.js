@@ -25,7 +25,7 @@ const store = {
 let D = null;                     // public data; D.league set from the Worker
 let LIVE = null;                  // last /api/state
 let session = store.get('lf.session', '');
-let SEASON = new Map(), WEEK_OF = new Map(), BLOCKS = [];
+let SEASON = new Map(), CAL = null, PK = null;
 const ui = { role: '', team: '', q: '', avail: true, watch: false, sort: 'pts', psort: 'pts', prole: '', busy: false, table: null };
 let watch = store.get('lf.watch', []);           // ordered: also the auto-pick queue
 let lastPickCount = null, wasMyTurn = false, routeKey = '', liveNow = [];
@@ -38,28 +38,29 @@ const status = () => (L() ? S.draftStatus(L()) : 'lobby');
 const mgr = id => ((L() && L().managers) || []).find(m => m.id === id);
 const mgrName = id => { const m = mgr(id); return m ? m.name : id; };
 const initials = n => String(n || '?').trim().slice(0, 1).toUpperCase();
-const blockLabel = b => (b || '').replace(/^Week (\d+)$/, 'Woche $1').replace('Finals', 'Finale');
+const splitLabel = slug => String(slug || '').replace(/^lec_/, '').replace(/_\d{4}$/, '').replace(/^split_(\d)$/, 'Split $1').replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+const weekName = b => (b || '').replace(/^Week (\d+)$/, 'Woche $1').replace('Finals', 'Finale');
+// a calendar key is "split|block"; plain block names still work
+const blockLabel = k => String(k || '').includes('|') ? splitLabel(k.split('|')[0]) + ' · ' + weekName(k.split('|').slice(1).join('|')) : weekName(k);
+const shortBlock = k => { const [sp, b] = String(k).split('|'); return 'S' + (String(sp).match(/split_(\d)/) || [0, '?'])[1] + ' ' + weekName(b).replace('Woche ', 'W').replace('Playoffs', 'PO').replace('Finale', 'F'); };
 const scoring = () => (L() && L().scoring) || U.DEFAULT_SCORING;
 const season = id => { if (!SEASON.has(id)) SEASON.set(id, U.playerSeason(D, id)); return SEASON.get(id); };
 const owner = id => (L() ? S.ownership(L()).get(id) || null : null);
 const f1 = n => (Number(n) || 0).toFixed(1).replace('.', ',');
 const dt = iso => new Date(iso).toLocaleString('de-DE', { weekday: 'short', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
 const day = iso => new Date(iso).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit' });
-const tourLabel = () => (D.stats.tournament || '').replace(/^lec_/, '').replace(/_/g, ' ').toUpperCase();
+const tourLabel = () => (D.stats.season ? 'Saison ' + D.stats.season + ' · ' : '') + splitLabel(D.stats.tournament || '');
 const logo = (code, size) => U.teamLogo(D, code, size || 20);
 const pcell = (id, opts) => U.playerCell(D, id, Object.assign({ link: true }, opts || {}));
 const card = (title, body, right) => `<section class="card"><div class="card-h"><h2>${title}</h2>${right ? `<span class="r">${right}</span>` : ''}</div>${body}</section>`;
 const pageHead = (eyebrow, title, right) => `<div class="row" style="justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:12px"><div><div class="eyebrow">${eyebrow}</div><h1 style="font-size:40px">${title}</h1></div>${right || ''}</div>`;
 
 function rebuild() {
-  SEASON = new Map(); WEEK_OF = new Map();
-  const seen = [];
-  for (const e of D.schedule.events || []) {
-    WEEK_OF.set(e.match, e.block);
-    if (e.block && !seen.includes(e.block)) seen.push(e.block);
-  }
-  BLOCKS = seen;
+  SEASON = new Map();
+  CAL = S.calendar(D.schedule);
 }
+const playedKeys = () => CAL.keys.filter(k => D.stats.games.some(g => CAL.blockOf.get(g.match) === k));
+const nextKey = () => CAL.keys.find(k => CAL.start.get(k) > Date.now()) || null;
 
 function teamRecord(code) {
   let w = 0, l = 0;
@@ -77,22 +78,21 @@ const opp = (e, code) => { const o = e.teams.find(t => t.code !== code); return 
 // the block being played now/next; else the last one that was played
 function currentBlock() {
   const up = upcomingEvents()[0];
-  if (up && up.block) return up.block;
-  const played = BLOCKS.filter(b => D.stats.games.some(g => WEEK_OF.get(g.match) === b));
-  return played[played.length - 1] || BLOCKS[0] || null;
+  if (up && up.block) return S.blockKey(up);
+  const played = playedKeys();
+  return played[played.length - 1] || CAL.keys[0] || null;
 }
 
 function standings() {
-  const rows = S.standings(L(), D.stats, D.P);
-  const wk = S.weeklyPoints(L(), D.stats, WEEK_OF);
-  const lastBlock = [...BLOCKS].reverse().find(b => D.stats.games.some(g => WEEK_OF.get(g.match) === b));
+  const rows = S.standings(L(), D.stats, D.P, D.schedule, D.season, D.standings);
+  const pk = playedKeys(), lastBlock = pk[pk.length - 1];
   const lead = rows.length ? rows[0].total : 0;
   return rows.map((r, i) => Object.assign(r, {
-    rank: i + 1, gap: lead - r.total, week: lastBlock ? (wk[r.manager] || {})[lastBlock] || 0 : 0,
+    rank: i + 1, gap: lead - r.total, week: lastBlock ? r.byBlock[lastBlock] || 0 : 0,
     ids: r.perPlayer.filter(p => p.current).map(p => p.player),
   }));
 }
-const h2h = () => S.h2h(L(), D.stats, WEEK_OF, BLOCKS);
+const h2h = () => S.h2h(L(), D.stats, D.schedule, D.P);
 
 // ── small renderers ───────────────────────────────────────────────────────
 function avatars(ids, n) {
@@ -118,7 +118,7 @@ function matchLine(e, code) {
 }
 function eventRows(list, withDate) {
   return list.length ? list.map(e => `<div class="row" style="padding:11px 16px;border-bottom:1px solid var(--line);justify-content:space-between;gap:8px">
-    ${matchLine(e)}<span class="dim" style="font-size:12px;white-space:nowrap">${withDate ? esc(dt(e.start)) : esc(blockLabel(e.block))}</span></div>`).join('')
+    ${matchLine(e)}<span class="dim" style="font-size:12px;white-space:nowrap">${withDate ? esc(dt(e.start)) : esc(blockLabel(S.blockKey(e)))}</span></div>`).join('')
     : '<div class="empty">—</div>';
 }
 function topProsCard(n, withOwner) {
@@ -134,7 +134,7 @@ function seasonFeed() {
   const results = (D.schedule.events || []).filter(e => e.state === 'completed').slice(-6).reverse();
   const next = upcomingEvents().slice(0, 6);
   return card('Nächste Spiele', next.length ? eventRows(next, true) : '<div class="empty">Noch keine Spiele angesetzt — der Spielplan kommt, sobald Riot ihn veröffentlicht.</div>')
-    + card('Letzte Ergebnisse', eventRows(results), '<a href="#/teams">Teams</a>');
+    + card('Letzte Ergebnisse', eventRows(results), '<a href="#/lec">Spielplan</a>');
 }
 
 // ── public views (logged out) ─────────────────────────────────────────────
@@ -285,8 +285,7 @@ function viewManager(id, isMe) {
   if (!m) return card('Manager', '<div class="empty">Manager nicht gefunden.</div>');
   const st = standings(), row = st.find(r => r.manager === id) || { total: 0, rank: '–', gap: 0, perPlayer: [], ids: [], adjust: 0 };
   const ids = row.ids, sc = scoring();
-  const wkAll = S.weeklyPoints(L(), D.stats, WEEK_OF)[id] || {};
-  const wk = BLOCKS.filter(b => D.stats.games.some(g => WEEK_OF.get(g.match) === b)).map(b => ({ block: b, pts: wkAll[b] || 0 }));
+  const wk = playedKeys().map(k => ({ block: k, pts: row.byBlock ? row.byBlock[k] || 0 : 0 }));
   const max = Math.max(10, ...wk.map(w => w.pts));
   const ahead = st[row.rank - 2];
   const best = row.perPlayer.find(p => p.current) || row.perPlayer[0];
@@ -295,7 +294,7 @@ function viewManager(id, isMe) {
   for (const pid of ids) { const p = D.P.get(pid); if (p) (teams.get(p.team) || teams.set(p.team, []).get(p.team)).push(pid); }
   const upcoming = upcomingEvents().filter(e => e.teams.some(t => teams.has(t.code))).slice(0, 6);
   const upH = upcoming.length ? upcoming.map(e => `<div class="row" style="padding:11px 16px;border-bottom:1px solid var(--line);justify-content:space-between;flex-wrap:wrap;gap:8px">
-      <div><div class="dim" style="font-size:12px">${esc(dt(e.start))} · ${esc(blockLabel(e.block))}</div>${matchLine(e)}</div>${avatars(e.teams.flatMap(t => teams.get(t.code) || []), 5)}</div>`).join('')
+      <div><div class="dim" style="font-size:12px">${esc(dt(e.start))} · ${esc(blockLabel(S.blockKey(e)))}</div>${matchLine(e)}</div>${avatars(e.teams.flatMap(t => teams.get(t.code) || []), 5)}</div>`).join('')
     : `<div class="empty">${ids.length ? 'Noch keine Spiele angesetzt — sobald Riot den Spielplan veröffentlicht, stehen hier die nächsten Spiele deiner Spieler.' : 'Erst draften, dann gibt es Spiele.'}</div>`;
 
   const rosterRows = ids.map(pid => {
@@ -324,15 +323,16 @@ function viewManager(id, isMe) {
     ${isMe ? '<div class="cta"><button class="btn" id="logout">Abmelden</button></div>' : ''}
   </section>`;
   if (isMe) h += pushCard();
+  if (isMe) h += lineupCard();
   if (isMe && status() === 'done') {
-    const tr = S.transferRules(L()), win = S.transferWindow(L()), n = pendingForMe();
+    const tr = S.transferRules(L()), win = S.transferWindow(L(), undefined, D.season), n = pendingForMe();
     if (tr.enabled || tr.freeAgents) h += `<a class="note" href="#/transfers" style="display:flex;align-items:center;gap:12px;color:inherit">
       <span>⇄</span><div style="flex:1">${n ? `<b>${n} Trade-Angebot${n > 1 ? 'e' : ''} für dich.</b> ` : ''}Transfers: ${tr.mode === 'always' || win.open ? '<b>Fenster offen</b>' : 'Fenster zu'} — Trades und Free Agents.</div><span class="btn gold sm">Öffnen</span></a>`;
   }
   h += `<div class="grid g-main" style="margin-bottom:18px">
     <div class="stack">${card('Kader', ids.length ? `<table><thead><tr><th>Spieler</th><th class="hide-s">Nächstes Spiel</th><th class="hide-s">Form</th><th class="num hide-s">Letztes</th><th class="num">Punkte</th></tr></thead><tbody>${rosterRows}</tbody></table>`
         : `<div class="empty">Noch kein Kader. ${status() !== 'done' ? '<a href="#/draft">Zum Draft →</a>' : ''}</div>`)}
-      ${wk.length ? card('Punkte pro Woche', `<div class="card-b"><div class="bars">${wk.map(w => `<div class="b"><b>${Math.round(w.pts)}</b><i style="height:${Math.max(2, w.pts / max * 92)}px"></i><span>${esc(blockLabel(w.block).replace('Woche ', 'W'))}</span></div>`).join('')}</div></div>`) : ''}
+      ${wk.length ? card('Punkte pro Woche', `<div class="card-b"><div class="bars">${wk.map(w => `<div class="b"><b>${Math.round(w.pts)}</b><i style="height:${Math.max(2, w.pts / max * 92)}px"></i><span>${esc(shortBlock(w.block))}</span></div>`).join('')}</div></div>`, `${wk.length} Wochen`) : ''}
       ${former.length ? card('Ehemalige Spieler', '<table><tbody>' + former.map(p => `<tr><td class="fill">${pcell(p.player, { photo: true })}</td><td class="num pts">${fmt(p.pts)}</td></tr>`).join('') + '</tbody></table>', 'Punkte bis zum Wechsel') : ''}</div>
     <div class="stack">${matchupCard(id)}${card('Nächste Spiele', upH)}${card('Platzierung', standMini(id))}</div></div>`;
   if (feed) h += card(isMe ? 'Letzte Spiele deiner Spieler' : 'Letzte Spiele', `<table><tbody>${feed}</tbody></table>`);
@@ -341,6 +341,120 @@ function viewManager(id, isMe) {
 function standMini(id) {
   return '<table><tbody>' + standings().map(r => `<tr class="click ${r.manager === id ? 'me' : ''}" data-href="#/manager/${esc(r.manager)}">
     <td class="rank r${r.rank}" style="width:34px;font-size:16px">${r.rank}</td><td class="fill"><b>${esc(r.name)}</b></td><td class="num pts">${fmt(r.total)}</td></tr>`).join('') + '</tbody></table>';
+}
+
+// ── lineup (weekly) ───────────────────────────────────────────────────────
+const lu = { key: null, starters: {}, captain: null, vice: null, busy: false };
+function lineupCard() {
+  const lc = S.lineupConfig(L());
+  if (!lc.enabled || status() !== 'done') return '';
+  const key = nextKey();
+  const role = id => (D.P.get(id) || {}).role;
+  let h = '';
+  // last played week: what actually counted
+  const row = standings().find(r => r.manager === me());
+  const pk = playedKeys(), lastK = pk[pk.length - 1];
+  const last = row && lastK && row.lineups ? row.lineups[lastK] : null;
+  const lastHtml = last ? `<div class="card-b muted" style="font-size:12px;border-top:1px solid var(--line);line-height:1.7">
+      Zuletzt (${esc(blockLabel(lastK))}): ${last.active.map(id => `<b style="color:var(--text)">${esc(U.playerName(D, id))}</b>${id === last.captainScored ? ' ©' : ''}`).join(', ')}
+      ${last.subs.length ? ' · Auto-Wechsel: ' + last.subs.map(x => esc(U.playerName(D, x.out)) + ' → ' + esc(U.playerName(D, x.in))).join(', ') : ''}
+      ${last.auto ? ' <span class="pill">automatisch</span>' : ''} · <b style="color:var(--text)">${fmt(row.byBlock[lastK] || 0)} Pkt</b></div>` : '';
+  if (!key) return card('Aufstellung', '<div class="empty">Gerade keine anstehende Woche — der Spielplan kommt mit dem nächsten Split.</div>' + lastHtml);
+  const pv = S.lineupPreview(L(), D.stats, D.P, D.schedule, me(), key);
+  if (!pv || !pv.roster.length) return '';
+  if (lu.key !== key) { lu.key = key; lu.starters = {}; pv.starters.forEach(id => lu.starters[role(id)] = id); lu.captain = pv.captain; lu.vice = pv.vice; }
+  const slots = L().roster.slots || [];
+  const chosen = slots.map(r => lu.starters[r]).filter(Boolean);
+  const rows = slots.map(r => {
+    const opts = pv.roster.filter(id => role(id) === r);
+    return `<div class="r"><span class="rl">${r}</span><span style="flex:1;min-width:0" class="row">${opts.map(id => `<label class="chip ${lu.starters[r] === id ? 'on' : ''}" style="display:inline-flex;align-items:center;gap:6px;cursor:pointer"><input type="radio" name="lu_${r}" value="${esc(id)}" data-lu="${r}" style="display:none" ${lu.starters[r] === id ? 'checked' : ''}>${esc(U.playerName(D, id))}</label>`).join(' ')}</span></div>`;
+  }).join('');
+  const sel = (id, v) => `<select id="${id}">${chosen.map(x => `<option value="${esc(x)}" ${x === v ? 'selected' : ''}>${esc(U.playerName(D, x))}</option>`).join('')}</select>`;
+  const lock = CAL.start.get(key);
+  const savedHere = (((L().lineups || {})[me()]) || {})[key];
+  return card(`Aufstellung — ${esc(blockLabel(key))}`, `<div class="best">${rows}</div>
+    <div class="card-b row" style="flex-wrap:wrap;gap:12px;border-top:1px solid var(--line)">
+      <label style="margin:0">Kapitän ×${String(S.lineupConfig(L()).captain).replace('.', ',')} ${sel('luCap', lu.captain)}</label><label style="margin:0">Vize ${sel('luVice', lu.vice)}</label>
+      <button class="btn gold sm" id="luSave" ${lu.busy ? 'disabled' : ''}>Speichern</button>
+      <span class="muted" style="font-size:12px">${savedHere ? 'gespeichert' : pv.auto ? 'noch automatisch (beste Form)' : 'aus der Vorwoche übernommen'} · Sperre <b id="countdown" data-deadline="${new Date(lock).toISOString()}">…</b></span></div>
+    <div class="card-b muted" style="font-size:12px;padding-top:0">Nur die Starter punkten. Spielt ein Starter in der Woche nicht, springt der Bankspieler seiner Rolle ein; spielt der Kapitän nicht, bekommt der Vize den Bonus.</div>${lastHtml}`,
+    `${pv.roster.length} im Kader`);
+}
+async function saveLineup() {
+  const slots = L().roster.slots || [];
+  const starters = slots.map(r => lu.starters[r]);
+  lu.captain = $('luCap').value; lu.vice = $('luVice').value;
+  if (lu.captain === lu.vice) return toast('<span style="color:#ffb1b3">Kapitän und Vize müssen verschieden sein.</span>');
+  lu.busy = true; render();
+  try { await api('/api/lineup', { method: 'POST', body: { block: lu.key, starters, captain: lu.captain, vice: lu.vice } }); toast('Aufstellung gespeichert.'); }
+  catch (e) { toast(`<span style="color:#ffb1b3">${esc(e.message)}</span>`); }
+  finally { lu.busy = false; await pollLive(true); }
+}
+
+// ── pick'em ───────────────────────────────────────────────────────────────
+const pkForm = {};
+async function loadPickem() {
+  try { PK = (await api('/api/pickem')).pickems; } catch (e) { PK = {}; }
+  if (path() === '/pickem') render();
+}
+function pickemInput(split, q, val, disabled) {
+  const def = S.PICKEM_TYPES[q.type] || {};
+  const name = `pk_${split}_${q.id}`;
+  const dis = disabled ? 'disabled' : '';
+  if (def.kind === 'number') return `<input type="number" step="0.1" data-pk="${esc(split)}" data-q="${esc(q.id)}" value="${esc(val || '')}" style="width:120px" ${dis}>`;
+  let opts = [];
+  if (def.kind === 'team') opts = D.teams.teams.map(t => [t.code, t.name]);
+  if (def.kind === 'player') opts = D.players.players.slice().sort((a, b) => a.team.localeCompare(b.team) || a.name.localeCompare(b.name)).map(p => [p.id, `${p.name} (${p.team} ${p.role})`]);
+  if (def.kind === 'champion') opts = Object.entries(D.champs.names || {}).sort((a, b) => a[1].localeCompare(b[1]));
+  return `<select data-pk="${esc(split)}" data-q="${esc(q.id)}" ${dis} style="max-width:100%"><option value="">— wählen —</option>${opts.map(([v, l]) => `<option value="${esc(v)}" ${String(val) === String(v) ? 'selected' : ''}>${esc(l)}</option>`).join('')}</select>`;
+}
+const pickLabel = (q, v) => {
+  if (v === undefined || v === null || v === '') return '<span class="dim">—</span>';
+  const kind = (S.PICKEM_TYPES[q.type] || {}).kind;
+  if (kind === 'team') return logo(v, 18) + ' ' + esc(v);
+  if (kind === 'player') return esc(U.playerName(D, v));
+  if (kind === 'champion') return U.champIcon(D, v, 20) + ' ' + esc((D.champs.names || {})[v] || v);
+  return esc(v);
+};
+function viewPickem() {
+  if (PK === null) { loadPickem(); return pageHead('Pick\'em', 'Pick\'em') + card('Pick\'em', '<div class="empty">lädt …</div>'); }
+  const lg = L();
+  const splits = Object.keys(lg.pickems || {}).sort((a, b) => a.localeCompare(b));
+  let h = pageHead(esc(tourLabel()), 'Pick\'em', '<span class="dim" style="font-size:12px">Punkte zählen zur Fantasy-Wertung</span>');
+  if (!splits.length) return h + card('Pick\'em', '<div class="empty">Noch kein Pick\'em offen — der Admin öffnet ihn vor jedem Split.</div>');
+  const pts = S.pickemPoints(lg, D.stats, D.schedule, D.P, D.standings);
+  for (const split of splits.reverse()) {
+    const pe = lg.pickems[split], st = (PK || {})[split] || {};
+    const locked = st.locked || pe.revealed;
+    const done = S.splitDone(D.schedule, split);
+    const truth = S.pickemTruth(lg, D.stats, D.schedule, split, D.P, D.standings.tournaments[split]);
+    const mine = pkForm[split] || (pkForm[split] = Object.assign({}, st.mine || {}));
+    const max = (pe.questions || []).reduce((n, q) => n + (Number(q.points) || 0), 0);
+    let body;
+    if (!locked) {
+      body = '<table class="tight"><tbody>' + (pe.questions || []).map(q => `<tr><td class="fill" style="white-space:normal"><b>${esc(q.label || S.PICKEM_TYPES[q.type].label)}</b> <span class="pill">${q.points} Pkt</span></td>
+        <td style="width:45%">${pickemInput(split, q, mine[q.id])}</td></tr>`).join('') + '</tbody></table>'
+        + `<div class="card-b row" style="flex-wrap:wrap"><button class="btn gold" data-pksave="${esc(split)}">Tipps speichern</button>
+           <span class="muted" style="font-size:12px">Bis zum ersten Spiel änderbar — <b id="countdown" data-deadline="${esc(st.lockAt || '')}">…</b>. Niemand sieht deine Tipps vorher.</span></div>`;
+    } else {
+      const mgrs = (lg.managers || []);
+      const truthOf = q => { const def = S.PICKEM_TYPES[q.type] || {}; if (def.manual) return q.answer ? [q.answer] : []; const t = truth[q.type]; return t instanceof Set ? [...t] : typeof t === 'number' ? [t] : []; };
+      body = `<div style="overflow-x:auto"><table class="tight"><thead><tr><th>Frage</th><th>${done ? 'Ergebnis' : 'Stand jetzt'}</th>${mgrs.map(m => `<th>${esc(m.name)}</th>`).join('')}</tr></thead><tbody>` +
+        (pe.questions || []).map(q => {
+          const tv = truthOf(q);
+          return `<tr><td style="white-space:normal;min-width:140px"><b>${esc(q.label || S.PICKEM_TYPES[q.type].label)}</b> <span class="pill">${q.points}</span></td>
+            <td>${tv.length ? tv.slice(0, 2).map(v => pickLabel(q, v)).join(', ') : '<span class="dim">offen</span>'}</td>
+            ${mgrs.map(m => { const v = ((pe.picks || {})[m.id] || {})[q.id]; const ok = done && pts[m.id] && pts[m.id].bySplit[split] && pts[m.id].bySplit[split].correct.includes(q.id);
+              return `<td style="${m.id === me() ? 'background:var(--gold-soft)' : ''}">${pickLabel(q, v)}${ok ? ' <span class="wl w">✓</span>' : ''}</td>`; }).join('')}</tr>`;
+        }).join('') + `<tr><td><b>Punkte</b></td><td></td>${mgrs.map(m => `<td class="pts">${done ? fmt((pts[m.id] && pts[m.id].bySplit[split] || {}).pts || 0) : '—'}</td>`).join('')}</tr></tbody></table></div>`;
+    }
+    h += card(`${esc(splitLabel(split))} ${locked ? (done ? '· ausgewertet' : '· läuft') : '· offen'}`, body, `max. ${max} Punkte`);
+  }
+  return h;
+}
+async function savePickem(split) {
+  try { await api('/api/pickem', { method: 'POST', body: { split, picks: pkForm[split] || {} } }); toast('Tipps gespeichert.'); await loadPickem(); }
+  catch (e) { toast(`<span style="color:#ffb1b3">${esc(e.message)}</span>`); }
 }
 
 // ── draft ─────────────────────────────────────────────────────────────────
@@ -451,7 +565,7 @@ function pendingForMe() {
   return ((L() && L().trades) || []).filter(t => t.status === 'proposed' && t.to === me()).length;
 }
 function viewTransfers() {
-  const lg = L(), tr = S.transferRules(lg), win = S.transferWindow(lg);
+  const lg = L(), tr = S.transferRules(lg), win = S.transferWindow(lg, undefined, D.season);
   const d = iso => new Date(iso).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' });
   const ros = S.rosters(lg), mine = ros[me()] || [], own = S.ownership(lg);
   const done = status() === 'done';
@@ -512,14 +626,15 @@ function viewTransfers() {
     if (waiver) {
       const claims = (LIVE && LIVE.claims) || [];
       const next = LIVE && LIVE.nextWaiver;
-      const order = S.waiverOrder(lg, D.stats, D.P);
+      const order = S.waiverOrder(lg, D.stats, D.P, D.schedule);
       const wr = S.waiverRules(lg);
       h += card('Meine Waiver-Ansprüche', (claims.length ? '<div class="best">' + claims.map((c, i) => `<div class="r"><span class="rl" style="width:22px;color:var(--dim)">${i + 1}</span>
-          <span style="flex:1;min-width:0">${pcell(c.in, { photo: true })} <span class="dim" style="font-size:12px">für ${esc(U.playerName(D, c.out))}</span></span>
+          <span style="flex:1;min-width:0">${pcell(c.in, { photo: true })} <span class="dim" style="font-size:12px">für ${esc(U.playerName(D, c.out))}${c.bid !== undefined ? ' · Gebot ' + c.bid : ''}</span></span>
           <button class="btn sm" data-tx="cmove" data-i="${i}" data-dir="-1" ${i ? '' : 'disabled'}>↑</button><button class="btn sm" data-tx="cmove" data-i="${i}" data-dir="1" ${i < claims.length - 1 ? '' : 'disabled'}>↓</button><button class="btn sm" data-tx="unclaim" data-i="${i}">✕</button></div>`).join('') + '</div>'
           : '<div class="empty">Keine Ansprüche. Wähl oben „Abgeben", dann bei einem freien Spieler „Anspruch".</div>')
         + `<div class="card-b muted" style="font-size:12px;border-top:1px solid var(--line);line-height:1.6">Nächster Waiver-Lauf: <b style="color:var(--text)">${next ? esc(dt(new Date(next).toISOString())) : '—'}</b>. Deine Liste wird von oben abgearbeitet; niemand sieht deine Ansprüche.<br>
-          Priorität (${wr.order === 'rolling' ? 'rotierend' : 'Tabellenletzter zuerst'}): ${order.map((id, i) => `<span style="color:${id === me() ? 'var(--gold-hi)' : 'inherit'}">${i + 1}. ${esc(mgrName(id))}</span>`).join(' · ')}</div>`,
+          ${wr.order === 'faab' ? `FAAB: höchstes Gebot gewinnt. Dein Budget: <b style="color:var(--gold-hi)">${S.faabLeft(lg, me(), D.season)}</b> von ${(lg.faab || {}).budget || 100}.`
+            : `Priorität (${wr.order === 'rolling' ? 'rotierend' : 'Tabellenletzter zuerst'}): ${order.map((id, i) => `<span style="color:${id === me() ? 'var(--gold-hi)' : 'inherit'}">${i + 1}. ${esc(mgrName(id))}</span>`).join(' · ')}`}</div>`,
         `${claims.length} offen`);
     }
   }
@@ -605,6 +720,146 @@ function viewPlayer(id) {
   return h + card('Alle Spiele', s.rows.length ? `<table class="tight"><thead><tr><th>Datum</th><th>Gegner</th><th>Champ</th><th class="num">K/D/A</th><th class="num hide-s">CS</th><th></th><th class="num">Pkt</th></tr></thead><tbody>${log}</tbody></table>` : '<div class="empty">keine Spiele</div>');
 }
 
+// ── LEC: schedule, table, playoffs, teams ─────────────────────────────────
+const lecUi = { tab: 'plan', split: null, team: '', mine: false };
+const TZ = 'Europe/Berlin';
+const dayHead = iso => new Date(iso).toLocaleDateString('de-DE', { timeZone: TZ, weekday: 'long', day: '2-digit', month: 'long' });
+const hm = iso => new Date(iso).toLocaleTimeString('de-DE', { timeZone: TZ, hour: '2-digit', minute: '2-digit' });
+function splitsOfSeason() { return (D.season.tournaments || []).map(t => t.slug).filter(sl => (D.schedule.events || []).some(e => e.tournament === sl) || D.standings.tournaments[sl]); }
+function defaultSplit() {
+  const up = upcomingEvents()[0];
+  if (up && up.tournament) return up.tournament;
+  const sp = splitsOfSeason();
+  return sp[sp.length - 1] || null;
+}
+function myTeams() {
+  if (!loggedIn()) return new Set();
+  return new Set((S.rosters(L())[me()] || []).map(id => (D.P.get(id) || {}).team).filter(Boolean));
+}
+function viewLec() {
+  const split = lecUi.split || defaultSplit();
+  const tabs = [['plan', 'Spielplan'], ['table', 'Tabelle'], ['bracket', 'Playoffs'], ['teams', 'Teams']];
+  const splits = splitsOfSeason();
+  const head = pageHead(esc(D.stats.season ? 'Saison ' + D.stats.season : 'LEC'), 'LEC',
+    `<div class="chips">${tabs.map(([k, l]) => `<button class="chip ${lecUi.tab === k ? 'on' : ''}" data-lectab="${k}">${l}</button>`).join('')}</div>`);
+  const splitChips = lecUi.tab === 'teams' ? '' : `<div class="chips" style="margin-bottom:14px">${splits.map(sl => `<button class="chip ${sl === split ? 'on' : ''}" data-lecsplit="${esc(sl)}">${esc(splitLabel(sl))}</button>`).join('')}</div>`;
+  let body = '';
+  if (lecUi.tab === 'plan') body = lecPlan(split);
+  else if (lecUi.tab === 'table') body = lecTable(split);
+  else if (lecUi.tab === 'bracket') body = lecBracket(split);
+  else body = teamsGrid();
+  return head + splitChips + body;
+}
+function lecPlan(split) {
+  const mine = myTeams();
+  const evs = (D.schedule.events || []).filter(e => e.tournament === split
+    && (!lecUi.team || e.teams.some(t => t.code === lecUi.team))
+    && (!lecUi.mine || e.teams.some(t => mine.has(t.code))));
+  const next = upcomingEvents().find(e => evs.includes(e));
+  const tools = `<div class="row" style="flex-wrap:wrap;gap:10px;margin-bottom:14px">
+    <select id="lecTeam"><option value="">Alle Teams</option>${D.teams.teams.map(t => `<option value="${esc(t.code)}" ${lecUi.team === t.code ? 'selected' : ''}>${esc(t.name)}</option>`).join('')}</select>
+    ${loggedIn() ? `<button class="chip ${lecUi.mine ? 'on' : ''}" id="lecMine">Nur Spiele meiner Spieler</button>` : ''}
+    ${next ? '<a class="btn sm" href="#lec-next" id="lecJump">Zum nächsten Spiel</a>' : ''}
+    <button class="btn sm" id="lecIcs">📅 In Kalender exportieren</button></div>`;
+  if (!evs.length) return tools + card('Spielplan', '<div class="empty">Keine Spiele — der Spielplan erscheint, sobald Riot ihn veröffentlicht.</div>');
+  // group: block -> day
+  const blocks = [];
+  for (const e of evs) {
+    const k = e.block || '—';
+    let b = blocks.find(x => x.k === k); if (!b) blocks.push(b = { k, days: [] });
+    const dk = new Date(e.start).toLocaleDateString('de-DE', { timeZone: TZ });
+    let d = b.days.find(x => x.dk === dk); if (!d) b.days.push(d = { dk, iso: e.start, evs: [] });
+    d.evs.push(e);
+  }
+  const line = e => {
+    const [a, b] = e.teams, done = e.state === 'completed';
+    const hl = mine.has(a.code) || mine.has(b.code);
+    const win = c => done && (e.teams.find(t => t.code === c) || {}).outcome === 'win';
+    return `<div class="row" ${e === next ? 'id="lec-next"' : ''} style="padding:10px 16px;border-bottom:1px solid var(--line);gap:10px;${e === next ? 'background:var(--teal-soft);' : hl ? 'background:var(--gold-soft);' : ''}">
+      <span class="dim" style="width:46px;font-variant-numeric:tabular-nums">${hm(e.start)}</span>
+      <a href="#/team/${esc(a.code)}" class="row" style="flex:1;justify-content:flex-end;gap:8px;min-width:0;color:inherit;${done && !win(a.code) ? 'opacity:.55' : ''}"><b style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(a.code)}</b>${logo(a.code, 24)}</a>
+      <span style="min-width:56px;text-align:center" class="num">${done ? `<b>${a.wins ?? 0}:${b.wins ?? 0}</b>` : e.state === 'inProgress' ? '<span class="pill live">LIVE</span>' : `<span class="dim">Bo${e.bestOf}</span>`}</span>
+      <a href="#/team/${esc(b.code)}" class="row" style="flex:1;gap:8px;min-width:0;color:inherit;${done && !win(b.code) ? 'opacity:.55' : ''}">${logo(b.code, 24)}<b style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(b.code)}</b></a></div>`;
+  };
+  return tools + blocks.map(b => card(esc(weekName(b.k)), b.days.map(d => `<div class="eyebrow" style="padding:10px 16px 4px;color:var(--muted)">${esc(dayHead(d.iso))}</div>${d.evs.map(line).join('')}`).join(''),
+    `${b.days.reduce((n, d) => n + d.evs.length, 0)} Spiele`)).join('<div style="height:14px"></div>');
+}
+function lecTable(split) {
+  const sd = D.standings.tournaments[split];
+  const sec = sd && sd.stages[0] && sd.stages[0].sections[0];
+  if (!sec || !sec.rankings.length) return card('Tabelle', '<div class="empty">Noch keine Tabelle für diesen Split.</div>');
+  const mine = myTeams();
+  // game record from our stats (series W-L comes from the official table)
+  const games = {};
+  for (const g of D.stats.games) {
+    if (g.tournament !== split) continue;
+    const r = games[g.team] || (games[g.team] = { ids: new Set(), w: new Set() });
+    r.ids.add(g.game); if (g.win) r.w.add(g.game);
+  }
+  const rows = sec.rankings.flatMap(r => r.teams.map(t => ({ ord: r.ordinal, ...t }))).map(t => {
+    const team = D.T.get(t.code) || {}, gr = games[t.code];
+    return `<tr class="click ${mine.has(t.code) ? 'me' : ''}" data-href="#/team/${esc(t.code)}">
+      <td class="rank r${t.ord}">${t.ord}</td><td class="fill">${logo(t.code, 24)} <b>${esc(team.name || t.code)}</b></td>
+      <td class="num pts">${t.w}–${t.l}</td><td class="num hide-s dim">${gr ? `${gr.w.size}–${gr.ids.size - gr.w.size}` : '—'}</td></tr>`;
+  }).join('');
+  return card(`Tabelle · ${esc(splitLabel(split))}`, `<table><thead><tr><th>#</th><th>Team</th><th class="num">Serien</th><th class="num hide-s">Spiele</th></tr></thead><tbody>${rows}</tbody></table>`,
+    mine.size ? 'gold = Teams deiner Spieler' : 'offizielle Reihenfolge inkl. Tiebreaks');
+}
+function lecBracket(split) {
+  const sd = D.standings.tournaments[split];
+  const stage = sd && sd.stages.find(st => /playoff/i.test(st.name)) || (sd && sd.stages[1]);
+  const ms = stage && stage.sections[0] && stage.sections[0].matches;
+  if (!ms || !ms.length) return card('Playoffs', '<div class="empty">Noch keine Playoffs für diesen Split.</div>');
+  // round = longest chain of previous matches; columns left to right
+  const byId = new Map(ms.map(m => [m.id, m]));
+  const depth = new Map();
+  const d = m => { if (depth.has(m.id)) return depth.get(m.id); const v = m.prev.length ? 1 + Math.max(...m.prev.map(id => byId.has(id) ? d(byId.get(id)) : 0)) : 0; depth.set(m.id, v); return v; };
+  ms.forEach(d);
+  const when = new Map((D.schedule.events || []).map(e => [e.match, e]));
+  const cols = [];
+  ms.forEach(m => { (cols[depth.get(m.id)] = cols[depth.get(m.id)] || []).push(m); });
+  cols.forEach(c => c.sort((a, b) => ((when.get(a.id) || {}).start || '').localeCompare((when.get(b.id) || {}).start || '')));
+  const mine = myTeams();
+  const box = m => {
+    const ev = when.get(m.id);
+    return `<div class="card" style="margin-bottom:10px;min-width:180px">${m.teams.map(t => `<div class="row" style="padding:7px 10px;gap:8px;border-bottom:1px solid var(--line);${t.outcome === 'loss' ? 'opacity:.5;' : ''}${mine.has(t.code) ? 'background:var(--gold-soft);' : ''}">
+        ${t.code && t.code !== 'TBD' ? logo(t.code, 20) : ''}<b style="flex:1">${esc(t.code || 'TBD')}</b><b class="num">${t.wins ?? ''}</b></div>`).join('')}
+      <div class="dim" style="font-size:11px;padding:5px 10px">${ev ? esc(weekName(ev.block)) + ' · ' + esc(new Date(ev.start).toLocaleDateString('de-DE', { timeZone: TZ, day: '2-digit', month: '2-digit' })) : ''}</div></div>`;
+  };
+  const final = cols[cols.length - 1] && cols[cols.length - 1][0];
+  const champ = final && final.teams.find(t => t.outcome === 'win');
+  return (champ ? `<div class="note" style="display:flex;align-items:center;gap:12px">🏆 ${logo(champ.code, 28)} <b>${esc((D.T.get(champ.code) || {}).name || champ.code)}</b> gewinnt ${esc(splitLabel(split))}</div>` : '')
+    + `<div style="overflow-x:auto;-webkit-overflow-scrolling:touch"><div class="row" style="align-items:flex-start;gap:16px;min-width:max-content;padding-bottom:6px">
+      ${cols.map((c, i) => `<div><div class="eyebrow" style="margin-bottom:8px">${i === cols.length - 1 ? 'Finale' : 'Runde ' + (i + 1)}</div>${c.map(box).join('')}</div>`).join('')}</div></div>`;
+}
+// .ics with every upcoming match (optionally only my teams), German time
+function exportIcs() {
+  const mine = myTeams();
+  const evs = upcomingEvents().filter(e => !lecUi.team || e.teams.some(t => t.code === lecUi.team)).filter(e => !lecUi.mine || e.teams.some(t => mine.has(t.code)));
+  if (!evs.length) return toast('Keine anstehenden Spiele zum Exportieren.');
+  const f = iso => new Date(iso).toISOString().replace(/[-:]/g, '').replace(/\.\d{3}/, '');
+  const lines = ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//LEC Fantasy//DE', 'CALSCALE:GREGORIAN'];
+  for (const e of evs) {
+    const [a, b] = e.teams, end = new Date(Date.parse(e.start) + (e.bestOf > 1 ? e.bestOf * 45 : 60) * 60000).toISOString();
+    lines.push('BEGIN:VEVENT', `UID:${e.match}@lecfantasy`, `DTSTAMP:${f(new Date().toISOString())}`, `DTSTART:${f(e.start)}`, `DTEND:${f(end)}`,
+      `SUMMARY:LEC: ${a.code} vs ${b.code} (Bo${e.bestOf})`, `DESCRIPTION:${weekName(e.block)} · ${splitLabel(e.tournament)}`, 'END:VEVENT');
+  }
+  lines.push('END:VCALENDAR');
+  const url = URL.createObjectURL(new Blob([lines.join('\r\n')], { type: 'text/calendar' }));
+  const a = document.createElement('a'); a.href = url; a.download = 'lec-spielplan.ics'; a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 2000);
+  toast(`${evs.length} Spiele exportiert.`);
+}
+
+function teamsGrid() {
+  return '<div class="grid g-teams">' + D.teams.teams.map(t => {
+    const rec = teamRecord(t.code), nm = nextMatch(t.code);
+    return `<a class="card tcard" href="#/team/${esc(t.code)}"><div class="top"><img src="${esc(t.logo)}" alt=""><div style="min-width:0"><div class="eyebrow" style="font-size:12px">${esc(t.code)}</div><h3>${esc(t.name)}</h3></div></div>
+      <div class="foot">${avatars(D.players.players.filter(p => p.team === t.code).map(p => p.id), 7)}<span class="num"><b>${rec.w}–${rec.l}</b></span></div>
+      ${nm ? `<div class="foot" style="font-size:12px;color:var(--muted)">Nächstes: ${esc(dt(nm.start))} vs ${esc(opp(nm, t.code))}</div>` : ''}</a>`;
+  }).join('') + '</div>';
+}
+
 function viewTeams() {
   return pageHead(esc(tourLabel()), 'Teams') + '<div class="grid g-teams">' + D.teams.teams.map(t => {
     const rec = teamRecord(t.code), nm = nextMatch(t.code);
@@ -624,7 +879,7 @@ function viewTeam(code) {
   }).join('') + '</tbody></table>';
   const ev = (D.schedule.events || []).filter(e => e.teams.some(x => x.code === code)).reverse();
   const res = ev.map(e => `<div class="row" style="padding:11px 16px;border-bottom:1px solid var(--line);justify-content:space-between;flex-wrap:wrap">
-    ${matchLine(e, code)}<span class="dim" style="font-size:12px">${esc(blockLabel(e.block))} · ${esc(day(e.start))}</span></div>`).join('');
+    ${matchLine(e, code)}<span class="dim" style="font-size:12px">${esc(blockLabel(S.blockKey(e)))} · ${esc(day(e.start))}</span></div>`).join('');
   return `<section class="hero" style="display:flex;align-items:center;gap:24px"><img src="${esc(t.logo)}" alt="" style="width:96px;height:96px;object-fit:contain;position:relative;z-index:1">
       <div style="position:relative;z-index:1"><div class="eyebrow">${esc(t.code)} · ${esc(tourLabel())}</div><h1>${esc(t.name)}</h1><div class="sub">Bilanz <b>${rec.w}–${rec.l}</b> in Serien</div></div></section>
     <div class="grid g-2">${card('Kader', ros)}${card('Spiele', res || '<div class="empty">—</div>')}</div>`;
@@ -647,7 +902,7 @@ function viewRules() {
     ${card('Tabelle', `<div class="card-b muted" style="line-height:1.7"><b style="color:var(--text)">Punkte:</b> Summe aller Punkte deiner Spieler.<br>
       <b style="color:var(--text)">Head-to-Head:</b> jede LEC-Woche spielst du gegen einen anderen Manager — mehr Punkte in der Woche gewinnt.<br>
       Wechsel und Trades zählen ab ihrem Datum; vorherige Punkte bleiben beim alten Manager.</div>`)}
-    ${card('Transfers', (() => { const tr = S.transferRules(lg), w = S.transferWindow(lg);
+    ${card('Transfers', (() => { const tr = S.transferRules(lg), w = S.transferWindow(lg, undefined, D.season);
       return `<div class="card-b muted" style="line-height:1.7">${tr.enabled ? '<b style="color:var(--text)">Trades:</b> zwei Manager einigen sich, fertig' + (tr.adminApproval ? ' (plus Freigabe durch den Admin)' : '') + '.<br>' : 'Keine Trades.<br>'}
         ${tr.freeAgents ? `<b style="color:var(--text)">Free Agents:</b> ungedraftete Spieler gegen eigene tauschen${tr.perWeek ? `, ${tr.perWeek}× pro Woche` : ''}${tr.faMode === 'waiver' ? ` — über <b style="color:var(--text)">Waiver</b>: Ansprüche werden ${S.waiverRules(lg).days.map(d => ['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So'][d - 1]).join('/')} um ${esc(S.waiverRules(lg).time)} Uhr entschieden, ${S.waiverRules(lg).order === 'rolling' ? 'rotierende Priorität' : 'Tabellenletzter zuerst'}` : ', wer zuerst kommt'}.<br>` : ''}
         ${tr.mode === 'always' ? 'Jederzeit möglich.' : `Nur in Transferfenstern${w.open ? ' — gerade offen.' : w.next ? ' — nächstes ab ' + new Date(w.next.from).toLocaleDateString('de-DE') + '.' : '.'}`}
@@ -798,23 +1053,26 @@ async function disablePush() {
 }
 
 // ── routing & chrome ──────────────────────────────────────────────────────
-const PRIVATE = /^\/(mein-team|draft|manager\/.+|regeln|transfers)$/;
+const PRIVATE = /^\/(mein-team|draft|manager\/.+|regeln|transfers|pickem)$/;
 const ICONS = {
   home: '<path d="M3 11l9-7 9 7v9a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/>',
   user: '<circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 4-6 8-6s8 2 8 6"/>',
   draft: '<rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/>',
   players: '<circle cx="9" cy="8" r="3.5"/><path d="M2 20c0-3.5 3-5.5 7-5.5s7 2 7 5.5"/><path d="M16 4.5a3.5 3.5 0 0 1 0 7M22 20c0-3-2-5-5-5.5"/>',
   shield: '<path d="M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z"/>',
+  book: '<path d="M4 4h7a3 3 0 0 1 3 3v13a2 2 0 0 0-2-2H4zM20 4h-5"/><path d="M14 7a3 3 0 0 1 3-3h3v14h-4a2 2 0 0 0-2 2"/>',
   live: '<circle cx="12" cy="12" r="3"/><path d="M6.3 6.3a8 8 0 0 0 0 11.4M17.7 6.3a8 8 0 0 1 0 11.4"/>',
 };
 const icon = n => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" stroke-linecap="round">${ICONS[n]}</svg>`;
 function path() { return ((location.hash || '#/').replace(/^#/, '').split('?')[0]) || '/'; }
 function nav() {
   const liveDot = liveNow.length ? '<span class="live-dot"></span>' : '';
-  if (!loggedIn()) return [['#/', 'Saison', 'home', /^\/?$/], ['#/live', 'Live' + liveDot, 'live', /^\/live/], ['#/teams', 'Teams', 'shield', /^\/team/], ['#/spieler', 'Spieler', 'players', /^\/spieler/]];
+  if (!loggedIn()) return [['#/', 'Saison', 'home', /^\/?$/], ['#/live', 'Live' + liveDot, 'live', /^\/live/], ['#/lec', 'LEC', 'shield', /^\/(lec|team)/], ['#/spieler', 'Spieler', 'players', /^\/spieler/]];
+  const draftDone = status() === 'done';
+  const middle = draftDone ? [['#/pickem', 'Pick\'em', 'book', /^\/pickem/]] : [['#/draft', 'Draft' + (status() === 'live' ? '<span class="live-dot"></span>' : ''), 'draft', /^\/draft$/]];
   return [['#/', 'Übersicht', 'home', /^\/?$/], ['#/mein-team', 'Mein Team' + (pendingForMe() ? '<span class="live-dot" style="background:var(--gold);animation:none"></span>' : ''), 'user', /^\/(mein-team|manager\/.+|transfers)$/],
-    ['#/draft', 'Draft' + (status() === 'live' ? '<span class="live-dot"></span>' : ''), 'draft', /^\/draft$/],
-    ['#/live', 'Live' + liveDot, 'live', /^\/live/], ['#/spieler', 'Spieler', 'players', /^\/spieler/], ['#/teams', 'Teams', 'shield', /^\/team/], ['#/regeln', 'Regeln', null, /^\/regeln$/]];
+    ...middle,
+    ['#/live', 'Live' + liveDot, 'live', /^\/live/], ['#/spieler', 'Spieler', 'players', /^\/spieler/], ['#/lec', 'LEC', 'shield', /^\/(lec|team)/]];
 }
 function chrome() {
   if (!D) return;
@@ -829,7 +1087,7 @@ function chrome() {
   const mine = loggedIn() && status() === 'live' && S.currentPicker(L()) === me();
   $('turnbar').className = 'turnbar' + (mine ? ' on' : '');
   $('turnbar').innerHTML = mine ? (p === '/draft' ? 'Du bist dran — wähle deinen Spieler' : 'Du bist dran! <a href="#/draft">Jetzt picken →</a>') : '';
-  const title = { '/': loggedIn() ? 'Übersicht' : 'Saison', '/draft': 'Draft', '/spieler': 'Spieler', '/teams': 'Teams', '/regeln': 'Regeln', '/mein-team': 'Mein Team', '/live': 'Live', '/admin': 'Admin', '/transfers': 'Transfers' }[p] || '';
+  const title = { '/': loggedIn() ? 'Übersicht' : 'Saison', '/draft': 'Draft', '/spieler': 'Spieler', '/teams': 'Teams', '/regeln': 'Regeln', '/mein-team': 'Mein Team', '/live': 'Live', '/admin': 'Admin', '/transfers': 'Transfers', '/pickem': 'Pick\'em', '/lec': 'LEC' }[p] || '';
   document.title = (mine ? '▶ Du bist dran · ' : '') + 'LEC Fantasy' + (title ? ' — ' + title : '');
   if (mine && !wasMyTurn) yourTurn();
   wasMyTurn = !!mine;
@@ -850,8 +1108,10 @@ function render() {
   else if (p === '/draft') html = viewDraft();
   else if (p === '/mein-team') html = viewMine();
   else if (p === '/transfers') html = viewTransfers();
+  else if (p === '/pickem') html = viewPickem();
   else if (p === '/spieler') html = viewPlayers();
-  else if (p === '/teams') html = viewTeams();
+  else if (p === '/teams') { lecUi.tab = 'teams'; html = viewLec(); }
+  else if (p === '/lec') html = viewLec();
   else if (p === '/regeln') html = viewRules();
   else if (p === '/live') html = viewLive();
   else if ((m = p.match(/^\/spieler\/([\w-]+)$/))) html = viewPlayer(m[1]);
@@ -894,6 +1154,19 @@ function bind() {
   });
   document.querySelectorAll('[data-pick]').forEach(b => b.onclick = () => doPick(b.dataset.pick));
   on('txPartner', 'onchange', e => { tx.partner = e.target.value; tx.get = []; render(); });
+  document.querySelectorAll('[data-lu]').forEach(r => r.onchange = () => { lu.starters[r.dataset.lu] = r.value;
+    const chosen = Object.values(lu.starters); if (!chosen.includes(lu.captain)) lu.captain = chosen[0]; if (!chosen.includes(lu.vice) || lu.vice === lu.captain) lu.vice = chosen.find(x => x !== lu.captain); render(); });
+  on('luCap', 'onchange', e => { lu.captain = e.target.value; });
+  on('luVice', 'onchange', e => { lu.vice = e.target.value; });
+  on('luSave', 'onclick', () => saveLineup());
+  document.querySelectorAll('[data-pk]').forEach(el => el.onchange = () => { (pkForm[el.dataset.pk] = pkForm[el.dataset.pk] || {})[el.dataset.q] = el.value; });
+  document.querySelectorAll('[data-pksave]').forEach(b => b.onclick = () => savePickem(b.dataset.pksave));
+  document.querySelectorAll('[data-lectab]').forEach(b => b.onclick = () => { lecUi.tab = b.dataset.lectab; if (path() !== '/lec') location.hash = '#/lec'; else render(); });
+  document.querySelectorAll('[data-lecsplit]').forEach(b => b.onclick = () => { lecUi.split = b.dataset.lecsplit; render(); });
+  on('lecTeam', 'onchange', e => { lecUi.team = e.target.value; render(); });
+  on('lecMine', 'onclick', () => { lecUi.mine = !lecUi.mine; render(); });
+  on('lecIcs', 'onclick', () => exportIcs());
+  on('lecJump', 'onclick', e => { e.preventDefault(); const el = $('lec-next'); if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' }); });
   on('faOut', 'onchange', e => { tx.faOut = e.target.value; render(); });
   on('faQ', 'oninput', e => { tx.faQ = e.target.value; render(); });
   document.querySelectorAll('[data-txpick]').forEach(c => c.onchange = () => {
@@ -907,7 +1180,12 @@ function bind() {
     if (a === 'accept' && confirm('Trade annehmen?')) return txAction({ action: 'respond', id, accept: true }, 'Trade angenommen.');
     if (a === 'decline') return txAction({ action: 'respond', id, accept: false }, 'Abgelehnt.');
     if (a === 'cancel') return txAction({ action: 'cancel', id }, 'Zurückgezogen.');
-    if (a === 'claim') return txAction({ action: 'claim', out: tx.faOut, in: id }, `Anspruch auf ${esc(U.playerName(D, id))} gestellt.`);
+    if (a === 'claim') {
+      const faab = S.waiverRules(L()).order === 'faab';
+      let bid;
+      if (faab) { bid = prompt(`Gebot für ${U.playerName(D, id)} (noch ${S.faabLeft(L(), me(), D.season)} übrig):`, '1'); if (bid === null) return; bid = parseInt(bid, 10); }
+      return txAction(Object.assign({ action: 'claim', out: tx.faOut, in: id }, faab ? { bid } : {}), `Anspruch auf ${esc(U.playerName(D, id))} gestellt.`);
+    }
     if (a === 'unclaim') return txAction({ action: 'unclaim', index: +b.dataset.i }, 'Anspruch entfernt.');
     if (a === 'cmove') return txAction({ action: 'claimMove', index: +b.dataset.i, dir: +b.dataset.dir }, 'Reihenfolge geändert.');
     if (a === 'fa' && confirm(`${U.playerName(D, tx.faOut)} abgeben und ${U.playerName(D, id)} holen?`)) return txAction({ action: 'freeAgent', out: tx.faOut, in: id }, `${esc(U.playerName(D, id))} ist jetzt in deinem Kader.`);

@@ -78,22 +78,31 @@
     return 'live';
   }
 
+  // roster.perRole (e.g. 2): every manager holds exactly that many players per
+  // role - with 2 there is always a backup for a benched starter. Without it:
+  // one per slot + roster.bench free picks (the older model).
   function rosterSize(league) {
-    return ((league.roster && league.roster.slots) || []).length + ((league.roster && league.roster.bench) || 0);
+    const r = league.roster || {}, slots = (r.slots || []).length;
+    return r.perRole ? slots * r.perRole : slots + (r.bench || 0);
   }
 
   // How many managers the player pool supports. Not floor(pool / roster): at
   // that size every player is needed and drafts dead-end (simulated on the
   // 2026 pool: 97% stuck at 10 managers, 20% at 9, 0.9% at 8, 0% at 7).
-  // So at most 80% of the pool may be drafted, and every starting role keeps
-  // at least one spare. pickError's relax levels cover the rest.
-  function capacity(league, playerIndex) {
-    const slots = (league.roster && league.roster.slots) || [];
-    const size = rosterSize(league) || 1;
+  // So at most 80% of the pool may be drafted, and every role keeps spares.
+  // roster.maxManagers lets the admin override it (relax levels keep a draft
+  // from ever getting stuck, the admin page warns when it is tight).
+  function suggestedCapacity(league, playerIndex) {
+    const r = league.roster || {}, slots = r.slots || [];
+    const size = rosterSize(league) || 1, per = r.perRole || 1;
     const all = [...playerIndex.values()];
     let cap = Math.floor(all.length * 0.8 / size);
-    for (const role of slots) cap = Math.min(cap, all.filter(p => p.role === role).length - 1);
+    for (const role of slots) cap = Math.min(cap, Math.floor((all.filter(p => p.role === role).length - 1) / per));
     return Math.max(0, cap);
+  }
+  function capacity(league, playerIndex) {
+    const o = league.roster && league.roster.maxManagers;
+    return o ? o : suggestedCapacity(league, playerIndex);
   }
 
   // ── ownership over time ─────────────────────────────────────────────────
@@ -155,51 +164,185 @@
     };
   }
 
-  // ── standings ───────────────────────────────────────────────────────────
-  // [{manager, name, total, adjust, perPlayer:[{player,team,role,games,pts,current}]}]
-  function standings(league, stats, playerIndex) {
-    const s = league.scoring;
-    const ownerAt = ownerResolver(league);
-    const ros = rosters(league);
-    const acc = {};
-    for (const m of league.managers || []) acc[m.id] = new Map();
+  // ── calendar ────────────────────────────────────────────────────────────
+  // A "week" is a schedule block within a split: "lec_split_2_2026|Week 3".
+  // The split is part of the key because every split has a Week 1.
+  function blockKey(e) { return (e.tournament || '') + '|' + (e.block || ''); }
+  function calendar(schedule) {
+    const blockOf = new Map(), start = new Map(), end = new Map();
+    for (const e of (schedule && schedule.events) || []) {
+      if (!e.block) continue;
+      const k = blockKey(e), t = Date.parse(e.start);
+      blockOf.set(e.match, k);
+      if (!start.has(k) || t < start.get(k)) start.set(k, t);
+      if (!end.has(k) || t > end.get(k)) end.set(k, t);
+    }
+    const keys = [...start.keys()].sort((a, b) => start.get(a) - start.get(b));
+    return { blockOf, start, end, keys, split: k => k.split('|')[0], name: k => k.split('|').slice(1).join('|') };
+  }
+
+  // ── lineups ─────────────────────────────────────────────────────────────
+  // league.lineup = { enabled, captain: 1.5 }
+  // league.lineups[manager][blockKey] = { starters:[ids], bench:[ids], captain, vice }
+  // A week's lineup locks when its first match starts. Not set (or no longer
+  // valid) -> automatic: per role the player with the best average BEFORE
+  // that week, captain/vice = the two best starters. A starter without a game
+  // that week is auto-subbed by the bench player of the same role who played
+  // (like Fantasy Premier League); a captain without a game passes the bonus
+  // to the vice-captain.
+  function lineupConfig(league) { return Object.assign({ enabled: false, captain: 1.5 }, league.lineup || {}); }
+
+  // per player: [{t, pts}] sorted by time - for averages before a moment
+  function history(stats, s) {
+    const h = new Map();
     for (const g of (stats && stats.games) || []) {
-      const mgr = ownerAt(g.player, g.ts);
-      if (!mgr || !acc[mgr]) continue;
-      const cur = acc[mgr].get(g.player) || { pts: 0, games: 0 };
-      cur.pts += gamePoints(g, s); cur.games++;
-      acc[mgr].set(g.player, cur);
+      if (!h.has(g.player)) h.set(g.player, []);
+      h.get(g.player).push({ t: Date.parse(g.ts), pts: gamePoints(g, s) });
     }
+    h.forEach(v => v.sort((a, b) => a.t - b.t));
+    return h;
+  }
+  function avgBefore(hist, id, t) {
+    const v = hist.get(id) || [];
+    let n = 0, sum = 0;
+    for (const x of v) { if (x.t >= t) break; n++; sum += x.pts; }
+    return n ? sum / n : -1;
+  }
+
+  function lineupFor(league, ctx, managerId, key) {
+    const t0 = ctx.cal.start.get(key);
+    const roster = [];
+    // roster as it stood when the week started (transfers mid-week count from next week)
+    ctx.ownAtStart = ctx.ownAtStart || new Map();
+    if (!ctx.ownAtStart.has(key)) ctx.ownAtStart.set(key, ownership(league, new Date(t0).toISOString()));
+    ctx.ownAtStart.get(key).forEach((m, pid) => { if (m === managerId) roster.push(pid); });
+    const slots = (league.roster && league.roster.slots) || [];
+    const role = id => (ctx.playerIndex.get(id) || {}).role;
+    const score = id => avgBefore(ctx.hist, id, t0);
+    const byScore = ids => ids.slice().sort((a, b) => score(b) - score(a) || String(a).localeCompare(String(b)));
+    // this week's lineup, else the most recent earlier one (carried forward,
+    // like Fantasy Premier League keeps your team), else automatic
+    const mine = ((league.lineups || {})[managerId]) || {};
+    let saved = mine[key];
+    if (!saved) {
+      const earlier = ctx.cal.keys.slice(0, ctx.cal.keys.indexOf(key)).reverse().find(k => mine[k]);
+      if (earlier) saved = mine[earlier];
+    }
+    const starters = [];
+    let auto = true;
+    if (saved && Array.isArray(saved.starters)) {
+      auto = false;
+      for (const r of slots) {
+        const pick = saved.starters.find(id => roster.includes(id) && role(id) === r);
+        if (pick) starters.push(pick);
+        else { auto = true; const best = byScore(roster.filter(id => role(id) === r))[0]; if (best) starters.push(best); }
+      }
+    } else {
+      for (const r of slots) { const best = byScore(roster.filter(id => role(id) === r))[0]; if (best) starters.push(best); }
+    }
+    const benchSaved = saved && Array.isArray(saved.bench) ? saved.bench.filter(id => roster.includes(id) && !starters.includes(id)) : [];
+    const bench = benchSaved.concat(byScore(roster.filter(id => !starters.includes(id) && !benchSaved.includes(id))));
+    const ranked = byScore(starters);
+    let captain = saved && starters.includes(saved.captain) ? saved.captain : ranked[0];
+    let vice = saved && starters.includes(saved.vice) && saved.vice !== captain ? saved.vice : ranked.find(id => id !== captain);
+    return { starters, bench, captain, vice, auto, roster };
+  }
+
+  // What the lineup for `key` would be right now (for the lineup editor).
+  function lineupPreview(league, stats, playerIndex, schedule, managerId, key) {
+    const cal = calendar(schedule);
+    if (!cal.start.has(key)) return null;
+    return lineupFor(league, { cal, hist: history(stats, league.scoring), playerIndex: playerIndex || new Map() }, managerId, key);
+  }
+
+  // The one place points are attributed. Returns per manager:
+  //   total, byBlock{key:pts}, perPlayer{id:{pts,games,benchPts}}, lineups{key:info}
+  function scoreBook(league, stats, playerIndex, schedule) {
+    const s = league.scoring;
+    const cal = calendar(schedule);
+    const ownerAt = ownerResolver(league);
+    const hist = history(stats, s);
+    const lc = lineupConfig(league);
+    const ctx = { cal, ownerAt, hist, playerIndex: playerIndex || new Map() };
+    const book = {};
+    for (const m of league.managers || []) book[m.id] = { total: 0, byBlock: {}, perPlayer: {}, lineups: {} };
+    const add = (m, pid, key, pts, counted) => {
+      const b = book[m]; if (!b) return;
+      const pp = b.perPlayer[pid] || (b.perPlayer[pid] = { pts: 0, games: 0, benchPts: 0 });
+      pp.games++;
+      if (counted) { pp.pts += pts; b.total += pts; if (key) b.byBlock[key] = (b.byBlock[key] || 0) + pts; }
+      else pp.benchPts += pts;
+    };
+    // group games by block
+    const byBlock = new Map();
+    for (const g of (stats && stats.games) || []) {
+      const key = cal.blockOf.get(g.match) || null;
+      if (!byBlock.has(key)) byBlock.set(key, []);
+      byBlock.get(key).push(g);
+    }
+    byBlock.forEach((games, key) => {
+      if (!lc.enabled || !key || !cal.start.has(key)) {
+        for (const g of games) { const m = ownerAt(g.player, g.ts); if (m) add(m, g.player, key, gamePoints(g, s), true); }
+        return;
+      }
+      const played = new Set(games.map(g => g.player));
+      for (const m of league.managers || []) {
+        const lu = lineupFor(league, ctx, m.id, key);
+        if (!lu.roster.length) continue;
+        // auto-sub: a starter without a game this week -> first bench player of that role who played
+        const role = id => (ctx.playerIndex.get(id) || {}).role;
+        const active = lu.starters.map(id => played.has(id) ? id : (lu.bench.find(b => role(b) === role(id) && played.has(b)) || id));
+        const subs = lu.starters.map((id, i) => active[i] !== id ? { out: id, in: active[i] } : null).filter(Boolean);
+        const cap = played.has(lu.captain) && active.includes(lu.captain) ? lu.captain
+          : (played.has(lu.vice) && active.includes(lu.vice) ? lu.vice : null);
+        book[m.id].lineups[key] = Object.assign({}, lu, { active, subs, captainScored: cap });
+        for (const g of games) {
+          if (ownerAt(g.player, g.ts) !== m.id) continue;
+          let pts = gamePoints(g, s);
+          const counted = active.includes(g.player);
+          if (counted && g.player === cap) pts = r2(pts * lc.captain);
+          add(m.id, g.player, key, pts, counted);
+        }
+      }
+    });
+    Object.values(book).forEach(b => { b.total = r2(b.total); Object.keys(b.byBlock).forEach(k => b.byBlock[k] = r2(b.byBlock[k])); });
+    book._cal = cal;
+    return book;
+  }
+
+  // ── standings ───────────────────────────────────────────────────────────
+  // [{manager, name, total, players, pickem, adjust, perPlayer:[{player,team,role,games,pts,benchPts,current}], bySplit}]
+  // `schedule` drives weeks/lineups; `season` (season.json) lets pick'ems
+  // resolve. Both optional: without them every owned player's points count.
+  function standings(league, stats, playerIndex, schedule, season, official) {
+    const book = scoreBook(league, stats, playerIndex, schedule);
+    const ros = rosters(league);
     const adj = {};
-    for (const a of league.adjustments || []) {
-      if (a && a.manager && typeof a.pts === 'number') adj[a.manager] = (adj[a.manager] || 0) + a.pts;
-    }
+    for (const a of league.adjustments || []) if (a && a.manager && typeof a.pts === 'number') adj[a.manager] = (adj[a.manager] || 0) + a.pts;
+    const pk = pickemPoints(league, stats, schedule, playerIndex, official);
     const rows = (league.managers || []).map(function (m) {
-      const ids = new Set([...(ros[m.id] || []), ...acc[m.id].keys()]);
+      const b = book[m.id];
+      const ids = new Set([...(ros[m.id] || []), ...Object.keys(b.perPlayer)]);
       const perPlayer = [...ids].map(function (pid) {
-        const v = acc[m.id].get(pid) || { pts: 0, games: 0 };
+        const v = b.perPlayer[pid] || { pts: 0, games: 0, benchPts: 0 };
         const meta = playerIndex ? playerIndex.get(pid) : null;
-        return { player: pid, team: meta ? meta.team : '', role: meta ? meta.role : '',
-                 games: v.games, pts: r2(v.pts), current: (ros[m.id] || []).includes(pid) };
+        return { player: pid, team: meta ? meta.team : '', role: meta ? meta.role : '', games: v.games,
+                 pts: r2(v.pts), benchPts: r2(v.benchPts), current: (ros[m.id] || []).includes(pid) };
       }).sort(function (a, b) { return b.pts - a.pts; });
-      const playerSum = perPlayer.reduce(function (t, r) { return t + r.pts; }, 0);
-      return { manager: m.id, name: m.name, adjust: r2(adj[m.id] || 0),
-               total: r2(playerSum + (adj[m.id] || 0)), perPlayer: perPlayer };
+      const bySplit = {};
+      Object.entries(b.byBlock).forEach(([k, v]) => { const sp = k.split('|')[0]; bySplit[sp] = r2((bySplit[sp] || 0) + v); });
+      const pick = pk[m.id] ? pk[m.id].total : 0;
+      return { manager: m.id, name: m.name, players: b.total, pickem: pick, adjust: r2(adj[m.id] || 0),
+               total: r2(b.total + pick + (adj[m.id] || 0)), perPlayer, bySplit, byBlock: b.byBlock, lineups: b.lineups };
     });
     rows.sort(function (a, b) { return b.total - a.total || a.name.localeCompare(b.name); });
     return rows;
   }
 
-  // Points per manager per block ("Week 3"): { managerId: { block: pts } }.
-  // `weekOf` maps match id -> block name.
-  function weeklyPoints(league, stats, weekOf) {
-    const s = league.scoring, ownerAt = ownerResolver(league), out = {};
-    for (const m of league.managers || []) out[m.id] = {};
-    for (const g of (stats && stats.games) || []) {
-      const mgr = ownerAt(g.player, g.ts), b = weekOf.get ? weekOf.get(g.match) : weekOf[g.match];
-      if (!mgr || !b || !out[mgr]) continue;
-      out[mgr][b] = r2((out[mgr][b] || 0) + gamePoints(g, s));
-    }
+  // Points per manager per week: { managerId: { blockKey: pts } }
+  function weeklyPoints(league, stats, schedule, playerIndex) {
+    const book = scoreBook(league, stats, playerIndex, schedule), out = {};
+    for (const m of league.managers || []) out[m.id] = book[m.id].byBlock;
     return out;
   }
 
@@ -219,41 +362,155 @@
     return pairs;
   }
 
-  // {table:[{manager,name,w,l,t,pf,pa}], weeks:[{block, games:[{a,b,pa,pb}]}]}
-  // Only blocks that have been played count. Order of managers = join order.
-  function h2h(league, stats, weekOf, blocks) {
+  // {table:[{manager,name,w,l,t,pf,pa}], weeks:[{block, games:[{a,b,pa,pb}], played}]}
+  function h2h(league, stats, schedule, playerIndex) {
     const ids = (league.managers || []).map(m => m.id);
-    const wk = weeklyPoints(league, stats, weekOf);
+    const book = scoreBook(league, stats, playerIndex, schedule);
+    const cal = book._cal;
     const played = new Set();
-    for (const g of (stats && stats.games) || []) {
-      const b = weekOf.get ? weekOf.get(g.match) : weekOf[g.match];
-      if (b) played.add(b);
-    }
+    for (const g of (stats && stats.games) || []) { const k = cal.blockOf.get(g.match); if (k) played.add(k); }
     const row = {};
     for (const m of league.managers || []) row[m.id] = { manager: m.id, name: m.name, w: 0, l: 0, t: 0, pf: 0, pa: 0 };
-    const weeks = [];
-    (blocks || []).forEach(function (b, i) {
+    const weeks = cal.keys.map(function (key, i) {
       const games = h2hPairs(ids, i).map(function ([x, y]) {
-        const px = x ? (wk[x] || {})[b] || 0 : null, py = y ? (wk[y] || {})[b] || 0 : null;
-        return { a: x, b: y, pa: px, pb: py };
+        return { a: x, b: y, pa: x ? book[x].byBlock[key] || 0 : null, pb: y ? book[y].byBlock[key] || 0 : null };
       });
-      const done = played.has(b);
-      if (done) {
-        for (const g of games) {
-          if (!g.a || !g.b) continue;
-          const A = row[g.a], B = row[g.b];
-          A.pf += g.pa; A.pa += g.pb; B.pf += g.pb; B.pa += g.pa;
-          if (g.pa > g.pb) { A.w++; B.l++; } else if (g.pb > g.pa) { B.w++; A.l++; } else { A.t++; B.t++; }
-        }
+      const done = played.has(key) && (cal.end.get(key) || 0) < Date.now();
+      if (done) for (const g of games) {
+        if (!g.a || !g.b) continue;
+        const A = row[g.a], B = row[g.b];
+        A.pf += g.pa; A.pa += g.pb; B.pf += g.pb; B.pa += g.pa;
+        if (g.pa > g.pb) { A.w++; B.l++; } else if (g.pb > g.pa) { B.w++; A.l++; } else { A.t++; B.t++; }
       }
-      weeks.push({ block: b, played: done, games: games });
+      return { block: key, played: done, games };
     });
     const table = Object.values(row).map(r => Object.assign(r, { pf: r2(r.pf), pa: r2(r.pa) }))
       .sort((a, b) => (b.w + b.t / 2) - (a.w + a.t / 2) || b.pf - a.pf);
-    return { table: table, weeks: weeks };
+    return { table, weeks };
   }
 
-  // ── draft rules ─────────────────────────────────────────────────────────
+  // ── pick'em (per split) ─────────────────────────────────────────────────
+  // league.pickems[split] = { questions:[{id,type,points,label?,answer?}],
+  //   lockAt?, revealed, picks:{manager:{qid:value}} }   (picks hidden in the
+  // Worker until the lock, then copied here). Resolved automatically from the
+  // data once the split is over; 'manual*' types take the admin's answer.
+  const PICKEM_TYPES = {
+    champion:     { kind: 'team',     label: 'Split-Sieger' },
+    finalist:     { kind: 'team',     label: 'Ein Finalist' },
+    firstRegular: { kind: 'team',     label: 'Platz 1 nach der Regular Season' },
+    lastRegular:  { kind: 'team',     label: 'Letzter Platz nach der Regular Season' },
+    mostKills:    { kind: 'player',   label: 'Meiste Kills (Spieler)' },
+    mostPoints:   { kind: 'player',   label: 'Meiste Fantasy-Punkte (Spieler)' },
+    bestKda:      { kind: 'player',   label: 'Beste KDA (Spieler, mind. halbe Spielzahl)' },
+    mostChamps:   { kind: 'player',   label: 'Meiste verschiedene Champions (Spieler)' },
+    maxKillsGame: { kind: 'player',   label: 'Meiste Kills in einem Spiel (Spieler)' },
+    mostPicked:   { kind: 'champion', label: 'Meistgepickter Champion' },
+    longestGame:  { kind: 'number',   label: 'Längstes Spiel (Minuten, wer am nächsten liegt)' },
+    bloodiest:    { kind: 'number',   label: 'Meiste Kills in einem Spiel insgesamt (wer am nächsten liegt)' },
+    manualChamp:  { kind: 'champion', label: 'Eigene Frage (Champion)', manual: true },
+    manualTeam:   { kind: 'team',     label: 'Eigene Frage (Team)', manual: true },
+    manualPlayer: { kind: 'player',   label: 'Eigene Frage (Spieler)', manual: true },
+  };
+  const PLAYOFF = /playoff|final|knockout|bracket|tiebreak/i;
+
+  function splitDone(schedule, split) {
+    const ev = ((schedule && schedule.events) || []).filter(e => e.tournament === split);
+    return ev.length > 0 && ev.every(e => e.state === 'completed') && Date.parse(ev[ev.length - 1].start) < Date.now();
+  }
+  function pickemLock(league, schedule, split) {
+    const pe = (league.pickems || {})[split] || {};
+    if (pe.lockAt) return pe.lockAt;
+    const ev = ((schedule && schedule.events) || []).filter(e => e.tournament === split).sort((a, b) => a.start.localeCompare(b.start));
+    return ev.length ? ev[0].start : null;
+  }
+
+  // the correct answer(s) per question type for one split, or null if unknown
+  // `official` (optional): standings.json for the split - its regular-season
+  // ranking includes the official tiebreaks, so it wins over our own count
+  function pickemTruth(league, stats, schedule, split, playerIndex, official) {
+    const ev = ((schedule && schedule.events) || []).filter(e => e.tournament === split && e.state === 'completed').sort((a, b) => a.start.localeCompare(b.start));
+    const rows = ((stats && stats.games) || []).filter(g => g.tournament === split);
+    const out = {};
+    const best = (m, cmp) => { let top = null; const set = new Set(); m.forEach((v, k) => { if (top === null || cmp(v, top) > 0) { top = v; set.clear(); set.add(k); } else if (cmp(v, top) === 0) set.add(k); }); return set; };
+    const desc = (a, b) => a - b;
+    if (ev.length) {
+      const fin = ev[ev.length - 1];
+      const w = fin.teams.find(t => t.outcome === 'win');
+      if (w) out.champion = new Set([w.code]);
+      out.finalist = new Set(fin.teams.map(t => t.code));
+      const rec = new Map();
+      for (const e of ev) { if (PLAYOFF.test(e.block || '')) continue; for (const t of e.teams) { const r = rec.get(t.code) || { w: 0, l: 0 }; t.outcome === 'win' ? r.w++ : r.l++; rec.set(t.code, r); } }
+      const offRank = official && official.stages && official.stages[0] && official.stages[0].sections[0] && official.stages[0].sections[0].rankings;
+      if (offRank && offRank.length) {
+        const maxOrd = Math.max(...offRank.map(r => r.ordinal));
+        out.firstRegular = new Set(offRank.filter(r => r.ordinal === 1).flatMap(r => r.teams.map(t => t.code)));
+        out.lastRegular = new Set(offRank.filter(r => r.ordinal === maxOrd).flatMap(r => r.teams.map(t => t.code)));
+      } else if (rec.size) {
+        const score = new Map([...rec].map(([k, v]) => [k, v.w - v.l]));
+        out.firstRegular = best(score, desc);
+        out.lastRegular = best(score, (a, b) => b - a);
+      }
+    }
+    if (rows.length) {
+      const kills = new Map(), pts = new Map(), games = new Map(), kd = new Map(), champs = new Map(), picked = new Map(), maxK = new Map();
+      const perGame = new Map();
+      for (const g of rows) {
+        kills.set(g.player, (kills.get(g.player) || 0) + g.k);
+        pts.set(g.player, (pts.get(g.player) || 0) + gamePoints(g, league.scoring));
+        games.set(g.player, (games.get(g.player) || 0) + 1);
+        const x = kd.get(g.player) || { k: 0, d: 0, a: 0 }; x.k += g.k; x.d += g.d; x.a += g.a; kd.set(g.player, x);
+        if (!champs.has(g.player)) champs.set(g.player, new Set()); champs.get(g.player).add(g.champ);
+        picked.set(g.champ, (picked.get(g.champ) || 0) + 1);
+        maxK.set(g.player, Math.max(maxK.get(g.player) || 0, g.k));
+        const pg = perGame.get(g.game) || { k: 0, dur: g.dur || 0 }; pg.k += g.k; perGame.set(g.game, pg);
+      }
+      const r1 = n => Math.round(n * 100) / 100;
+      out.mostKills = best(kills, desc);
+      out.mostPoints = best(new Map([...pts].map(([k, v]) => [k, r1(v)])), desc);
+      const maxGames = Math.max(...games.values());
+      out.bestKda = best(new Map([...kd].filter(([k]) => games.get(k) >= maxGames / 2).map(([k, v]) => [k, r1((v.k + v.a) / Math.max(1, v.d))])), desc);
+      out.mostChamps = best(new Map([...champs].map(([k, v]) => [k, v.size])), desc);
+      out.maxKillsGame = best(maxK, desc);
+      out.mostPicked = best(picked, desc);
+      const pgs = [...perGame.values()];
+      out.longestGame = Math.round(Math.max(...pgs.map(x => x.dur)) / 60 * 10) / 10;
+      out.bloodiest = Math.max(...pgs.map(x => x.k));
+    }
+    return out;
+  }
+
+  // { manager: { total, bySplit:{split:{pts, correct:[qid]}} } }
+  function pickemPoints(league, stats, schedule, playerIndex, officialAll) {
+    const res = {};
+    for (const [split, pe] of Object.entries(league.pickems || {})) {
+      if (!pe || !pe.revealed || !splitDone(schedule, split)) continue;
+      const truth = pickemTruth(league, stats, schedule, split, playerIndex, officialAll && officialAll.tournaments && officialAll.tournaments[split]);
+      for (const [m, picks] of Object.entries(pe.picks || {})) {
+        const r = res[m] || (res[m] = { total: 0, bySplit: {} });
+        const sp = r.bySplit[split] = { pts: 0, correct: [] };
+        for (const q of pe.questions || []) {
+          const v = picks[q.id];
+          if (v === undefined || v === null || v === '') continue;
+          const def = PICKEM_TYPES[q.type] || {};
+          let ok = false;
+          if (def.manual) ok = q.answer !== undefined && q.answer !== null && String(q.answer) === String(v);
+          else if (def.kind === 'number') {
+            // closest guess(es) win
+            const t = truth[q.type];
+            if (typeof t === 'number') {
+              const dists = Object.values(pe.picks).map(p => p[q.id]).filter(x => x !== undefined && x !== '').map(x => Math.abs(Number(x) - t));
+              ok = Math.abs(Number(v) - t) === Math.min(...dists);
+            }
+          } else ok = truth[q.type] instanceof Set && truth[q.type].has(v);
+          if (ok) { sp.pts += Number(q.points) || 0; sp.correct.push(q.id); }
+        }
+        r.total += sp.pts;
+      }
+    }
+    return res;
+  }
+
+    // ── draft rules ─────────────────────────────────────────────────────────
   // A draft must never get stuck. If the manager on the clock has no pick that
   // passes every rule, the rules relax for that one pick:
   //   level 0  all rules
@@ -286,7 +543,7 @@
 
     const slots = league.roster.slots || [];
     const bench = league.roster.bench || 0;
-    if (mine.length >= slots.length + bench) return 'Kader voll';
+    if (mine.length >= rosterSize(league)) return 'Kader voll';
     if (level >= 2) return null;
 
     const roleCount = {};
@@ -294,8 +551,12 @@
       const mm = playerIndex.get(pid);
       if (mm) roleCount[mm.role] = (roleCount[mm.role] || 0) + 1;
     }
+    const per = league.roster.perRole;
+    if (per) {
+      if ((roleCount[meta.role] || 0) >= per) return 'schon ' + per + '× ' + meta.role;
+    }
     const need = slots.filter(r => !roleCount[r]);
-    if (need.length) {
+    if (!per && need.length) {
       const remaining = slots.length + bench - mine.length;
       if ((roleCount[meta.role] || 0) >= 1 && remaining <= need.length) {
         return 'brauchst noch: ' + need.join(', ');
@@ -352,12 +613,29 @@
       equalCount: true, rosterRules: true, teamLimit: true, mode: 'windows', windows: [], faMode: 'instant' }, league.tradeRules || {});
   }
 
-  // {open, current, next} at time `now` (ISO). No window entered = closed.
-  function transferWindow(league, now) {
+  // Windows between the splits of the season (tradeRules.autoWindows), from
+  // season.json: from 6 h after a split's last match until 1 h before the
+  // next split's first match (unknown yet -> its start date); after the last
+  // split of the season, 30 days.
+  function autoWindows(season) {
+    const ts = ((season && season.tournaments) || []).slice().sort((a, b) => a.start.localeCompare(b.start));
+    const out = [];
+    ts.forEach((t, i) => {
+      if (!t.lastMatch) return;
+      const from = new Date(Date.parse(t.lastMatch) + 6 * 3600e3).toISOString();
+      const nx = ts[i + 1];
+      const to = nx ? new Date((nx.firstMatch ? Date.parse(nx.firstMatch) : Date.parse(nx.start + 'T00:00:00Z')) - 3600e3).toISOString()
+                    : new Date(Date.parse(t.lastMatch) + 30 * 864e5).toISOString();
+      if (from < to) out.push({ from, to, label: 'nach ' + t.slug.replace(/^lec_/, '').replace(/_\d{4}$/, '').replace(/_/g, ' '), auto: true });
+    });
+    return out;
+  }
+  // {open, current, next} at time `now` (ISO). No window = closed.
+  function transferWindow(league, now, season) {
     const r = transferRules(league);
     const t = now || new Date().toISOString();
     if (r.mode === 'always') return { open: true, current: null, next: null };
-    const ws = (r.windows || []).filter(w => w && w.from && w.to).slice()
+    const ws = (r.windows || []).filter(w => w && w.from && w.to).concat(r.autoWindows ? autoWindows(season) : [])
       .sort((a, b) => a.from.localeCompare(b.from));
     const current = ws.find(w => w.from <= t && t <= w.to) || null;
     const next = ws.find(w => w.from > t) || null;
@@ -376,7 +654,8 @@
       roles[p.role] = (roles[p.role] || 0) + 1;
       teams[p.team] = (teams[p.team] || 0) + 1;
     }
-    if (opts.roles) for (const r of (league.roster && league.roster.slots) || []) if (!roles[r]) out.push('keine ' + r + ' mehr');
+    const per = (league.roster && league.roster.perRole) || 1;
+    if (opts.roles) for (const r of (league.roster && league.roster.slots) || []) if ((roles[r] || 0) < per) out.push(per > 1 ? 'nur ' + (roles[r] || 0) + '× ' + r : 'keine ' + r + ' mehr');
     const max = (league.roster && league.roster.maxPerTeam) || 99;
     if (opts.teams) for (const [t, n] of Object.entries(teams)) if (n > max) out.push(n + ' von ' + t + ' (max. ' + max + ')');
     return out;
@@ -437,7 +716,7 @@
   }
   // priority, first = picks first. 'reverse': lowest standing first (ties:
   // reverse draft order); 'rolling': league.waiverOrder, new members appended.
-  function waiverOrder(league, stats, playerIndex) {
+  function waiverOrder(league, stats, playerIndex, schedule) {
     const ids = (league.managers || []).map(m => m.id);
     const draftOrder = ((league.draft && league.draft.order) || ids).slice().reverse();
     if (waiverRules(league).order === 'rolling') {
@@ -445,8 +724,24 @@
       return base.concat(draftOrder.filter(id => !base.includes(id))).concat(ids.filter(id => !base.includes(id) && !draftOrder.includes(id)));
     }
     const tot = {};
-    for (const r of standings(league, stats || { games: [] }, playerIndex)) tot[r.manager] = r.total;
+    for (const r of standings(league, stats || { games: [] }, playerIndex, schedule)) tot[r.manager] = r.total;
     return ids.slice().sort((a, b) => (tot[a] || 0) - (tot[b] || 0) || draftOrder.indexOf(a) - draftOrder.indexOf(b));
+  }
+
+  // FAAB (tradeRules.waiver.order === 'faab'): every manager has the same
+  // budget (league.faab.budget, default 100) for blind bids on free agents.
+  // resetEachSplit: the budget refills when a new split starts.
+  function faabLeft(league, managerId, season) {
+    const f = Object.assign({ budget: 100, resetEachSplit: false }, league.faab || {});
+    let since = '';
+    if (f.resetEachSplit && season && season.tournaments) {
+      const now = new Date().toISOString().slice(0, 10);
+      const cur = season.tournaments.filter(t => t.start <= now).pop();
+      if (cur) since = cur.start;
+    }
+    const spent = (league.swaps || []).filter(x => x.manager === managerId && x.by === 'waiver' && x.bid && (x.at || '') >= since)
+      .reduce((n, x) => n + Number(x.bid), 0);
+    return Math.max(0, f.budget - spent);
   }
 
   // Monday 00:00 UTC of the week `iso` falls in - the key for perWeek.
@@ -530,11 +825,13 @@
   global.LECScoring = {
     gamePoints, byPlayer, playerTotal, applyOverrides,
     draftStatus, rosterSize, capacity,
-    rosterEvents, ownership, rosters, standings, weeklyPoints,
+    rosterEvents, ownership, rosters, standings, weeklyPoints, ownerResolver,
     h2hPairs, h2h,
     pickError, relaxLevel, currentPicker, draftProgress, validateLeague,
     transferRules, transferWindow, rosterProblems, weekKey,
-    berlinParts, berlinAt, waiverRules, waiverSlots, nextWaiverRun, lastWaiverSlot, waiverOrder
+    berlinParts, berlinAt, waiverRules, waiverSlots, nextWaiverRun, lastWaiverSlot, waiverOrder,
+    suggestedCapacity, calendar, blockKey, lineupConfig, lineupFor, lineupPreview, scoreBook, autoWindows, faabLeft,
+    PICKEM_TYPES, pickemTruth, pickemPoints, pickemLock, splitDone
   };
 // `this` is undefined in an ES module, so a Cloudflare Worker importing this
 // file would crash on a bare `this`. globalThis works in every place these

@@ -41,6 +41,7 @@ FEED = "https://feed.lolesports.com/livestats/v1/"
 UA = "LEC-Fantasy-Group-Tool/2.0 (private league; github.com/FNE-stack/lecfantasy)"
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+MISSING = []   # games the live feed has no data for (filled by fetch_games)
 ROLE_MAP = {"top": "TOP", "jungle": "JNG", "mid": "MID", "bottom": "BOT", "support": "SUP"}
 
 
@@ -99,6 +100,31 @@ def resolve_tournament(want):
     return lec, max(started, key=lambda t: t["startDate"])
 
 
+def resolve_season(want):
+    """(league, season tournaments ascending, current tournament).
+
+    A season = every LEC tournament whose slug ends in _<year> (lec_split_1_2026,
+    lec_winter_2025 ...). 'auto' = the year of the most recent tournament that
+    has started. 'current' = the latest started one - its teams are the pool.
+    """
+    leagues = gw("getLeagues")["leagues"]
+    lec = next((l for l in leagues if l.get("slug") == "lec"), None)
+    if not lec:
+        raise SystemExit("LEC not found in getLeagues")
+    tours = gw("getTournamentsForLeague", leagueId=lec["id"])["leagues"][0]["tournaments"]
+    today = datetime.date.today().isoformat()
+    started = [t for t in tours if t["startDate"] <= today]
+    if not started:
+        raise SystemExit("no LEC tournament has started yet")
+    year = str(want) if want and want != "auto" else max(started, key=lambda t: t["startDate"])["slug"].rsplit("_", 1)[-1]
+    season = sorted([t for t in tours if t["slug"].endswith("_" + year)], key=lambda t: t["startDate"])
+    if not season:
+        raise SystemExit(f"no LEC tournaments for season {year}")
+    begun = [t for t in season if t["startDate"] <= today]
+    current = begun[-1] if begun else season[0]
+    return lec, year, season, current
+
+
 # ── teams + rosters ────────────────────────────────────────────────────────
 def participants(tournament_id):
     """Team ids that actually play in this tournament, from its schedule.
@@ -152,10 +178,10 @@ def _round10(dt):
 
 
 def final_frame(game_id):
-    """Last frame of a finished game, plus its metadata."""
+    """(metadata, last frame, game duration in seconds) of a finished game."""
     first = _get(FEED + f"window/{game_id}")
     if not first or not first.get("frames"):
-        return None, None
+        return None, None, 0
     meta = first["gameMetadata"]
     t0 = datetime.datetime.fromisoformat(first["frames"][0]["rfc460Timestamp"].replace("Z", "+00:00"))
     # Step forward past the end of the game. Normally the last frame says
@@ -171,9 +197,10 @@ def final_frame(game_id):
             continue
         last = w["frames"][-1]
         if last.get("gameState") == "finished" or last["rfc460Timestamp"] == prev_ts:
-            return meta, last
+            t1 = datetime.datetime.fromisoformat(last["rfc460Timestamp"].replace("Z", "+00:00"))
+            return meta, last, int((t1 - t0).total_seconds())
         prev_ts = last["rfc460Timestamp"]
-    return meta, None
+    return meta, None, 0
 
 
 def series_games(event):
@@ -185,7 +212,7 @@ def series_games(event):
     return out
 
 
-def fetch_games(tournament_id, known_games):
+def fetch_games(tournament_id, known_games, slug):
     events = gw("getCompletedEvents", tournamentId=tournament_id)["schedule"]["events"]
     rows, fresh, skipped = [], 0, 0
     for e in events:
@@ -208,12 +235,20 @@ def fetch_games(tournament_id, known_games):
             if gid in known_games:
                 rows.extend(known_games[gid]); skipped += 1
                 continue
-            meta, last = final_frame(gid)
+            meta, last, dur = final_frame(gid)
             if not last:
                 print(f"  ! {gid}: no finished frame, skipping for now", file=sys.stderr)
                 continue
+            # a feed that died at the start (seen once in 2026: 88 s, 0 kills,
+            # 0 CS, 0 gold) is not a game result - counting it would give ten
+            # players a 0/0/0 game. Skip it and report it for the admin.
+            if all(p["creepScore"] == 0 and p["kills"] == 0 for side in ("blueTeam", "redTeam") for p in last[side]["participants"]):
+                print(f"  ! {gid}: feed has no data (0 CS, 0 kills) - not counted", file=sys.stderr)
+                MISSING.append({"game": gid, "match": m["id"], "tournament": slug, "ts": e["startTime"], "n": g.get("number", 0),
+                                "teams": [t["code"] for t in teams]})
+                continue
             fresh += 1
-            games.append((gid, g.get("number", 0), e["startTime"], meta, last, team_by_id))
+            games.append((gid, g.get("number", 0), e["startTime"], meta, last, team_by_id, dur))
 
         if not games:
             continue
@@ -222,7 +257,7 @@ def fetch_games(tournament_id, known_games):
         codes = list(wins_needed)
         a = codes[0]
         def margin(item):
-            _, _, _, meta, last, tb = item
+            _, _, _, meta, last, tb, _dur = item
             side_of = {tb.get(meta["blueTeamMetadata"]["esportsTeamId"]): "blueTeam",
                        tb.get(meta["redTeamMetadata"]["esportsTeamId"]): "redTeam"}
             inv = {v: k for k, v in side_of.items()}
@@ -246,7 +281,7 @@ def fetch_games(tournament_id, known_games):
         winners = {item[0]: (a if i < need_a else next(c for c in codes if c != a))
                    for i, item in enumerate(ranked)}
 
-        for gid, num, start, meta, last, tb in games:
+        for gid, num, start, meta, last, tb, dur in games:
             for side, mkey in (("blueTeam", "blueTeamMetadata"), ("redTeam", "redTeamMetadata")):
                 code = tb.get(meta[mkey]["esportsTeamId"], "?")
                 pmeta = {p["participantId"]: p for p in meta[mkey]["participantMetadata"]}
@@ -262,6 +297,7 @@ def fetch_games(tournament_id, known_games):
                         "k": p["kills"], "d": p["deaths"], "a": p["assists"],
                         "cs": p["creepScore"],
                         "win": winners[gid] == code,
+                        "tournament": slug, "dur": dur,
                     })
         print(f"  {e['startTime'][:10]} {' vs '.join(t['code'] for t in teams):12} "
               f"{len(games)} new game(s)")
@@ -315,6 +351,34 @@ def fetch_schedule(league_id, tour):
     return sorted(out, key=lambda x: x["start"])
 
 
+# ── official standings + brackets ─────────────────────────────────────────
+def fetch_standings(t):
+    """Regular-season table and playoff bracket of one tournament, as the
+    official site shows them (tiebreaks included). Matches keep their
+    previousMatchIds, so the page can lay out the bracket rounds."""
+    try:
+        st = gw("getStandings", tournamentId=t["id"])["standings"]
+    except SystemExit:
+        return None
+    if not st:
+        return None
+    stages = []
+    for stage in st[0].get("stages") or []:
+        secs = []
+        for sec in stage.get("sections") or []:
+            secs.append({
+                "name": sec.get("name", ""),
+                "rankings": [{"ordinal": r["ordinal"], "teams": [{"code": x["code"], "w": (x.get("record") or {}).get("wins", 0),
+                              "l": (x.get("record") or {}).get("losses", 0)} for x in r.get("teams") or []]} for r in sec.get("rankings") or []],
+                "matches": [{"id": m["id"], "state": m.get("state"), "prev": m.get("previousMatchIds") or [],
+                             "teams": [{"code": x.get("code", "TBD"), "outcome": (x.get("result") or {}).get("outcome"),
+                                        "wins": (x.get("result") or {}).get("gameWins")} for x in m.get("teams") or []]}
+                            for m in sec.get("matches") or []],
+            })
+        stages.append({"name": stage.get("name", ""), "sections": secs})
+    return {"stages": stages}
+
+
 # ── champions ──────────────────────────────────────────────────────────────
 def fetch_champions():
     """Data Dragon version + display names, for champion icons on the pages.
@@ -344,63 +408,93 @@ def load_json(path, default):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--tournament", help="slug like lec_split_3_2026, or 'auto' "
-                    "(default: league.json 'tournament')")
+    ap.add_argument("--season", help="year like 2026, or 'auto' (default: data/config.json)")
+    ap.add_argument("--tournament", help="legacy: a single slug; its year becomes the season")
     ap.add_argument("--out", default=os.path.join(ROOT, "data"))
     ap.add_argument("--dry-run", action="store_true")
     ap.add_argument("--full", action="store_true", help="ignore cache, refetch every game")
     a = ap.parse_args()
 
-    league = load_json(os.path.join(ROOT, "data", "league.json"), {})
-    want = a.tournament or league.get("tournament") or "auto"
-    lec, tour = resolve_tournament(want)
-    print(f"tournament: {tour['slug']} ({tour['startDate']} -> {tour['endDate']})")
+    config = load_json(os.path.join(ROOT, "data", "config.json"), {})
+    want = a.season or (a.tournament.rsplit("_", 1)[-1] if a.tournament and a.tournament != "auto" else None) \
+        or config.get("season") or "auto"
+    lec, year, season, cur = resolve_season(want)
+    today = datetime.date.today().isoformat()
+    print(f"season {year}: " + ", ".join(t["slug"] for t in season) + f" · current: {cur['slug']}")
 
-    part = participants(tour["id"])
-    print(f"  {len(part)} teams: {', '.join(sorted(part.values()))}")
+    # the pool = teams of the latest tournament that has completed matches
+    pool_tour = cur
+    part = participants(pool_tour["id"])
+    if not part:
+        for t in reversed([t for t in season if t["startDate"] <= today]):
+            part = participants(t["id"])
+            if part:
+                pool_tour = t
+                break
+    print(f"  pool from {pool_tour['slug']}: {len(part)} teams: {', '.join(sorted(part.values()))}")
     teams, players = teams_and_players(set(part))
     print(f"  {len(teams)} teams resolved, {len(players)} players in pool")
-    if len(teams) < len(part):
-        missing = set(part.values()) - {t['code'] for t in teams}
-        print(f"  ! no team record for: {sorted(missing)}", file=sys.stderr)
     if not players:
         print("!! empty player pool - leaving existing data untouched", file=sys.stderr)
         return 1
 
     old = load_json(os.path.join(a.out, "stats.json"), {})
     known = {}
-    if not a.full and old.get("tournament") == tour["slug"]:
+    if not a.full:
         for r in old.get("games", []):
-            known.setdefault(r["game"], []).append(r)
+            if "dur" in r and r.get("tournament"):      # rows from before seasons get refetched once
+                known.setdefault(r["game"], []).append(r)
     print(f"fetching games ({len(known)} cached) ...")
-    rows, fresh, cached = fetch_games(tour["id"], known)
-    print(f"  {fresh} new game(s), {cached} from cache, {len(rows)} player-game rows")
+    rows = []
+    for t in season:
+        if t["startDate"] > today:
+            continue
+        r, fresh, cached = fetch_games(t["id"], known, t["slug"])
+        print(f"  {t['slug']}: {fresh} new, {cached} cached, {len(r)} rows")
+        rows += r
 
-    # players who played this tournament but have since left their roster
-    # still need a name, or their points show up as a bare number
     pool_ids = {p["id"] for p in players}
     former = {}
     for r in rows:
         if r["player"] and r["player"] not in pool_ids and r["player"] not in former:
             ign = r["ign"].split(" ", 1)[1] if " " in r["ign"] else r["ign"]
             former[r["player"]] = {"id": r["player"], "name": ign, "realName": "",
-                                   "role": r["role"], "team": r["team"], "photo": "",
-                                   "former": True}
+                                   "role": r["role"], "team": r["team"], "photo": "", "former": True}
+
+    sched = fetch_schedule(lec["id"], season[0])
+    # tag every match with its split (by date range)
+    for e in sched:
+        d = e["start"][:10]
+        e["tournament"] = next((t["slug"] for t in season if t["startDate"] <= d <= t["endDate"]), None)
+    upcoming = sum(1 for e in sched if e["state"] != "completed")
+    print(f"  schedule: {len(sched)} matches, {upcoming} not yet played")
+
+    tours_out = []
+    for t in season:
+        ev = [e for e in sched if e["tournament"] == t["slug"]]
+        done = t["endDate"] < today and all(e["state"] == "completed" for e in ev)
+        tours_out.append({"slug": t["slug"], "start": t["startDate"], "end": t["endDate"],
+                          "firstMatch": ev[0]["start"] if ev else None, "lastMatch": ev[-1]["start"] if ev else None,
+                          "matches": len(ev), "done": done})
 
     now = int(time.time())
     out = {
-        "teams.json": {"tournament": tour["slug"], "updated": now,
-                       "league": {"name": lec["name"], "logo": https(lec.get("image"))},
-                       "teams": teams},
-        "players.json": {"tournament": tour["slug"], "updated": now,
+        "teams.json": {"tournament": cur["slug"], "season": year, "updated": now,
+                       "league": {"name": lec["name"], "logo": https(lec.get("image"))}, "teams": teams},
+        "players.json": {"tournament": pool_tour["slug"], "season": year, "updated": now,
                          "players": players, "former": list(former.values())},
-        "stats.json": {"tournament": tour["slug"], "updated": now,
-                       "source": "lolesports", "games": rows},
+        "stats.json": {"tournament": cur["slug"], "season": year, "tournaments": [t["slug"] for t in season],
+                       "updated": now, "source": "lolesports", "games": rows, "missing": MISSING},
+        "schedule.json": {"tournament": cur["slug"], "season": year, "updated": now, "events": sched},
+        "season.json": {"season": year, "current": cur["slug"], "updated": now, "tournaments": tours_out},
     }
-    sched = fetch_schedule(lec["id"], tour)
-    upcoming = sum(1 for e in sched if e["state"] != "completed")
-    print(f"  schedule: {len(sched)} matches, {upcoming} not yet played")
-    out["schedule.json"] = {"tournament": tour["slug"], "updated": now, "events": sched}
+    out["standings.json"] = {"season": year, "updated": now, "tournaments": {}}
+    for t in season:
+        if t["startDate"] <= today:
+            sd = fetch_standings(t)
+            if sd:
+                out["standings.json"]["tournaments"][t["slug"]] = sd
+    print(f"  standings: {len(out['standings.json']['tournaments'])} splits")
 
     champs = fetch_champions()
     if champs:
@@ -408,9 +502,7 @@ def main():
         print(f"  Data Dragon {champs['version']}, {len(champs['names'])} champions")
 
     if a.dry_run:
-        print(json.dumps(out["teams.json"], indent=1, ensure_ascii=False)[:800])
-        print(json.dumps(players[:3], indent=1, ensure_ascii=False))
-        print(json.dumps(rows[:2], indent=1, ensure_ascii=False))
+        print(json.dumps(out["season.json"], indent=1, ensure_ascii=False))
         return 0
     os.makedirs(a.out, exist_ok=True)
     for fn, data in out.items():

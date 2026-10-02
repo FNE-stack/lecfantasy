@@ -11,7 +11,7 @@ on:
   workflow_dispatch:
     inputs:
       tournament:
-        description: 'lolesports tournament slug, e.g. lec_split_3_2026 (blank = league.json, usually "auto")'
+        description: 'season year, e.g. 2026 (blank = data/config.json, usually "auto")'
         required: false
         default: ''
 
@@ -38,7 +38,7 @@ jobs:
           TOURNAMENT: ${{ github.event.inputs.tournament }}
         run: |
           if [ -n "$TOURNAMENT" ]; then
-            python scripts/fetch_lolesports.py --tournament "$TOURNAMENT"
+            python scripts/fetch_lolesports.py --season "$TOURNAMENT"
           else
             python scripts/fetch_lolesports.py
           fi
@@ -47,7 +47,7 @@ jobs:
         run: |
           git config user.name  'lec-fantasy-bot'
           git config user.email 'actions@users.noreply.github.com'
-          git add data/teams.json data/players.json data/stats.json data/champions.json data/schedule.json
+          git add data/teams.json data/players.json data/stats.json data/champions.json data/schedule.json data/season.json data/standings.json
           if git diff --staged --quiet; then
             echo "no changes"
             exit 0

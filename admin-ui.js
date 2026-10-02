@@ -8,6 +8,7 @@
 let ctx = null, root = null, A = null, health = null, history = null, tab = 'overview', busy = false, flash = null;
 const TOK = 'lf.admin';
 const esc = s => window.LECUI.esc(s);
+const S = window.LECScoring;
 const fmt = n => window.LECUI.fmt(n);
 // kept in localStorage so a reload doesn't log the admin out; the token
 // itself expires after 12 h
@@ -208,11 +209,14 @@ function viewSettings() {
           <div><span class="muted" style="font-size:12px">Waiver-Tage (deutsche Zeit)</span><div class="row" style="flex-wrap:wrap;gap:10px;margin-top:4px">
             ${['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So'].map((n, i) => `<label style="display:flex;gap:5px;align-items:center;margin:0;color:var(--text)"><input type="checkbox" data-wday="${i + 1}" style="width:auto" ${(wv.days || []).includes(i + 1) ? 'checked' : ''}>${n}</label>`).join('')}</div></div>
           <div class="row" style="flex-wrap:wrap;gap:14px"><label style="margin:0">um <input id="wvTime" type="time" value="${esc(wv.time || '03:00')}" style="width:150px"> Uhr</label>
-            <label style="margin:0">Reihenfolge <select id="wvOrder"><option value="reverse" ${wv.order !== 'rolling' ? 'selected' : ''}>Tabellenletzter zuerst</option><option value="rolling" ${wv.order === 'rolling' ? 'selected' : ''}>rotierend (wer bekommt, geht ans Ende)</option></select></label></div>
+            <label style="margin:0">Reihenfolge <select id="wvOrder"><option value="reverse" ${wv.order !== 'rolling' ? 'selected' : ''}>Tabellenletzter zuerst</option><option value="rolling" ${wv.order === 'rolling' ? 'selected' : ''}>rotierend (wer bekommt, geht ans Ende)</option><option value="faab" ${wv.order === 'faab' ? 'selected' : ''}>FAAB — geheime Gebote, höchstes gewinnt</option></select></label></div>
+          <div class="row" style="flex-wrap:wrap;gap:12px"><span class="muted" style="font-size:12px">FAAB-Budget</span>${num('fBud', (L.faab || {}).budget || 100, 1)}
+            ${chk('fReset', (L.faab || {}).resetEachSplit, 'pro Split neu')}${btn('Budget speichern', 'faab')}</div>
           ${tr.faMode === 'waiver' ? `<div class="row" style="flex-wrap:wrap"><span class="muted" style="font-size:12px">Nächster Lauf: <b style="color:var(--text)">${A.nextWaiver ? new Date(A.nextWaiver).toLocaleString('de-DE', { weekday: 'short', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : '—'}</b></span>${opBtn('Waiver jetzt ausführen', { op: 'runWaivers' }, 'Alle offenen Ansprüche jetzt entscheiden?')}</div>` : ''}
         </div>
         <label style="margin:0">Free-Agent-Wechsel pro Manager und Woche (Mo–So, 0 = unbegrenzt) ${num('trPer', tr.perWeek, 1)}</label>
         ${chk('trRos', tr.rosterRules, 'Jede Rolle muss nach einem Transfer besetzt bleiben')}
+        ${chk('trAuto', tr.autoWindows, '<b>Transferfenster automatisch zwischen den Splits</b> (nach dem letzten Spiel bis kurz vor den nächsten Split) — zusätzlich zu deinen eigenen Fenstern')}
         ${chk('trTeam', tr.teamLimit, 'Team-Limit (max. ' + r.maxPerTeam + ' pro LEC-Team) gilt auch bei Transfers <span class="muted" style="font-size:12px">— blockiert in der Praxis viele Trades</span>')}
         ${chk('trEq', tr.equalCount, 'Trades nur mit gleich vielen Spielern auf beiden Seiten')}
         ${chk('trAdm', tr.adminApproval, 'Admin muss Trades zusätzlich freigeben')}
@@ -235,8 +239,70 @@ function viewSettings() {
         <div class="row" style="flex-wrap:wrap;gap:12px;margin-top:12px">${chk('bOn', (s.bonus || {}).enabled, '<b>Bonus</b> für ein großes Spiel:')}
           <label style="margin:0">ab ${num('bTh', (s.bonus || {}).threshold || 10, 1)} Kills <i>oder</i> Assists</label><label style="margin:0">+ ${num('bPts', (s.bonus || {}).points ?? 2, 0.5)} Punkte</label></div>
         <div style="margin-top:12px">${btn('Punkte speichern', 'scoring', {}, 'gold')} <span class="muted" style="font-size:12px">wirkt rückwirkend auf alle Spiele</span></div></div>`)
-    + card('Kader', `<div class="card-b row" style="flex-wrap:wrap;gap:14px"><span class="muted">Rollen: ${esc(r.slots.join(', '))}</span><label>Bank ${num('rB', r.bench, 1)}</label><label>max. pro Team ${num('rM', r.maxPerTeam, 1)}</label>${btn('Speichern', 'roster', {}, 'gold')}</div>`)
+    + card('Kader', `<div class="card-b" style="display:flex;flex-direction:column;gap:10px">
+        <div class="row" style="flex-wrap:wrap;gap:14px"><label style="margin:0">Modell <select id="rPer">
+          <option value="0" ${!r.perRole ? 'selected' : ''}>klassisch: 1 je Rolle + Bank</option>
+          ${[1, 2, 3].map(n => `<option value="${n}" ${r.perRole === n ? 'selected' : ''}>${n} je Rolle (${n * r.slots.length} Spieler)</option>`).join('')}</select></label>
+          <label style="margin:0">Bank (nur klassisch) ${num('rB', r.bench || 0, 1)}</label><label style="margin:0">max. pro LEC-Team ${num('rM', r.maxPerTeam, 1)}</label></div>
+        <div class="row" style="flex-wrap:wrap;gap:14px"><label style="margin:0">max. Manager ${num('rMax', r.maxManagers || '', 1)}</label>
+          <span class="muted" style="font-size:12px">leer = automatisch · Empfehlung für diesen Kader: <b style="color:var(--text)">${A.suggestedCapacity ?? '?'}</b> (sonst bleibt kaum ein freier Spieler)${r.maxManagers && A.suggestedCapacity && r.maxManagers > A.suggestedCapacity ? ' <span class="pill live">über der Empfehlung</span>' : ''}</span></div>
+        <div>${btn('Kader speichern', 'roster', {}, 'gold')}</div></div>`)
+    + card('Aufstellung', `<div class="card-b row" style="flex-wrap:wrap;gap:14px">${chk('luOn', S.lineupConfig(L).enabled, '<b>Wöchentliche Aufstellung</b> — nur die 5 Starter punkten, Bank = Ersatz (Auto-Wechsel)')}
+        <label style="margin:0">Kapitän ×${num('luCap', S.lineupConfig(L).captain, 0.1)}</label>${btn('Speichern', 'lineup', {}, 'gold')}</div>`)
+    + card('Saison', `<div class="card-b row" style="flex-wrap:wrap;gap:12px"><input id="seasonY" value="${esc(L.season || 'auto')}" style="width:120px">${btn('Saison setzen', 'season')}
+        <span class="muted" style="font-size:12px">„auto" = aktuelles LEC-Jahr mit allen Splits · sonst z. B. 2027 · Daten: ${esc((ctx.D.season || {}).season || '?')} (${((ctx.D.season || {}).tournaments || []).map(t => esc(t.slug.replace(/^lec_/, ''))).join(', ')})</span></div>`)
     + card('Haupttabelle', `<div class="card-b row">${opBtn('Gesamtpunkte', { op: 'setStandingsMode', mode: 'points' }, '', (L.standingsMode || 'points') === 'points' ? 'gold' : '')}${opBtn('Head-to-Head', { op: 'setStandingsMode', mode: 'h2h' }, '', L.standingsMode === 'h2h' ? 'gold' : '')}</div>`);
+}
+
+const PK_DEFAULT = { champion: 10, finalist: 5, firstRegular: 5, lastRegular: 5, mostKills: 5, mostPoints: 5, bestKda: 5, mostChamps: 3, maxKillsGame: 3, mostPicked: 5, longestGame: 5, bloodiest: 5 };
+const PK_ON = ['champion', 'finalist', 'firstRegular', 'lastRegular', 'mostKills', 'mostPicked', 'longestGame'];
+function viewPickemAdmin() {
+  const L = A.league, D = ctx.D;
+  const splits = (D.season.tournaments || []).map(t => t);
+  const types = Object.entries(S.PICKEM_TYPES);
+  const ansLabel = (q, v) => { const k = S.PICKEM_TYPES[q.type].kind; if (v === undefined || v === null || v === '') return '—';
+    if (k === 'player') return esc(pname(v)); if (k === 'champion') return esc((D.champs.names || {})[v] || v); return esc(v); };
+  if (!splits.length) return card('Pick\'em', '<div class="empty">Keine Saisondaten — erst ein Stats-Update laufen lassen.</div>');
+  return splits.map(t => {
+    const split = t.slug, pe = (L.pickems || {})[split];
+    const lock = S.pickemLock(L, D.schedule, split);
+    const done = S.splitDone(D.schedule, split);
+    const truth = S.pickemTruth(L, D.stats, D.schedule, split, D.P, D.standings.tournaments[split]);
+    const status = pe ? (pe.revealed ? (done ? '<span class="pill teal">ausgewertet</span>' : '<span class="pill gold">aufgedeckt · Split läuft</span>') : '<span class="pill gold">offen</span>') : '<span class="pill">nicht angelegt</span>';
+    const editable = !pe || !pe.revealed;
+    const qOf = type => pe && pe.questions.find(q => q.type === type && !S.PICKEM_TYPES[type].manual);
+    let body = `<div class="card-b muted" style="font-size:12px">Sperre: <b style="color:var(--text)">${lock ? new Date(lock).toLocaleString('de-DE', { dateStyle: 'short', timeStyle: 'short' }) : 'unbekannt (Spielplan fehlt noch)'}</b> — bis dahin sieht niemand die Tipps der anderen; dann deckt das System automatisch auf.</div>`;
+    if (editable) {
+      body += '<table class="tight"><tbody>' + types.filter(([, def]) => !def.manual).map(([type, def]) => {
+        const q = qOf(type), on = q ? true : (!pe && PK_ON.includes(type));
+        return `<tr><td style="width:30px"><input type="checkbox" data-pkq="${esc(split)}" value="${type}" ${on ? 'checked' : ''} style="width:auto"></td><td class="fill" style="white-space:normal">${esc(def.label)}</td>
+          <td class="num"><input type="number" min="0" data-pkp="${esc(split)}" data-t="${type}" value="${q ? q.points : PK_DEFAULT[type] || 5}" style="width:70px"> Pkt</td></tr>`;
+      }).join('') + '</tbody></table>';
+      const manual = pe ? pe.questions.filter(q => S.PICKEM_TYPES[q.type].manual) : [];
+      body += '<div class="card-b"><div class="muted" style="font-size:12px;margin-bottom:6px">Eigene Fragen (Antwort trägst du nach dem Split ein), z. B. „Meistgebannter Champion":</div>'
+        + [0, 1, 2].map(i => { const q = manual[i] || {}; return `<div class="row" data-pkm="${esc(split)}" style="gap:8px;margin-bottom:6px;flex-wrap:wrap">
+          <input type="text" placeholder="Frage ${i + 1}" value="${esc(q.label || '')}" style="flex:1;min-width:180px">
+          <select>${['manualChamp', 'manualTeam', 'manualPlayer'].map(ty => `<option value="${ty}" ${q.type === ty ? 'selected' : ''}>${{ manualChamp: 'Champion', manualTeam: 'Team', manualPlayer: 'Spieler' }[ty]}</option>`).join('')}</select>
+          <input type="number" min="0" value="${q.points ?? 5}" style="width:70px"> Pkt</div>`; }).join('')
+        + `<div class="row" style="margin-top:8px">${btn(pe ? 'Fragen speichern' : 'Pick\'em öffnen', 'pkOpen', { split }, 'gold')}${pe ? btn('Jetzt aufdecken', 'pkReveal', { split }) + btn('Löschen', 'pkDelete', { split }) : ''}</div></div>`;
+    } else {
+      body += '<table class="tight"><tbody>' + pe.questions.map(q => {
+        const def = S.PICKEM_TYPES[q.type];
+        const auto = def.manual ? null : truth[q.type];
+        const autoTxt = auto instanceof Set ? [...auto].slice(0, 3).map(v => ansLabel(q, v)).join(', ') : auto !== undefined ? esc(auto) : '—';
+        let input = '';
+        if (def.manual) {
+          const opts = def.kind === 'team' ? D.teams.teams.map(x => [x.code, x.name]) : def.kind === 'player' ? D.players.players.map(x => [x.id, `${x.name} (${x.team})`]) : Object.entries(D.champs.names || {}).sort((a, b) => a[1].localeCompare(b[1]));
+          input = `<select data-pka="${esc(split)}" data-q="${esc(q.id)}"><option value="">—</option>${opts.map(([v, l]) => `<option value="${esc(v)}" ${String(q.answer) === String(v) ? 'selected' : ''}>${esc(l)}</option>`).join('')}</select>${btn('Antwort', 'pkAnswer', { split, q: q.id })}`;
+        }
+        return `<tr><td class="fill" style="white-space:normal"><b>${esc(q.label || def.label)}</b> <span class="pill">${q.points}</span></td>
+          <td style="white-space:normal">${def.manual ? input : (done ? 'Ergebnis: ' : 'Stand jetzt: ') + autoTxt}</td></tr>`;
+      }).join('') + '</tbody></table>';
+      const n = Object.keys(pe.picks || {}).length;
+      body += `<div class="card-b muted" style="font-size:12px">${n} Manager haben getippt.</div>`;
+    }
+    return card(`${esc(split.replace(/^lec_/, '').replace(/_/g, ' '))}`, body, status);
+  }).join('');
 }
 
 function viewHistory() {
@@ -273,13 +339,13 @@ function viewEmergency() {
       : `Aktuell öffentlich in ${esc(repo)}. Für echte Privatsphäre: privates Repo <code>lecfantasy-data</code> anlegen, Token darauf erweitern, dann <code>DATA_REPO</code> setzen und neu deployen.`}</div>`);
 }
 
-const TABS = [['overview', 'Übersicht'], ['draft', 'Draft'], ['members', 'Mitglieder'], ['points', 'Punkte'], ['stats', 'Stats'], ['settings', 'Einstellungen'], ['history', 'Verlauf'], ['raw', 'Rohdaten'], ['emergency', 'Notfall']];
+const TABS = [['overview', 'Übersicht'], ['draft', 'Draft'], ['members', 'Mitglieder'], ['points', 'Punkte'], ['stats', 'Stats'], ['pickem', "Pick'em"], ['settings', 'Einstellungen'], ['history', 'Verlauf'], ['raw', 'Rohdaten'], ['emergency', 'Notfall']];
 function draw() {
   if (!root) return;
   if (!tokenGet()) { root.innerHTML = viewLogin(flash && !flash.ok ? flash.text : ''); bind(); return; }
   if (!A) { root.innerHTML = '<div class="empty">lade Admin …</div>'; return; }
   const issues = A.validation.errors.length;
-  const body = { overview: viewOverview, draft: viewDraft, members: viewMembers, points: viewPoints, stats: viewStats, settings: viewSettings, history: viewHistory, raw: viewRaw, emergency: viewEmergency }[tab]();
+  const body = { overview: viewOverview, draft: viewDraft, members: viewMembers, points: viewPoints, stats: viewStats, pickem: viewPickemAdmin, settings: viewSettings, history: viewHistory, raw: viewRaw, emergency: viewEmergency }[tab]();
   root.innerHTML = `<div class="row" style="justify-content:space-between;flex-wrap:wrap;gap:12px;margin-bottom:14px">
       <div><div class="eyebrow">${esc(A.league.name || 'LEC Fantasy')} · ${{ lobby: 'Anmeldung', live: 'Draft läuft', done: 'Saison' }[window.LECScoring.draftStatus(A.league)]}</div><h1 style="font-size:40px">Admin</h1></div>
       <div class="row">${issues ? `<span class="pill live">${issues} Fehler</span>` : '<span class="pill teal">konsistent</span>'}${btn('Neu laden', 'reload')}${btn('Admin abmelden', 'alogout')}</div></div>
@@ -398,7 +464,22 @@ async function act(a, d, el) {
       return op({ op: 'setDraftSchedule', at: new Date(val('dAt')).toISOString(), reminderMinutes: parseInt(val('dRem'), 10) || 0, autoStart: document.getElementById('dAuto').checked });
     }
     case 'scheduleClear': return op({ op: 'setDraftSchedule', at: null, reminderMinutes: 60, autoStart: false }, 'Draft-Termin entfernen?');
-    case 'roster': return op({ op: 'setRoster', roster: { slots: L.roster.slots, bench: +val('rB'), maxPerTeam: +val('rM') }, force: true }, (L.draft.picks || []).length ? 'Kaderregeln nach Draftbeginn ändern?' : null);
+    case 'roster': return op({ op: 'setRoster', roster: { slots: L.roster.slots, bench: +val('rB'), maxPerTeam: +val('rM'), perRole: +val('rPer') || 0, maxManagers: +val('rMax') || 0 }, force: true }, (L.draft.picks || []).length ? 'Kaderregeln nach Draftbeginn ändern?' : null);
+    case 'lineup': return op({ op: 'setLineupRules', enabled: document.getElementById('luOn').checked, captain: +String(val('luCap')).replace(',', '.') });
+    case 'season': return op({ op: 'setSeason', season: val('seasonY') });
+    case 'faab': return op({ op: 'setFaab', budget: parseInt(val('fBud'), 10), resetEachSplit: document.getElementById('fReset').checked });
+    case 'pkOpen': {
+      const split = d.split, qs = [];
+      root.querySelectorAll(`[data-pkq="${CSS.escape(split)}"]`).forEach(c => { if (c.checked) qs.push({ type: c.value, points: +root.querySelector(`[data-pkp="${CSS.escape(split)}"][data-t="${c.value}"]`).value || 0 }); });
+      root.querySelectorAll(`[data-pkm="${CSS.escape(split)}"]`).forEach(row => {
+        const label = row.querySelector('input[type=text]').value.trim();
+        if (label) qs.push({ type: row.querySelector('select').value, points: +row.querySelector('input[type=number]').value || 0, label });
+      });
+      return op({ op: 'pickemOpen', split, questions: qs }, `Pick'em für ${split} mit ${qs.length} Fragen speichern?`);
+    }
+    case 'pkAnswer': return op({ op: 'pickemAnswer', split: d.split, qid: d.q, answer: root.querySelector(`[data-pka="${CSS.escape(d.split)}"][data-q="${CSS.escape(d.q)}"]`).value });
+    case 'pkReveal': return op({ op: 'pickemReveal', split: d.split }, 'Alle Tipps jetzt aufdecken? Danach sind keine Änderungen mehr möglich.');
+    case 'pkDelete': return op({ op: 'pickemDelete', split: d.split }, `Pick'em ${d.split} löschen?`);
     case 'trades': case 'winAdd': case 'winDel': {
       const cur = window.LECScoring.transferRules(L);
       const g = id => document.getElementById(id);
@@ -406,7 +487,7 @@ async function act(a, d, el) {
         enabled: g('trOn').checked, freeAgents: g('trFa').checked, perWeek: Math.max(0, parseInt(val('trPer'), 10) || 0),
         faMode: (root.querySelector('input[name="faMode"]:checked') || {}).value || 'instant',
         waiver: { days: [...root.querySelectorAll('[data-wday]')].filter(x => x.checked).map(x => +x.dataset.wday), time: val('wvTime') || '03:00', order: val('wvOrder') || 'reverse' },
-        rosterRules: g('trRos').checked, teamLimit: g('trTeam').checked, equalCount: g('trEq').checked, adminApproval: g('trAdm').checked,
+        rosterRules: g('trRos').checked, teamLimit: g('trTeam').checked, autoWindows: g('trAuto').checked, equalCount: g('trEq').checked, adminApproval: g('trAdm').checked,
         mode: (root.querySelector('input[name="trMode"]:checked') || {}).value || 'windows', windows: cur.windows,
       } : Object.assign({}, cur);
       if (a === 'winAdd') {

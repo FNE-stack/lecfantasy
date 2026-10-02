@@ -33,13 +33,15 @@
   // members, picks - is private and comes from the Worker after login, so it
   // is not loaded here; the app sets D.league once it has it.
   async function load() {
-    const [players, teams, stats, champs, schedule, overrides] = await Promise.all([
+    const [players, teams, stats, champs, schedule, overrides, season, standings] = await Promise.all([
       getJson('data/players.json', true),
       getJson('data/teams.json', true),
       getJson('data/stats.json', true),
       getJson('data/champions.json', true),
       getJson('data/schedule.json', true),
       getJson('data/overrides.json', true),
+      getJson('data/season.json', true),
+      getJson('data/standings.json', true),
     ]);
     // admin stat corrections apply everywhere the stats are shown
     if (stats && global.LECScoring) stats.games = global.LECScoring.applyOverrides(stats.games, overrides);
@@ -51,7 +53,7 @@
     return {
       league: null, overrides: overrides || { rows: [] }, players: players || { players: [] }, teams: teams || { teams: [] },
       stats: stats || { games: [] }, champs: champs || { names: {} },
-      schedule: schedule || { events: [] }, P, T,
+      schedule: schedule || { events: [] }, season: season || { tournaments: [] }, standings: standings || { tournaments: {} }, P, T,
     };
   }
 

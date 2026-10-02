@@ -6,7 +6,7 @@
 // writeLeague's mutate callback, i.e. re-checked on the freshest league on
 // every retry - two simultaneous picks can never both pass.
 // ═══════════════════════════════════════════════════════════════════════════
-import { S, HttpError, writeLeague, readLeagueFresh, playerIndex, seasonPoints, cfg } from './store.js';
+import { S, HttpError, writeLeague, readLeagueFresh, playerIndex, seasonPoints, cfg, publicData } from './store.js';
 import { randomHex } from './auth.js';
 
 export const nameKey = n => String(n || '').trim().toLowerCase().replace(/\s+/g, ' ');
@@ -113,9 +113,9 @@ export async function autoPickIfDue(env, league) {
 //     status: proposed -> accepted | rejected | cancelled | vetoed
 //             (adminApproval: proposed -> agreed -> accepted by the admin)
 //   free-agent pickup = league.swaps[] entry { manager, out, in, at, by:'self' }
-function windowGuard(league, rules) {
+function windowGuard(league, rules, season) {
   if (S.draftStatus(league) !== 'done') throw new HttpError(409, 'Transfers gibt es erst nach dem Draft.');
-  const w = S.transferWindow(league, new Date().toISOString());
+  const w = S.transferWindow(league, new Date().toISOString(), season);
   if (!w.open) {
     throw new HttpError(409, w.next
       ? `Das Transferfenster ist zu — das nächste öffnet am ${new Date(w.next.from).toLocaleDateString('de-DE')}.`
@@ -138,7 +138,8 @@ function rosterGuard(league, players, rules, rostersAfter) {
 export async function tradeAction(env, me, body) {
   const action = body.action;
   const players = await playerIndex(env);
-  if (['claim', 'unclaim', 'claimMove'].includes(action)) return claimAction(env, me, body, players);
+  const season = await publicData(env, 'season.json', 300);
+  if (['claim', 'unclaim', 'claimMove'].includes(action)) return claimAction(env, me, body, players, season);
   let out = null;
   await writeLeague(env, league => {
     const rules = S.transferRules(league);
@@ -150,7 +151,7 @@ export async function tradeAction(env, me, body) {
     if (action === 'freeAgent') {
       if (!rules.freeAgents) throw new HttpError(403, 'Free Agents sind in dieser Liga nicht erlaubt.');
       if (rules.faMode === 'waiver') throw new HttpError(409, 'Free Agents laufen über Waiver — stell einen Anspruch, er wird beim nächsten Waiver-Lauf entschieden.');
-      windowGuard(league, rules);
+      windowGuard(league, rules, season);
       const own = S.ownership(league);
       if (!ros[me] || !ros[me].includes(body.out)) throw new HttpError(400, 'Du kannst nur einen eigenen Spieler abgeben.');
       if (!players.has(body.in)) throw new HttpError(400, 'Unbekannter Spieler.');
@@ -168,7 +169,7 @@ export async function tradeAction(env, me, body) {
 
     if (!rules.enabled) throw new HttpError(403, 'Trades sind in dieser Liga nicht erlaubt.');
     if (action === 'propose') {
-      windowGuard(league, rules);
+      windowGuard(league, rules, season);
       const give = [...new Set(body.give || [])], get = [...new Set(body.get || [])];
       if (!body.to || body.to === me || !ros[body.to]) throw new HttpError(400, 'Unbekannter Tauschpartner');
       if (!give.length || !get.length) throw new HttpError(400, 'Beide Seiten müssen mindestens einen Spieler geben');
@@ -194,7 +195,7 @@ export async function tradeAction(env, me, body) {
     } else if (action === 'respond') {
       if (t.to !== me) throw new HttpError(403, 'Der Trade ist nicht an dich');
       if (body.accept) {
-        windowGuard(league, rules);
+        windowGuard(league, rules, season);
         // rosters may have changed since the proposal - check again
         if (!t.give.every(p => ros[t.from].includes(p)) || !t.get.every(p => ros[t.to].includes(p))) {
           t.status = 'rejected'; t.note = 'nicht mehr gültig — ein Spieler ist nicht mehr im Kader';
@@ -225,21 +226,29 @@ export async function tradeAction(env, me, body) {
 const MAX_CLAIMS = 10;
 export async function claimsOf(env, id) { return (await env.LEAGUE.get(`claims:${id}`, 'json')) || []; }
 
-async function claimAction(env, me, body, players) {
+async function claimAction(env, me, body, players, season) {
   const { data: league } = await readLeagueFresh(env);
   const rules = S.transferRules(league);
   let list = await claimsOf(env, me);
   if (body.action === 'claim') {
     if (!rules.freeAgents) throw new HttpError(403, 'Free Agents sind in dieser Liga nicht erlaubt.');
     if (rules.faMode !== 'waiver') throw new HttpError(409, 'Free Agents laufen hier sofort — einfach holen.');
-    windowGuard(league, rules);
+    windowGuard(league, rules, season);
     const mine = S.rosters(league)[me] || [];
     if (!mine.includes(body.out)) throw new HttpError(400, 'Du kannst nur einen eigenen Spieler abgeben.');
     if (!players.has(body.in)) throw new HttpError(400, 'Unbekannter Spieler.');
     if (S.ownership(league).has(body.in)) throw new HttpError(409, 'Der Spieler ist nicht frei.');
     if (list.some(c => c.in === body.in && c.out === body.out)) throw new HttpError(409, 'Den Anspruch hast du schon.');
     if (list.length >= MAX_CLAIMS) throw new HttpError(409, `Höchstens ${MAX_CLAIMS} Ansprüche gleichzeitig.`);
-    list.push({ in: body.in, out: body.out, at: new Date().toISOString() });
+    const claim = { in: body.in, out: body.out, at: new Date().toISOString() };
+    if (S.waiverRules(league).order === 'faab') {
+      const bid = Number(body.bid);
+      const left = S.faabLeft(league, me, season);
+      if (!Number.isInteger(bid) || bid < 0) throw new HttpError(400, 'Gebot: ganze Zahl ab 0');
+      if (bid > left) throw new HttpError(400, `Gebot zu hoch — du hast noch ${left} übrig.`);
+      claim.bid = bid;
+    }
+    list.push(claim);
   } else if (body.action === 'unclaim') {
     list = list.filter((_, i) => i !== Number(body.index));
   } else if (body.action === 'claimMove') {
@@ -274,11 +283,26 @@ export async function runWaivers(env, opts) {
   if (!total) return { awarded: [], failed: [], skipped: 'Keine Ansprüche.' };
   const players = await playerIndex(env);
   const stats = await statsForStandings(env);
+  const schedule = await publicData(env, 'schedule.json', 300);
+  const season = await publicData(env, 'season.json', 300);
   let result = null;
   await writeLeague(env, league => {
     const now = new Date().toISOString();
-    const order = S.waiverOrder(league, stats, players);
-    const queue = Object.fromEntries(ids.map(id => [id, (claims[id] || []).slice()]));
+    const faab = S.waiverRules(league).order === 'faab';
+    const order = S.waiverOrder(league, stats, players, schedule);
+    // FAAB: one global queue, highest bid first; ties -> waiver priority, then
+    // the manager's own ranking. Each manager is then served in that order.
+    if (faab) {
+      const all = [];
+      for (const id of ids) (claims[id] || []).forEach((c, i) => all.push(Object.assign({ manager: id, rank: i }, c)));
+      all.sort((a, b) => (b.bid || 0) - (a.bid || 0) || order.indexOf(a.manager) - order.indexOf(b.manager) || a.rank - b.rank);
+      for (const id of ids) claims[id] = [];
+      order.length = 0;
+      for (const c of all) { claims[c.manager].push(c); }
+      // serve claims strictly in bid order: one pseudo-manager per claim
+      all.forEach((c, i) => { claims['#' + i] = [c]; order.push('#' + i); });
+    }
+    const queue = Object.fromEntries(order.map(id => [id, (claims[id] || []).slice()]));
     const awarded = [], failed = [];
     const wk = S.weekKey(now);
     league.swaps = league.swaps || [];
@@ -287,26 +311,28 @@ export async function runWaivers(env, opts) {
     let progress = true;
     while (progress) {
       progress = false;
-      for (const id of order) {
-        const q = queue[id] || [];
+      for (const slot of order) {
+        const q = queue[slot] || [];
         while (q.length) {
           const c = q.shift();
+          const id = c.manager || slot;
           const own = S.ownership(league), ros = S.rosters(league)[id] || [];
           let why = null;
           if (!ros.includes(c.out)) why = 'abzugebender Spieler nicht mehr im Kader';
           else if (own.has(c.in)) why = 'Spieler schon vergeben';
           else if (!players.has(c.in)) why = 'Spieler nicht mehr im Pool';
           else if (rules.perWeek > 0 && usedThisWeek(id) >= rules.perWeek) why = 'Wochenlimit erreicht';
+          else if (faab && (c.bid || 0) > S.faabLeft(league, id, season)) why = 'Budget reicht nicht mehr';
           else if (opts2.roles || opts2.teams) {
             const before = new Set(S.rosterProblems(league, players, ros, opts2));
             const added = S.rosterProblems(league, players, ros.filter(x => x !== c.out).concat(c.in), opts2).filter(x => !before.has(x));
             if (added.length) why = added.join(', ');
           }
           if (why) { failed.push({ manager: id, in: c.in, out: c.out, why }); continue; }
-          league.swaps.push({ manager: id, out: c.out, in: c.in, at: now, by: 'waiver' });
-          awarded.push({ manager: id, in: c.in, out: c.out });
+          league.swaps.push(Object.assign({ manager: id, out: c.out, in: c.in, at: now, by: 'waiver' }, faab ? { bid: c.bid || 0 } : {}));
+          awarded.push(Object.assign({ manager: id, in: c.in, out: c.out }, faab ? { bid: c.bid || 0 } : {}));
           if (S.waiverRules(league).order === 'rolling') {
-            const o = S.waiverOrder(league, stats, players).filter(x => x !== id);
+            const o = S.waiverOrder(league, stats, players, schedule).filter(x => x !== id);
             league.waiverOrder = o.concat(id);
             order.splice(order.indexOf(id), 1); order.push(id);
           }
@@ -347,4 +373,94 @@ export async function draftSchedule(env, league) {
     if (r.changed) out.started = r.league;
   }
   return out;
+}
+
+// ── lineups ───────────────────────────────────────────────────────────────
+// body: { block, starters:[ids], bench:[ids]?, captain, vice }
+// Locks when the week's first match starts. Saved lineups carry forward to
+// later weeks until changed (scoring.js lineupFor).
+export async function setLineup(env, me, body) {
+  const schedule = await publicData(env, 'schedule.json', 60);
+  const players = await playerIndex(env);
+  const cal = S.calendar(schedule || { events: [] });
+  const key = String(body.block || '');
+  if (!cal.start.has(key)) throw new HttpError(400, 'Unbekannte Woche.');
+  if (Date.now() >= cal.start.get(key)) throw new HttpError(409, 'Die Woche hat schon begonnen — Aufstellung gesperrt.');
+  let saved = null;
+  await writeLeague(env, league => {
+    if (!S.lineupConfig(league).enabled) throw new HttpError(403, 'Aufstellungen sind in dieser Liga aus.');
+    const ros = S.rosters(league)[me] || [];
+    const slots = (league.roster && league.roster.slots) || [];
+    const starters = [...new Set(body.starters || [])];
+    if (starters.length !== slots.length) throw new HttpError(400, `Genau ${slots.length} Starter.`);
+    if (!starters.every(id => ros.includes(id))) throw new HttpError(400, 'Nur eigene Spieler.');
+    const roles = starters.map(id => (players.get(id) || {}).role).sort().join();
+    if (roles !== slots.slice().sort().join()) throw new HttpError(400, 'Je Rolle genau ein Starter.');
+    if (!starters.includes(body.captain) || !starters.includes(body.vice) || body.captain === body.vice) throw new HttpError(400, 'Kapitän und Vize: zwei verschiedene Starter.');
+    const bench = (body.bench || []).filter(id => ros.includes(id) && !starters.includes(id));
+    league.lineups = league.lineups || {};
+    league.lineups[me] = league.lineups[me] || {};
+    saved = { starters, bench, captain: body.captain, vice: body.vice, at: new Date().toISOString() };
+    league.lineups[me][key] = saved;
+    return league;
+  }, l => `lineup: ${mgrName(l, me)} · ${key.split('|').pop()}`);
+  return { lineup: saved, block: key };
+}
+
+// ── pick'em ───────────────────────────────────────────────────────────────
+// Picks live in KV (pick:<split>:<manager>) until the lock, so nobody can
+// copy. At the lock the cron reveals: all picks are copied into the league.
+export async function pickemState(env, me) {
+  const { data: league } = await readLeagueFresh(env);
+  const schedule = await publicData(env, 'schedule.json', 120);
+  const out = {};
+  for (const [split, pe] of Object.entries(league.pickems || {})) {
+    const lock = S.pickemLock(league, schedule, split);
+    out[split] = { lockAt: lock, locked: !!lock && Date.now() >= Date.parse(lock), revealed: !!pe.revealed,
+                   mine: pe.revealed ? (pe.picks || {})[me] || {} : (await env.LEAGUE.get(`pick:${split}:${me}`, 'json')) || {} };
+  }
+  return out;
+}
+export async function savePickem(env, me, body) {
+  const { data: league } = await readLeagueFresh(env);
+  const schedule = await publicData(env, 'schedule.json', 60);
+  const split = String(body.split || '');
+  const pe = (league.pickems || {})[split];
+  if (!pe) throw new HttpError(404, 'Kein Pick\'em für diesen Split.');
+  const lock = S.pickemLock(league, schedule, split);
+  if (pe.revealed || (lock && Date.now() >= Date.parse(lock))) throw new HttpError(409, 'Pick\'em ist gesperrt — der Split hat begonnen.');
+  const ids = new Set((pe.questions || []).map(q => q.id));
+  const picks = {};
+  for (const [k, v] of Object.entries(body.picks || {})) if (ids.has(k) && v !== '' && v !== null && v !== undefined) picks[k] = String(v).slice(0, 60);
+  await env.LEAGUE.put(`pick:${split}:${me}`, JSON.stringify(picks));
+  return { split, picks };
+}
+export async function revealPickems(env, opts) {
+  opts = opts || {};
+  const { data: league0 } = await readLeagueFresh(env);
+  const schedule = await publicData(env, 'schedule.json', 60);
+  const due = Object.entries(league0.pickems || {}).filter(([split, pe]) => {
+    if (pe.revealed) return false;
+    if (opts.split && opts.split !== split) return false;
+    const lock = S.pickemLock(league0, schedule, split);
+    return opts.force || (lock && Date.now() >= Date.parse(lock));
+  }).map(([split]) => split);
+  if (!due.length) return [];
+  const ids = (league0.managers || []).map(m => m.id);
+  const collected = {};
+  for (const split of due) {
+    collected[split] = {};
+    for (const id of ids) { const p = await env.LEAGUE.get(`pick:${split}:${id}`, 'json'); if (p) collected[split][id] = p; }
+  }
+  await writeLeague(env, l => {
+    for (const split of due) {
+      const pe = l.pickems[split];
+      if (!pe || pe.revealed) continue;
+      pe.picks = Object.assign({}, pe.picks || {}, collected[split]);
+      pe.revealed = true;
+      pe.revealedAt = new Date().toISOString();
+    }
+    return l;
+  }, `pickem: Tipps aufgedeckt (${due.join(', ')})`);
+  return due;
 }

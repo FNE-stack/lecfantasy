@@ -10,7 +10,7 @@
 import { S, HttpError, cfg, writeLeague, readLeagueFresh, leagueHistory, leagueAt, playerIndex,
          pagesMeta, writeSiteFile, githubRaw } from './store.js';
 import { setMemberPassword, deleteMember, revokeSessions, sessionCounts, hasPassword, randomHex } from './auth.js';
-import { addMember, makePick, cleanName, nameKey, mgrName, runWaivers, claimsOf } from './draft.js';
+import { addMember, makePick, cleanName, nameKey, mgrName, runWaivers, claimsOf, revealPickems } from './draft.js';
 import { notify, subscriberCounts, pushEnabled } from './push.js';
 
 const now = () => new Date().toISOString();
@@ -144,8 +144,51 @@ const LEAGUE_OPS = {
     const r = op.roster || {};
     need(Array.isArray(r.slots) && r.slots.length, 'slots fehlen');
     need(!l.draft.picks.length || op.force, 'Kaderregeln nach Draftbeginn ändern — mit force bestätigen');
-    l.roster = { slots: r.slots, bench: Math.max(0, r.bench | 0), maxPerTeam: Math.max(1, r.maxPerTeam | 0) };
-    return 'Kaderregeln geändert';
+    const per = r.perRole ? Math.max(1, Math.min(4, r.perRole | 0)) : 0;
+    const maxM = r.maxManagers ? Math.max(2, Math.min(20, r.maxManagers | 0)) : 0;
+    l.roster = Object.assign({ slots: r.slots, bench: Math.max(0, r.bench | 0), maxPerTeam: Math.max(1, r.maxPerTeam | 0) },
+      per ? { perRole: per } : {}, maxM ? { maxManagers: maxM } : {});
+    return `Kader: ${per ? per + ' pro Rolle (' + per * r.slots.length + ' Spieler)' : r.slots.length + ' + ' + (r.bench | 0) + ' Bank'}, max. ${l.roster.maxPerTeam} pro Team${maxM ? ', max. ' + maxM + ' Manager' : ''}`;
+  },
+  setLineupRules(l, op) {
+    const c = Number(op.captain ?? 1.5);
+    need(c >= 1 && c <= 3, 'Kapitäns-Faktor 1–3');
+    l.lineup = { enabled: !!op.enabled, captain: c };
+    return `Aufstellung ${op.enabled ? 'an' : 'aus'}${op.enabled ? ', Kapitän ×' + c : ''}`;
+  },
+  setFaab(l, op) {
+    const b = Number(op.budget);
+    need(Number.isInteger(b) && b > 0 && b <= 10000, 'FAAB-Budget: ganze Zahl > 0');
+    l.faab = { budget: b, resetEachSplit: !!op.resetEachSplit };
+    return `FAAB: ${b} pro ${op.resetEachSplit ? 'Split' : 'Saison'}`;
+  },
+  pickemOpen(l, op) {
+    const split = String(op.split || '');
+    need(/^[a-z0-9_]+$/.test(split), 'Split fehlt');
+    need(Array.isArray(op.questions) && op.questions.length, 'Mindestens eine Frage');
+    const ex = (l.pickems || {})[split];
+    need(!ex || !ex.revealed, 'Dieser Pick\'em ist schon aufgedeckt');
+    const qs = op.questions.map((q, i) => {
+      need(S.PICKEM_TYPES[q.type], 'Unbekannter Fragetyp: ' + q.type);
+      need(isFinite(Number(q.points)) && Number(q.points) >= 0, 'Punkte ≥ 0');
+      return { id: q.id || ('q' + (i + 1)), type: q.type, points: Number(q.points), label: String(q.label || '').slice(0, 80) || undefined };
+    });
+    l.pickems = l.pickems || {};
+    l.pickems[split] = Object.assign({}, ex || {}, { questions: qs, revealed: false, lockAt: op.lockAt || (ex && ex.lockAt) || null });
+    return `Pick'em ${split}: ${qs.length} Fragen`;
+  },
+  pickemAnswer(l, op) {
+    const pe = (l.pickems || {})[op.split];
+    need(pe, 'Pick\'em nicht gefunden');
+    const q = (pe.questions || []).find(x => x.id === op.qid);
+    need(q && S.PICKEM_TYPES[q.type].manual, 'Nur eigene Fragen bekommen eine manuelle Antwort');
+    q.answer = op.answer === '' || op.answer === null ? null : String(op.answer);
+    return `Antwort für „${q.label || q.type}": ${q.answer || '—'}`;
+  },
+  pickemDelete(l, op) {
+    need((l.pickems || {})[op.split], 'Pick\'em nicht gefunden');
+    delete l.pickems[op.split];
+    return `Pick'em ${op.split} gelöscht`;
   },
   setTimer(l, op) {
     need(['off', 'soft', 'auto'].includes(op.mode), 'Timer: off, soft oder auto');
@@ -169,10 +212,10 @@ const LEAGUE_OPS = {
     const days = [...new Set((wv.days || [2, 5]).map(Number))].filter(x => x >= 1 && x <= 7).sort();
     need(days.length, 'Waiver: mindestens ein Wochentag');
     need(/^([01]\d|2[0-3]):[0-5]\d$/.test(wv.time || '03:00'), 'Waiver-Uhrzeit als HH:MM');
-    need(['reverse', 'rolling'].includes(wv.order || 'reverse'), 'Waiver-Reihenfolge: reverse oder rolling');
+    need(['reverse', 'rolling', 'faab'].includes(wv.order || 'reverse'), 'Waiver-Reihenfolge: reverse, rolling oder faab');
     l.tradeRules = { faMode: r.faMode || 'instant', waiver: { days, time: wv.time || '03:00', order: wv.order || 'reverse' },
       enabled: !!r.enabled, freeAgents: !!r.freeAgents, perWeek: per, adminApproval: !!r.adminApproval,
-      equalCount: r.equalCount !== false, rosterRules: r.rosterRules !== false, teamLimit: r.teamLimit !== false, mode: r.mode || 'windows',
+      equalCount: r.equalCount !== false, rosterRules: r.rosterRules !== false, teamLimit: r.teamLimit !== false, autoWindows: !!r.autoWindows, mode: r.mode || 'windows',
       windows: windows.sort((a, b) => a.from.localeCompare(b.from)) };
     return `Transfers: Trades ${r.enabled ? 'an' : 'aus'}, Free Agents ${r.freeAgents ? 'an' : 'aus'}, `
       + (l.tradeRules.mode === 'always' ? 'immer offen' : `${windows.length} Fenster`);
@@ -263,6 +306,17 @@ export async function runOp(env, op) {
       }, msg);
       return { message: msg.replace('stats: ', ''), overrides: file };
     }
+    case 'setSeason': {
+      const y = String(op.season || 'auto').trim();
+      need(y === 'auto' || /^20\d\d$/.test(y), 'Saison: auto oder Jahr wie 2027');
+      await writeSiteFile(env, 'data/config.json', cur => Object.assign({}, cur || {}, { season: y }), `config: Saison ${y}`);
+      const r = await writeLeague(env, l => { l.season = y; return l; }, `admin: Saison ${y}`);
+      return { message: `Saison: ${y} (gilt ab dem nächsten Stats-Update)`, league: r.league };
+    }
+    case 'pickemReveal': {
+      const done = await revealPickems(env, { split: op.split, force: true });
+      return { message: done.length ? 'Tipps aufgedeckt: ' + done.join(', ') : 'Nichts aufzudecken' };
+    }
     case 'setTournament': {
       const t = String(op.tournament || 'auto').trim();
       await writeSiteFile(env, 'data/config.json', cur => Object.assign({}, cur || {}, { tournament: t }), `config: Turnier ${t}`);
@@ -308,6 +362,7 @@ export async function adminState(env) {
     league, sha, members, invite, claims, nextWaiver: S.nextWaiverRun(league),
     validation: S.validateLeague(league, players),
     capacity: players ? S.capacity(league, players) : null,
+    suggestedCapacity: players ? S.suggestedCapacity(league, players) : null,
     onTheClock: S.currentPicker(league), progress: S.draftProgress(league),
     pushEnabled: pushEnabled(env), dataRepo: cfg(env).data, privateData: cfg(env).data !== cfg(env).site,
   };
