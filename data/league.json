@@ -35,13 +35,19 @@
       "id": "m53c5dfc1",
       "name": "Bot Charlie",
       "joined": "2026-10-02T10:01:36.256Z"
+    },
+    {
+      "id": "m2b35c778",
+      "name": "Bot Delta",
+      "joined": "2026-10-02T10:01:37.820Z"
     }
   ],
   "draft": {
     "order": [
       "ma39be5bd",
       "mf2904d66",
-      "m53c5dfc1"
+      "m53c5dfc1",
+      "m2b35c778"
     ],
     "snake": true,
     "picks": [],
