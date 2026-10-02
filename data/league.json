@@ -124,10 +124,14 @@
   "swaps": [],
   "trades": [],
   "tradeRules": {
-    "enabled": false,
+    "enabled": true,
+    "freeAgents": true,
+    "perWeek": 1,
     "adminApproval": false,
     "equalCount": true,
-    "deadline": null
+    "rosterRules": true,
+    "mode": "always",
+    "windows": []
   },
   "announcement": null
 }
