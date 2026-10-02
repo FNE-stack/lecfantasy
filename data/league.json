@@ -25,17 +25,9 @@
     "maxPerTeam": 2
   },
   "standingsMode": "points",
-  "managers": [
-    {
-      "id": "m2b35c778",
-      "name": "Bot Delta",
-      "joined": "2026-10-02T10:01:37.820Z"
-    }
-  ],
+  "managers": [],
   "draft": {
-    "order": [
-      "m2b35c778"
-    ],
+    "order": [],
     "snake": true,
     "picks": [],
     "status": "lobby",
