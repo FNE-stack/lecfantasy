@@ -401,5 +401,66 @@
   "faab": {
     "budget": 100,
     "resetEachSplit": false
+  },
+  "hall": {
+    "lec_split_2_2026": {
+      "split": "lec_split_2_2026",
+      "at": "2026-10-02T14:09:18.792Z",
+      "table": [
+        {
+          "manager": "mb2718cb2",
+          "name": "Bot Delta",
+          "players": 5481.61,
+          "pickem": 0,
+          "pts": 5481.61
+        },
+        {
+          "manager": "ma5b73ef0",
+          "name": "Bot Alpha",
+          "players": 5160.62,
+          "pickem": 0,
+          "pts": 5160.62
+        },
+        {
+          "manager": "ma475e6b3",
+          "name": "Bot Bravo",
+          "players": 4952.89,
+          "pickem": 0,
+          "pts": 4952.89
+        },
+        {
+          "manager": "m01382dea",
+          "name": "Bot Charlie",
+          "players": 4797.77,
+          "pickem": 0,
+          "pts": 4797.77
+        }
+      ],
+      "pickemKing": null,
+      "bestWeek": {
+        "manager": "ma475e6b3",
+        "name": "Bot Bravo",
+        "week": "Week 5",
+        "pts": 1013.21
+      },
+      "steal": {
+        "player": "100356590519370319",
+        "playerName": "Humanoid",
+        "manager": "ma475e6b3",
+        "name": "Bot Bravo",
+        "pick": 34,
+        "rank": 13,
+        "pts": 710.02
+      },
+      "bust": {
+        "player": "105548731617719496",
+        "playerName": "Rhilech",
+        "manager": "m01382dea",
+        "name": "Bot Charlie",
+        "pick": 14,
+        "rank": 22,
+        "pts": 619.62
+      }
+    }
   }
 }
