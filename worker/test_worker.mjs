@@ -557,6 +557,25 @@ tests.pickem_hidden_until_lock = async () => {
   return 'picks private in KV, unknown types refused, revealed by the cron at the lock, frozen after, manual answers';
 };
 
+tests.pickem_push_once = async () => {
+  const { a, tok, ids } = await liveLeague(['Ann', 'Ben']);
+  const kv = k => env.LEAGUE.get(k);
+  const open = lockMs => call('POST', '/api/admin/op', { token: a, body: { op: 'pickemOpen', split: 'sp', lockAt: new Date(Date.now() + lockMs).toISOString(), questions: [{ type: 'champion', points: 10 }] } });
+  const cron = () => worker.scheduled({}, env, { waitUntil() {} });
+  await open(48 * 3600e3);
+  await cron();
+  assert(await kv('pkn:sp:open') && !(await kv('pkn:sp:24h')), 'opening announced, no reminder yet');
+  await call('POST', '/api/pickem', { token: tok.Ann, body: { split: 'sp', picks: { q1: 'G2' } } });
+  await open(12 * 3600e3);       // lock moves within 24 h
+  await cron(); await cron();
+  assert(await kv('pkn:sp:24h'), 'reminder flagged once');
+  assert(await kv(`pick:sp:${ids.Ann}`) && !(await kv(`pick:sp:${ids.Ben}`)), 'only Ben still owes tips');
+  await call('POST', '/api/admin/op', { token: a, body: { op: 'pickemOpen', split: 'sp2', lockAt: new Date(Date.now() + 3600e3).toISOString(), questions: [{ type: 'champion', points: 10 }] } });
+  await cron();
+  assert(await kv('pkn:sp2:open') && await kv('pkn:sp2:24h'), 'opened late: one message, no separate reminder');
+  return 'open push once, 24 h reminder once (only to managers without tips), late opening sends a single message';
+};
+
 tests.faab = async () => {
   const S = globalThis.LECScoring, idx = new Map(PLAYERS.players.map(p => [p.id, p]));
   const { a, tok, ids } = await liveLeague(['Ann', 'Ben']);

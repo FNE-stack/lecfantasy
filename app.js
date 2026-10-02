@@ -1054,7 +1054,7 @@ function pushCard() {
   }
   const on = store.get('lf.push', false);
   return `<div class="note" style="display:flex;align-items:center;gap:12px;flex-wrap:wrap"><span>🔔</span>
-    <div style="flex:1;min-width:200px">${on ? 'Benachrichtigungen sind an — du bekommst eine Nachricht, wenn du im Draft dran bist.' : 'Benachrichtigungen, wenn du im Draft dran bist — auch wenn die Seite zu ist.'}</div>
+    <div style="flex:1;min-width:200px">${on ? 'Benachrichtigungen sind an.' : 'Benachrichtigungen aufs Handy — auch wenn die Seite zu ist.'} <span class="dim">Draft (du bist dran, Start), Trade-Angebote, Waiver-Ergebnisse, Pick'em (offen, 24 h vor Schluss), Ansagen vom Admin.</span></div>
     ${on ? '<button class="btn sm" id="pushTest">Test senden</button><button class="btn sm" id="pushOff">Aus</button>' : '<button class="btn gold sm" id="pushOn">Aktivieren</button>'}</div>`;
 }
 async function enablePush() {
@@ -1094,10 +1094,19 @@ function nav() {
   const draftDone = status() === 'done';
   if (adminOnly()) return [['#/', 'Übersicht', 'home', /^\/?$/], ...(draftDone ? [] : [['#/draft', 'Draft' + (status() === 'live' ? '<span class="live-dot"></span>' : ''), 'draft', /^\/draft$/]]),
     ['#/live', 'Live' + liveDot, 'live', /^\/live/], ['#/spieler', 'Spieler', 'players', /^\/spieler/], ['#/lec', 'LEC', 'shield', /^\/(lec|team)/]];
-  const middle = draftDone ? [['#/pickem', 'Pick\'em', 'book', /^\/pickem/]] : [['#/draft', 'Draft' + (status() === 'live' ? '<span class="live-dot"></span>' : ''), 'draft', /^\/draft$/]];
-  return [['#/', 'Übersicht', 'home', /^\/?$/], ['#/mein-team', 'Mein Team' + (pendingForMe() ? '<span class="live-dot" style="background:var(--gold);animation:none"></span>' : ''), 'user', /^\/(mein-team|manager\/.+|transfers)$/],
-    ...middle,
-    ['#/live', 'Live' + liveDot, 'live', /^\/live/], ['#/spieler', 'Spieler', 'players', /^\/spieler/], ['#/lec', 'LEC', 'shield', /^\/(lec|team)/]];
+  // Pick'em is always there (tips happen before the split, often before the
+  // draft). The phone tab bar holds 6: until the draft is done, Live is only in
+  // the desktop nav (no team yet, so nothing personal to watch live).
+  const dot = '<span class="live-dot" style="background:var(--gold);animation:none"></span>';
+  const draft = draftDone ? [] : [['#/draft', 'Draft' + (status() === 'live' ? '<span class="live-dot"></span>' : ''), 'draft', /^\/draft$/]];
+  return [['#/', 'Übersicht', 'home', /^\/?$/], ['#/mein-team', 'Mein Team' + (pendingForMe() ? dot : ''), 'user', /^\/(mein-team|manager\/.+|transfers)$/],
+    ...draft, ['#/pickem', 'Pick\'em' + (pickemOpenNow() ? dot : ''), 'book', /^\/pickem/],
+    ['#/live', 'Live' + liveDot, draftDone ? 'live' : '', /^\/live/], ['#/spieler', 'Spieler', 'players', /^\/spieler/], ['#/lec', 'LEC', 'shield', /^\/(lec|team)/]];
+}
+// a pick'em is open for tips right now
+function pickemOpenNow() {
+  const now = new Date().toISOString();
+  return Object.entries(L().pickems || {}).some(([split, pe]) => pe && !pe.revealed && (S.pickemLock(L(), D.schedule, split) || '9') > now);
 }
 function chrome() {
   if (!D) return;

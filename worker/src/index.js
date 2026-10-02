@@ -11,7 +11,7 @@
 //   admin    POST /api/admin/login, GET /api/admin/state|health|history,
 //            POST /api/admin/op|invite|stats|broadcast
 // ═══════════════════════════════════════════════════════════════════════════
-import { S, HttpError, readLeague, playerIndex } from './store.js';
+import { S, HttpError, readLeague, playerIndex, publicData } from './store.js';
 import { setMemberPassword, verifyMember, newSession, sessionManager, endSession, adminLogin, isAdmin,
          safeEqual } from './auth.js';
 import { addMember, makePick, autoPickIfDue, deadline, tradeAction, nameKey, claimsOf, runWaivers, draftSchedule,
@@ -162,6 +162,31 @@ async function route(request, env, ctx) {
   throw new HttpError(404, 'unbekannter Endpunkt');
 }
 
+// Push once when a pick'em opens, and once 24 h before its lock to everyone
+// who has not tipped yet. KV flags make each message go out a single time.
+async function pickemNotices(env, data, all) {
+  const open = Object.entries(data.pickems || {}).filter(([, pe]) => pe && !pe.revealed);
+  if (!open.length) return;
+  const schedule = await publicData(env, 'schedule.json', 60);
+  for (const [split, pe] of open) {
+    const lock = Date.parse(S.pickemLock(data, schedule, split) || '');
+    if (!lock || lock <= Date.now()) continue;
+    const name = split.replace(/^lec_/, '').replace(/_\d{4}$/, '').replace(/_/g, ' ').replace(/^./, c => c.toUpperCase());
+    const until = new Date(lock).toLocaleString('de-DE', { timeZone: 'Europe/Berlin', weekday: 'short', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+    const soon = lock - Date.now() < 24 * 3600e3;
+    if (!(await env.LEAGUE.get(`pkn:${split}:open`))) {
+      await env.LEAGUE.put(`pkn:${split}:open`, '1');
+      if (soon) await env.LEAGUE.put(`pkn:${split}:24h`, '1');
+      await notify(env, all, { title: `Pick'em ${name} ist offen`, body: `${(pe.questions || []).length} Fragen — tippen bis ${until} Uhr.`, url: './#/pickem', tag: 'pickem-' + split });
+    } else if (soon && !(await env.LEAGUE.get(`pkn:${split}:24h`))) {
+      await env.LEAGUE.put(`pkn:${split}:24h`, '1');
+      const missing = [];
+      for (const id of all) if (!(await env.LEAGUE.get(`pick:${split}:${id}`))) missing.push(id);
+      if (missing.length) await notify(env, missing, { title: "Pick'em: noch 24 Stunden", body: `Du hast für ${name} noch nicht getippt — Sperre ${until} Uhr.`, url: './#/pickem', tag: 'pickem-' + split });
+    }
+  }
+}
+
 export default {
   async fetch(request, env, ctx) {
     const headers = cors(env, request);
@@ -202,6 +227,7 @@ export default {
     } catch (e) { console.error('cron schedule', e && e.message); }
     // pick'em: reveal everyone's picks once a split has started
     try { await revealPickems(env); } catch (e) { console.error('cron pickem', e && e.message); }
+    try { await pickemNotices(env, data, all); } catch (e) { console.error('cron pickem push', e && e.message); }
     // waivers at their scheduled times (German time); each slot runs once
     try {
       const slot = S.lastWaiverSlot(data);
