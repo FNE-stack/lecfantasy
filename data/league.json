@@ -56,7 +56,13 @@
       "mb2718cb2"
     ],
     "snake": true,
-    "picks": [],
+    "picks": [
+      {
+        "manager": "ma5b73ef0",
+        "player": "109461265532592848",
+        "at": "2026-10-02T14:08:00.074Z"
+      }
+    ],
     "status": "live",
     "completed": false,
     "timer": {
