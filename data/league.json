@@ -56,7 +56,26 @@
       "mad54e760"
     ],
     "snake": true,
-    "picks": [],
+    "picks": [
+      {
+        "manager": "mb6bd4d83",
+        "player": "109461265532592848",
+        "at": "2026-10-02T22:06:21.842Z",
+        "by": "bot"
+      },
+      {
+        "manager": "m6d5760d0",
+        "player": "108205130709313212",
+        "at": "2026-10-02T22:06:21.842Z",
+        "by": "bot"
+      },
+      {
+        "manager": "m1fe09710",
+        "player": "103536968833612789",
+        "at": "2026-10-02T22:06:21.842Z",
+        "by": "bot"
+      }
+    ],
     "status": "live",
     "completed": false,
     "timer": {
