@@ -193,14 +193,28 @@
   "swaps": [],
   "trades": [],
   "tradeRules": {
+    "faMode": "waiver",
+    "waiver": {
+      "days": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7
+      ],
+      "time": "12:07",
+      "order": "reverse"
+    },
     "enabled": true,
     "freeAgents": true,
     "perWeek": 1,
     "adminApproval": false,
     "equalCount": true,
     "rosterRules": true,
-    "teamLimit": true,
-    "mode": "windows",
+    "teamLimit": false,
+    "mode": "always",
     "windows": []
   },
   "announcement": null
