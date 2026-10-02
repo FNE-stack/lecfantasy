@@ -10,6 +10,8 @@ GITHUB_REPO = "FNE-stack/lecfantasy"
 GITHUB_BRANCH = "main"
 ALLOWED_ORIGIN = "https://fne-stack.github.io"
 PAGES_URL = "https://fne-stack.github.io/lecfantasy"
+# admin login name (the password is the ADMIN_PASSWORD secret)
+ADMIN_USER = "admin"
 # push sender id seen by Google/Apple push services - the site, not a person
 VAPID_SUBJECT = "https://fne-stack.github.io/lecfantasy"
 # where the league lives. Unset = data/league.json in GITHUB_REPO (public).

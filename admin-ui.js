@@ -9,9 +9,11 @@ let ctx = null, root = null, A = null, health = null, history = null, tab = 'ove
 const TOK = 'lf.admin';
 const esc = s => window.LECUI.esc(s);
 const fmt = n => window.LECUI.fmt(n);
-const tokenGet = () => { try { const t = JSON.parse(sessionStorage.getItem(TOK) || 'null'); return t && t.exp * 1000 > Date.now() ? t.token : null; } catch (e) { return null; } };
-const tokenSet = t => { try { sessionStorage.setItem(TOK, JSON.stringify(t)); } catch (e) {} };
-const tokenDel = () => { try { sessionStorage.removeItem(TOK); } catch (e) {} };
+// kept in localStorage so a reload doesn't log the admin out; the token
+// itself expires after 12 h
+const tokenGet = () => { try { const t = JSON.parse(localStorage.getItem(TOK) || 'null'); return t && t.exp * 1000 > Date.now() ? t.token : null; } catch (e) { return null; } };
+const tokenSet = t => { try { localStorage.setItem(TOK, JSON.stringify(t)); } catch (e) {} };
+const tokenDel = () => { try { localStorage.removeItem(TOK); } catch (e) {} };
 
 async function api(path, opt) {
   opt = opt || {};
@@ -57,11 +59,12 @@ const pidFromInput = v => { const name = String(v || '').split(' · ')[0].trim()
 
 // ── views ─────────────────────────────────────────────────────────────────
 function viewLogin(err) {
-  return `<div style="max-width:420px;margin:30px auto">${card('Admin', `<div class="card-b">
+  return `<div style="max-width:420px;margin:30px auto">${card('Admin-Login', `<div class="card-b">
     ${err ? `<div class="msg err">${esc(err)}</div>` : ''}
-    <label>Admin-Passwort</label><input id="apw" type="password" autocomplete="current-password" style="width:100%">
+    <label>Name</label><input id="auser" autocomplete="username" value="admin" style="width:100%">
+    <label>Passwort</label><input id="apw" type="password" autocomplete="current-password" style="width:100%">
     <div style="margin-top:14px"><button class="btn gold" id="alogin">Einloggen</button></div>
-    <p class="muted" style="font-size:12px;margin-top:14px">Das Admin-Passwort ist getrennt von den Spieler-Logins.</p></div>`)}</div>`;
+    <p class="muted" style="font-size:12px;margin-top:14px">Der Admin-Zugang ist getrennt von deinem Spieler-Konto.</p></div>`)}</div>`;
 }
 
 function viewOverview() {
@@ -265,7 +268,7 @@ function bind() {
   const lb = document.getElementById('alogin');
   if (lb) {
     const go = async () => {
-      try { const r = await api('/api/admin/login', { method: 'POST', body: { password: val('apw') } }); tokenSet(r); flash = null; await load(); runHealth(); }
+      try { const r = await api('/api/admin/login', { method: 'POST', body: { username: val('auser'), password: val('apw') } }); tokenSet(r); flash = null; await load(); runHealth(); }
       catch (e) { flash = { ok: false, text: e.message }; draw(); }
     };
     lb.onclick = go; document.getElementById('apw').onkeydown = e => { if (e.key === 'Enter') go(); };

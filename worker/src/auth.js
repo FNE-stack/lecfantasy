@@ -109,13 +109,15 @@ async function hmac(secret, msg) {
   const key = await crypto.subtle.importKey('raw', enc.encode(secret), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
   return hex(await crypto.subtle.sign('HMAC', key, enc.encode(msg)));
 }
-export async function adminLogin(env, password) {
+export const adminUser = env => String(env.ADMIN_USER || 'admin').trim().toLowerCase();
+export async function adminLogin(env, username, password) {
   if (!env.ADMIN_PASSWORD) throw new HttpError(500, 'ADMIN_PASSWORD ist nicht gesetzt (wrangler secret put ADMIN_PASSWORD)');
   // hash both sides so the comparison is length-independent
   const a = await hmac('cmp', String(password || '')), b = await hmac('cmp', env.ADMIN_PASSWORD);
-  if (!safeEqual(a, b)) {
+  const userOk = String(username || '').trim().toLowerCase() === adminUser(env);
+  if (!safeEqual(a, b) || !userOk) {
     await new Promise(r => setTimeout(r, 600));   // slows guessing down
-    throw new HttpError(401, 'Admin-Passwort falsch');
+    throw new HttpError(401, 'Admin-Name oder Passwort falsch');
   }
   const exp = Math.floor(Date.now() / 1000) + ADMIN_TTL;
   return { token: `${exp}.${await hmac(env.ADMIN_PASSWORD, 'admin:' + exp)}`, exp };

@@ -112,7 +112,7 @@ function spark(id, n) {
 function matchLine(e, code) {
   const [a, b] = e.teams;
   const done = e.state === 'completed';
-  const score = done ? `<b class="num">${a.wins ?? 0}–${b.wins ?? 0}</b>` : `<span class="dim">Bo${e.bestOf}</span>`;
+  const score = done ? `<b class="num">${a.wins ?? 0}:${b.wins ?? 0}</b>` : `<span class="dim">Bo${e.bestOf}</span>`;
   const mark = code && done ? ((e.teams.find(t => t.code === code) || {}).outcome === 'win' ? ' <span class="wl w">W</span>' : ' <span class="wl l">L</span>') : '';
   return `<span class="row" style="gap:8px">${logo(a.code, 22)}<b>${esc(a.code)}</b>${score}<b>${esc(b.code)}</b>${logo(b.code, 22)}${mark}</span>`;
 }
@@ -162,6 +162,14 @@ function bindLogin() {
   const go = async () => {
     btn.disabled = true;
     try {
+      // the admin logs in through the same form - and lands in the admin area,
+      // not in a player account (the two are deliberately separate)
+      if ($('lname').value.trim().toLowerCase() === 'admin') {
+        const r = await api('/api/admin/login', { method: 'POST', body: { username: 'admin', password: $('lpw').value } });
+        try { localStorage.setItem('lf.admin', JSON.stringify(r)); } catch (e) {}
+        location.hash = '#/admin';
+        return;
+      }
       const r = await api('/api/login', { method: 'POST', body: { name: $('lname').value, password: $('lpw').value } });
       await startSession(r.token);
     } catch (e) { $('loginmsg').innerHTML = `<div class="msg err">${esc(e.message)}</div>`; btn.disabled = false; }

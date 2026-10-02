@@ -119,7 +119,7 @@ async function call(method, path, { body, token } = {}) {
 const league = () => gh.current('league.json');
 
 // helpers to get a league going
-async function admin() { return (await call('POST', '/api/admin/login', { body: { password: ADMIN_PW } })).body.token; }
+async function admin() { return (await call('POST', '/api/admin/login', { body: { username: 'admin', password: ADMIN_PW } })).body.token; }
 async function invite(a) { return (await call('POST', '/api/admin/invite', { token: a })).body.invite.code; }
 async function join(code, name, pw = 'secret-' + name) {
   const r = await call('POST', '/api/join', { body: { code, name, password: pw } });
@@ -155,6 +155,8 @@ tests.invite_join_login = async () => {
   assert((await call('GET', '/api/state', { token: t })).body.me.name === 'Fabi', 'joined + logged in');
   let r = await call('POST', '/api/join', { body: { code, name: 'fabi', password: 'whatever1' } });
   assert(r.status === 409, 'duplicate name (case-insensitive) refused');
+  r = await call('POST', '/api/join', { body: { code, name: 'ADMIN', password: 'whatever1' } });
+  assert(r.status === 400 && /reserviert/.test(r.body.error), 'admin is a reserved name');
   r = await call('POST', '/api/join', { body: { code, name: 'Tim', password: '123' } });
   assert(r.status === 400, 'short password refused');
   r = await call('POST', '/api/login', { body: { name: '  FABI ', password: 'secret-Fabi' } });
@@ -275,7 +277,10 @@ tests.passwords_and_sessions = async () => {
   assert((await call('GET', '/api/state', { token: tok.Ben })).status === 401, 'kick logs out');
   // a member token is not an admin token
   assert((await call('GET', '/api/admin/state', { token: tok.Ben })).status === 401, 'member cannot use admin api');
-  assert((await call('POST', '/api/admin/login', { body: { password: 'guess' } })).status === 401, 'wrong admin password');
+  assert((await call('POST', '/api/admin/login', { body: { username: 'admin', password: 'guess' } })).status === 401, 'wrong admin password');
+  assert((await call('POST', '/api/admin/login', { body: { username: 'root', password: ADMIN_PW } })).status === 401, 'wrong admin name');
+  assert((await call('POST', '/api/admin/login', { body: { username: ' ADMIN ', password: ADMIN_PW } })).status === 200, 'admin name case/space-insensitive');
+  assert((await call('POST', '/api/admin/op', { token: a, body: { op: 'renameManager', manager: ids.Ann, name: 'Admin' } })).status === 400, 'nobody can be renamed to admin');
   return 'reset password revokes sessions, kick, member≠admin, admin password checked';
 };
 

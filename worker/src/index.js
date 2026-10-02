@@ -92,7 +92,7 @@ async function route(request, env, ctx) {
   }
 
   // ── admin ───────────────────────────────────────────────────────────────
-  if (p === '/api/admin/login' && method === 'POST') return adminLogin(env, body.password);
+  if (p === '/api/admin/login' && method === 'POST') return adminLogin(env, body.username, body.password);
   if (p.startsWith('/api/admin/')) {
     if (!(await isAdmin(env, request))) throw new HttpError(401, 'Admin-Login nötig');
     if (p === '/api/admin/state') return adminState(env);

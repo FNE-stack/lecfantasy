@@ -14,6 +14,7 @@ export function cleanName(n) {
   const s = String(n || '').trim().replace(/\s+/g, ' ');
   if (s.length < 2 || s.length > 24) throw new HttpError(400, 'Name: 2–24 Zeichen');
   if (/[<>"]/.test(s)) throw new HttpError(400, 'Name enthält ungültige Zeichen');
+  if (s.toLowerCase() === 'admin') throw new HttpError(400, 'Der Name „admin" ist reserviert.');
   return s;
 }
 export const mgrName = (league, id) => ((league.managers || []).find(m => m.id === id) || {}).name || id;
