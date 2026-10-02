@@ -721,6 +721,64 @@ tests.backups = async () => {
   return 'manual backup, summary, league+chat+tips+claims+queues inside, no secrets, admin-only, restore (with safety backup first), upload, garbage refused, cron daily from 05:00 only on change, keeps 60';
 };
 
+tests.test_mode = async () => {
+  const S = globalThis.LECScoring, idx = new Map(PLAYERS.players.map(p => [p.id, p]));
+  const a = await admin(), code = await invite(a);
+  const before = JSON.stringify(league());
+  let r = await call('POST', '/api/admin/test', { token: a, body: { action: 'start', bots: 3 } });
+  assert(r.status === 200, 'start: ' + JSON.stringify(r.body));
+  const tm = league().testMode;
+  assert(tm.on && tm.bots.length === 3 && league().managers.length === 3 && tm.backupId, 'three bots + backup');
+  r = await call('POST', '/api/admin/test', { token: a, body: { action: 'start' } });
+  assert(r.status === 409, 'no second start');
+  const me = await join(code, 'Fabi');                       // the admin's own player account
+  await call('POST', '/api/admin/op', { token: a, body: { op: 'setRoster', roster: { slots: ROLES, perRole: 1, maxPerTeam: 3 }, force: true } });
+  r = await call('POST', '/api/admin/op', { token: a, body: { op: 'setStatus', status: 'live' } });
+  // bots are first in the order: they pick at once, then it is my turn
+  let L = league();
+  const fabi = L.managers.find(m => m.name === 'Fabi').id;
+  assert(S.currentPicker(L) === fabi && L.draft.picks.length === 3 && L.draft.picks.every(p => p.by === 'bot'), 'bots picked until my turn: ' + L.draft.picks.length);
+  for (let guard = 0; guard < 20 && S.draftStatus(league()) === 'live'; guard++) {
+    L = league();
+    assert(S.currentPicker(L) === fabi, 'after each of my picks the bots answer at once');
+    const p = PLAYERS.players.find(x => !S.pickError(L, idx, fabi, x.id, S.relaxLevel(L, idx, fabi)));
+    r = await call('POST', '/api/pick', { token: me, body: { player: p.id } });
+    assert(r.status === 200, 'my pick: ' + JSON.stringify(r.body));
+  }
+  L = league();
+  assert(S.draftStatus(L) === 'done' && L.draft.picks.length === 20, 'draft done with 4 x 5 picks');
+  // trades with a bot: fair -> accepted, robbery -> rejected
+  const ros = S.rosters(L), bot = tm.bots[0];
+  const sameRole = role => [ros[fabi].find(id => idx.get(id).role === role), ros[bot].find(id => idx.get(id).role === role)];
+  const g2 = id => idx.get(id).team === 'G2';             // fixture: G2 players score 9 kills, others 1
+  const role = ROLES.find(rl => { const [m, b] = sameRole(rl); return g2(m) && !g2(b); });
+  if (role) {
+    const [mine, theirs] = sameRole(role);
+    r = await call('POST', '/api/trade', { token: me, body: { action: 'propose', to: bot, give: [mine], get: [theirs] } });
+    assert(r.status === 200 && r.body.trade.status === 'accepted', 'bot accepts a good offer: ' + JSON.stringify(r.body));
+  }
+  const robbery = ROLES.find(rl => { const [m, b] = sameRole(rl); return m && b && !g2(m) && g2(b); });
+  if (robbery) {
+    const [mine, theirs] = sameRole(robbery);
+    r = await call('POST', '/api/trade', { token: me, body: { action: 'propose', to: bot, give: [mine], get: [theirs] } });
+    assert(r.status === 200 && r.body.trade.status === 'rejected', 'bot rejects a bad offer: ' + JSON.stringify(r.body));
+  }
+  // test pick'em: bots tip right away
+  SEASON = { season: 2026, tournaments: [{ slug: 'sp', lastMatch: '2026-08-01T15:00:00Z', done: true }] };
+  r = await call('POST', '/api/admin/test', { token: a, body: { action: 'pickem', minutes: 5 } });
+  assert(r.status === 200 && league().pickems.sp, 'test pick\'em open: ' + JSON.stringify(r.body));
+  for (const b of tm.bots) assert(await env.LEAGUE.get(`pick:sp:${b}`), 'bot tipped');
+  // end: everything as before
+  r = await call('POST', '/api/admin/test', { token: a, body: { action: 'end' } });
+  assert(r.status === 200, 'end: ' + JSON.stringify(r.body));
+  L = league();
+  assert(!L.testMode && L.managers.length === 0 && L.draft.picks.length === 0 && !L.pickems?.sp, 'restored to the state before the test');
+  assert(JSON.stringify(L.roster) === JSON.stringify(JSON.parse(before).roster), 'settings as before');
+  r = await call('POST', '/api/admin/test', { token: a, body: { action: 'end' } });
+  assert(r.status === 409, 'end only while on');
+  return `bots join, pick instantly around me, ${role ? 'accept a fair trade, ' : ''}${robbery ? 'reject a bad one, ' : ''}tip the test pick'em; end restores everything`;
+};
+
 tests.faab = async () => {
   const S = globalThis.LECScoring, idx = new Map(PLAYERS.players.map(p => [p.id, p]));
   const { a, tok, ids } = await liveLeague(['Ann', 'Ben']);

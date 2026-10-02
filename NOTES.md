@@ -6,7 +6,7 @@ Punkte, Entscheidungen und Fallen, in die man schon getreten ist.
 ## Stand
 
 **LIVE, leer, bereit.** Liga im Status *Anmeldung*, 0 Mitglieder, frischer
-Einladungslink im Admin. Alle Tests grün (Regeln 17/17, Worker 23/23, Punkte 4/4).
+Einladungslink im Admin. Alle Tests grün (Regeln 17/17, Worker 24/24, Punkte 4/4).
 Saison 2026 komplett geladen (3 Splits, 382 Spiele, 186/186 Serien = offiziell).
 Live per echtem Browser geprüft: Einladung → Beitreten → Login → Draft → Pick →
 Admin-Pick → Undo → Restore → Health; Layout auf 5 Breiten × alle Seiten × alle
@@ -94,6 +94,22 @@ Admin-Tabs; ausgeloggt keine Mitgliedsdaten sichtbar.
   stellt fehlende Logins wieder her, überschreibt nie ein neueres Passwort.
 - Admin → Backups: jetzt sichern, herunterladen, wiederherstellen, Datei hochladen,
   löschen. System-Check zeigt, ob der tägliche Lauf passiert ist.
+
+## Testmodus (02.10.2026)
+
+- Admin → Testmodus: nur im Status Anmeldung. Start = Backup + 1–5 Bots (`league.testMode
+  = { on, startedAt, backupId, bots }`) + Trades „immer offen“. Ende = Backup zurück.
+- Bots (worker/src/testmode.js): picken sofort in **einem** Commit, sobald sie dran sind
+  (nach jedem Pick, State-Poll, Admin-Op, Cron), aus ihren 3 besten legalen Spielern;
+  tippen jeden offenen Pick'em; nehmen Trades an, wenn sie ≥ 90 % des Werts bekommen;
+  antworten manchmal im Chat. Banner „Testmodus“ auf allen Seiten.
+- Live probiert: Draft 4 Manager × 10 in 35 s.
+
+## Handy
+
+- Admin-Bereich auf 360/390 px geprüft (alle Tabs): Listen mit Knöpfen sind Blöcke statt
+  Tabellen (Mitglieder, Picks, Verlauf, Backups); `select/input/textarea` nie breiter
+  als ihr Platz (theme.css).
 
 ## Dateien
 

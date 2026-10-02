@@ -358,3 +358,6 @@ td.fill b{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:inli
   .tabbar a{font-size:10.5px;letter-spacing:.02em}
   .tabbar svg{width:21px;height:21px}
 }
+
+/* never wider than the space they are in (phones) */
+select, input, textarea { max-width: 100%; }

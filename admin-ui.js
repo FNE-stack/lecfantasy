@@ -95,10 +95,9 @@ function viewDraft() {
   const order = (d.order || []).map((id, i) => `<div class="row" style="padding:8px 16px;border-bottom:1px solid var(--line);gap:10px">
       <span class="rank" style="width:28px;font-size:16px">${i + 1}</span><b style="flex:1">${esc(mname(id))}</b>
       ${btn('↑', 'move', { i, dir: -1 })}${btn('↓', 'move', { i, dir: 1 })}</div>`).join('');
-  const picks = (d.picks || []).map((p, i) => `<tr><td class="rank" style="width:36px;font-size:15px">${i + 1}</td>
-      <td><select data-act="pickMgr" data-i="${i}">${mgrOptions(p.manager)}</select></td>
-      <td class="fill"><b>${esc(pname(p.player))}</b> ${p.by ? `<span class="pill">${esc(p.by)}</span>` : ''}</td>
-      <td class="num" style="white-space:nowrap">${btn('Ändern', 'replace', { i })} ${opBtn('✕', { op: 'removePick', index: i }, `Pick #${i + 1} entfernen? Alle späteren Züge rutschen eins nach vorn.`)}</td></tr>`).join('');
+  const picks = (d.picks || []).map((p, i) => `<div style="padding:10px 16px;border-bottom:1px solid var(--line)">
+      <div class="row" style="gap:10px;min-width:0"><span class="rank" style="width:28px;font-size:15px">${i + 1}</span><b style="flex:1;min-width:0;overflow-wrap:anywhere">${esc(pname(p.player))}</b>${p.by ? `<span class="pill">${esc(p.by)}</span>` : ''}</div>
+      <div class="row" style="gap:6px;margin:8px 0 0 38px;flex-wrap:wrap"><select data-act="pickMgr" data-i="${i}" style="flex:1;min-width:120px">${mgrOptions(p.manager)}</select>${btn('Ändern', 'replace', { i })}${opBtn('✕', { op: 'removePick', index: i }, `Pick #${i + 1} entfernen? Alle späteren Züge rutschen eins nach vorn.`)}</div></div>`).join('');
   const t = d.timer || { mode: 'off', seconds: 90 };
   return card('Status', `<div class="card-b row" style="flex-wrap:wrap">${sbtn('lobby', 'Anmeldung')}${sbtn('live', 'Draft läuft')}${sbtn('done', 'Gesperrt')}
       <span class="muted" style="font-size:13px">${A.progress.done}/${A.progress.total} Picks${A.onTheClock ? ` · am Zug: <b>${esc(mname(A.onTheClock))}</b>` : ''}</span></div>`)
@@ -115,20 +114,20 @@ function viewDraft() {
     + card('Pick-Timer', `<div class="card-b"><div class="row" style="flex-wrap:wrap"><select id="tMode">${['off', 'soft', 'auto'].map(m => `<option value="${m}" ${t.mode === m ? 'selected' : ''}>${{ off: 'aus', soft: 'nur Anzeige', auto: 'Auto-Pick' }[m]}</option>`).join('')}</select>
         <input id="tSec" type="number" min="15" max="3600" value="${t.seconds || 90}" style="width:100px"> s ${btn('Speichern', 'timer', {}, 'gold')}</div>
         <p class="muted" style="font-size:12px;margin:10px 0 0">Auto-Pick nimmt zuerst die ★ Watchlist des Managers, sonst den besten Verfügbaren nach Punkten.</p></div>`) + '</div>'
-    + card('Alle Picks', picks ? `<table><tbody>${picks}</tbody></table>` : '<div class="empty">noch keine Picks</div>');
+    + card('Alle Picks', picks || '<div class="empty">noch keine Picks</div>');
 }
 
 function viewMembers() {
   const inv = A.invite;
   const link = inv ? `${location.origin}${location.pathname}#/join/${inv.code}` : '';
-  const rows = A.members.map(m => `<tr><td class="fill"><b>${esc(m.name)}</b><div class="dim" style="font-size:11px">${m.joined ? 'seit ' + new Date(m.joined).toLocaleDateString('de-DE') : ''}</div></td>
-      <td class="hide-s">${m.hasPassword ? '<span class="pill teal">Passwort ✓</span>' : '<span class="pill live">kein Passwort</span>'}</td>
-      <td class="num hide-s">${m.sessions} Geräte</td><td class="num hide-s">${m.push ? '🔔 ' + m.push : ''}</td>
-      <td class="num" style="white-space:nowrap">${btn('Umbenennen', 'rename', { id: m.id })} ${btn('Passwort', 'setpw', { id: m.id })} ${opBtn('Abmelden', { op: 'kick', manager: m.id }, `${m.name} überall abmelden?`)} ${btn('Entfernen', 'remove', { id: m.id })}</td></tr>`).join('');
+  const rows = A.members.map(m => `<div style="padding:12px 16px;border-bottom:1px solid var(--line)">
+      <div class="row" style="gap:8px;flex-wrap:wrap"><b style="font-size:15px">${esc(m.name)}</b>${m.hasPassword ? '<span class="pill teal">Passwort ✓</span>' : '<span class="pill live">kein Passwort</span>'}</div>
+      <div class="dim" style="font-size:12px;margin:3px 0 8px">${m.joined ? 'seit ' + new Date(m.joined).toLocaleDateString('de-DE') + ' · ' : ''}${m.sessions} Geräte${m.push ? ' · 🔔 ' + m.push : ''}</div>
+      <div class="row" style="gap:6px;flex-wrap:wrap">${btn('Umbenennen', 'rename', { id: m.id })}${btn('Passwort', 'setpw', { id: m.id })}${opBtn('Abmelden', { op: 'kick', manager: m.id }, `${m.name} überall abmelden?`)}${btn('Entfernen', 'remove', { id: m.id })}</div></div>`).join('');
   return card('Einladungslink', `<div class="card-b">${inv ? `<div class="row" style="flex-wrap:wrap"><input id="invLink" value="${esc(link)}" readonly style="flex:1;min-width:240px">${btn('Kopieren', 'copy', {}, 'gold')}
         ${btn('Neuen Link erzeugen', 'invite')}</div><p class="muted" style="font-size:12px;margin:10px 0 0">Ein neuer Link macht den alten ungültig. Beitreten geht nur, solange der Status „Anmeldung" ist.</p>`
       : `<div class="row">${btn('Einladungslink erzeugen', 'invite', {}, 'gold')}</div>`}</div>`, `${A.members.length} / ${A.capacity ?? '?'} Plätze`)
-    + card('Mitglieder', rows ? `<table><tbody>${rows}</tbody></table>` : '<div class="empty">noch niemand</div>', opBtn('Alle abmelden', { op: 'kick' }, 'Wirklich ALLE überall abmelden?'))
+    + card('Mitglieder', rows ? rows : '<div class="empty">noch niemand</div>', opBtn('Alle abmelden', { op: 'kick' }, 'Wirklich ALLE überall abmelden?'))
     + card('Mitglied hinzufügen', `<div class="card-b row" style="flex-wrap:wrap"><input id="nmName" placeholder="Name" maxlength="24"><input id="nmPw" type="password" placeholder="Passwort (optional)">${btn('Hinzufügen', 'addMember', {}, 'gold')}</div>`);
 }
 
@@ -317,9 +316,10 @@ function viewPickemAdmin() {
 
 function viewHistory() {
   if (!history) return card('Verlauf', '<div class="empty">lade …</div>');
-  return card('Verlauf von league.json', '<table><tbody>' + history.map((c, i) => `<tr><td class="dim" style="white-space:nowrap">${new Date(c.date).toLocaleString('de-DE', { dateStyle: 'short', timeStyle: 'short' })}</td>
-      <td class="fill">${esc(c.message)}</td><td class="dim hide-s">${esc(c.short)}</td>
-      <td class="num">${i === 0 ? '<span class="pill teal">aktuell</span>' : opBtn('Wiederherstellen', { op: 'restore', sha: c.sha, force: true }, `Liga auf den Stand „${c.message}" (${c.short}) zurücksetzen? Das ist selbst wieder rückgängig machbar.`)}</td></tr>`).join('') + '</tbody></table>',
+  return card('Verlauf von league.json', history.map((c, i) => `<div style="padding:10px 16px;border-bottom:1px solid var(--line)">
+      <div class="row" style="justify-content:space-between;gap:10px"><span class="dim" style="font-size:12px">${new Date(c.date).toLocaleString('de-DE', { dateStyle: 'short', timeStyle: 'short' })} · ${esc(c.short)}</span>
+        ${i === 0 ? '<span class="pill teal">aktuell</span>' : opBtn('Wiederherstellen', { op: 'restore', sha: c.sha, force: true }, `Liga auf den Stand „${c.message}" (${c.short}) zurücksetzen? Das ist selbst wieder rückgängig machbar.`)}</div>
+      <div style="margin-top:4px;overflow-wrap:anywhere">${esc(c.message)}</div></div>`).join(''),
     'jede Änderung ist ein Eintrag — alles ist rückgängig machbar');
 }
 
@@ -339,6 +339,37 @@ function viewBackups() {
       <span class="muted" style="font-size:12px">Tipp: ab und zu eins herunterladen und auf dem PC behalten.</span></div>`)
     + card('Gespeicherte Backups', backups === null ? '<div class="empty">lade …</div>' : rows ? rows : '<div class="empty">Noch keins — das erste kommt morgen früh, oder jetzt per Knopf.</div>',
       backups ? `${backups.length} Stück` : '');
+}
+
+function viewTest() {
+  const L = A.league, tm = L.testMode, st = window.LECScoring.draftStatus(L);
+  if (!tm || !tm.on) {
+    return card('Testmodus', `<div class="card-b" style="line-height:1.7">
+      <p style="margin-top:0">Spiel alles einmal selbst durch — mit Bots als Gegnern und den echten Punkten der Saison.</p>
+      <ol class="muted" style="padding-left:18px;margin:0 0 12px">
+        <li>Beim Start wird ein <b style="color:var(--text)">Backup</b> gemacht.</li>
+        <li>Die Bots treten bei. Sie draften sofort, wenn sie dran sind, tippen beim Pick'em, nehmen faire Trades an und antworten manchmal im Chat.</li>
+        <li>Du trittst mit einem eigenen Spieler-Account über den Einladungslink bei und spielst ganz normal.</li>
+        <li><b style="color:var(--text)">Testmodus beenden</b> spielt das Backup zurück — danach ist alles wie vorher, auch dein Test-Account ist wieder weg.</li></ol>
+      ${st !== 'lobby' ? '<div class="msg err">Geht nur vor dem Draft (Status Anmeldung). Erst unter Draft zurücksetzen.</div>' : `<div class="row" style="flex-wrap:wrap;gap:10px">
+        <label style="margin:0;display:flex;gap:8px;align-items:center">Bots <select id="tmBots">${[1, 2, 3, 4, 5].map(n => `<option ${n === 3 ? 'selected' : ''}>${n}</option>`).join('')}</select></label>
+        ${btn('Testmodus starten', 'tmStart', {}, 'gold')}</div>`}</div>`);
+  }
+  const inv = A.invite;
+  const link = inv ? `${location.origin}${location.pathname}#/join/${inv.code}` : '';
+  const bots = (tm.bots || []).map(id => (L.managers.find(m => m.id === id) || {}).name).filter(Boolean);
+  const humans = L.managers.filter(m => !(tm.bots || []).includes(m.id));
+  const step = (done, title, body) => `<div style="padding:14px 16px;border-bottom:1px solid var(--line)"><div style="display:flex;gap:10px;align-items:flex-start">
+      <span style="font-size:18px;width:22px">${done ? '✅' : '⬜'}</span><div style="flex:1;min-width:0"><b>${title}</b><div class="muted" style="font-size:13px;margin-top:4px;line-height:1.6">${body}</div></div></div></div>`;
+  return card('Testmodus läuft', `<div class="card-b muted" style="font-size:13px">Seit ${esc(new Date(tm.startedAt).toLocaleString('de-DE', { dateStyle: 'short', timeStyle: 'short' }))} · Bots: <b style="color:var(--text)">${esc(bots.join(', '))}</b> · Backup vorher: ${esc(tm.backupId)}</div>`
+      + step(humans.length > 0, '1. Als Spieler beitreten', humans.length ? `Dabei: ${esc(humans.map(m => m.name).join(', '))}` : `Öffne den Link in einem <b>privaten Fenster</b> oder am Handy und melde dich mit Name + Passwort an:
+          <div class="row" style="flex-wrap:wrap;gap:8px;margin-top:8px"><input id="invLink" value="${esc(link)}" readonly style="flex:1;min-width:0">${btn('Kopieren', 'copy', {}, 'gold')}</div>`)
+      + step(st !== 'lobby', '2. Draft starten', st === 'lobby' ? `<div class="row" style="flex-wrap:wrap;gap:8px;margin-top:6px">${opBtn('Reihenfolge mischen', { op: 'shuffleOrder' })}${opBtn('Draft jetzt starten', { op: 'setStatus', status: 'live' }, 'Draft starten?', 'gold')}</div>` : st === 'live' ? 'läuft — die Bots picken sofort, wenn sie dran sind' : 'fertig')
+      + step(Object.keys(L.pickems || {}).length > 0, "3. Pick'em testen", `Öffnet einen Pick'em mit Sperre in ein paar Minuten. Die Bots tippen sofort; nach der Sperre deckt das System auf und wertet direkt aus (die Saison ist ja gespielt).
+          <div class="row" style="flex-wrap:wrap;gap:8px;margin-top:8px"><label style="margin:0;display:flex;gap:6px;align-items:center">Sperre in <select id="tmMin">${[2, 5, 10, 30].map(n => `<option ${n === 5 ? 'selected' : ''}>${n}</option>`).join('')}</select> Min</label>${btn("Test-Pick'em öffnen", 'tmPickem', {}, 'gold')}</div>`)
+      + step(false, '4. Rumprobieren', `Aufstellung setzen, Trades mit den Bots (faire Angebote nehmen sie an), Chat, Rückblick, LEC-Tab.
+          <div class="row" style="flex-wrap:wrap;gap:8px;margin-top:8px">${opBtn('Waiver jetzt laufen lassen', { op: 'runWaivers' })}${btn('Ruhmeshalle füllen', 'tmHall')}</div>`)
+      + step(false, '5. Fertig?', `Alles zurück auf den Stand vor dem Test.<div style="margin-top:8px">${btn('Testmodus beenden', 'tmEnd', {}, 'gold')}</div>`));
 }
 
 function viewRaw() {
@@ -368,13 +399,13 @@ function viewEmergency() {
       : `Aktuell öffentlich in ${esc(repo)}. Für echte Privatsphäre: privates Repo <code>lecfantasy-data</code> anlegen, Token darauf erweitern, dann <code>DATA_REPO</code> setzen und neu deployen.`}</div>`);
 }
 
-const TABS = [['overview', 'Übersicht'], ['draft', 'Draft'], ['members', 'Mitglieder'], ['points', 'Punkte'], ['stats', 'Stats'], ['pickem', "Pick'em"], ['settings', 'Einstellungen'], ['history', 'Verlauf'], ['backup', 'Backups'], ['raw', 'Rohdaten'], ['emergency', 'Notfall']];
+const TABS = [['overview', 'Übersicht'], ['draft', 'Draft'], ['members', 'Mitglieder'], ['points', 'Punkte'], ['stats', 'Stats'], ['pickem', "Pick'em"], ['settings', 'Einstellungen'], ['history', 'Verlauf'], ['backup', 'Backups'], ['test', 'Testmodus'], ['raw', 'Rohdaten'], ['emergency', 'Notfall']];
 function draw() {
   if (!root) return;
   if (!tokenGet()) { root.innerHTML = viewLogin(flash && !flash.ok ? flash.text : ''); bind(); return; }
   if (!A) { root.innerHTML = '<div class="empty">lade Admin …</div>'; return; }
   const issues = A.validation.errors.length;
-  const body = { overview: viewOverview, draft: viewDraft, members: viewMembers, points: viewPoints, stats: viewStats, backup: viewBackups, pickem: viewPickemAdmin, settings: viewSettings, history: viewHistory, raw: viewRaw, emergency: viewEmergency }[tab]();
+  const body = { overview: viewOverview, draft: viewDraft, members: viewMembers, points: viewPoints, stats: viewStats, backup: viewBackups, test: viewTest, pickem: viewPickemAdmin, settings: viewSettings, history: viewHistory, raw: viewRaw, emergency: viewEmergency }[tab]();
   root.innerHTML = `<div class="row" style="justify-content:space-between;flex-wrap:wrap;gap:12px;margin-bottom:14px">
       <div><div class="eyebrow">${esc(A.league.name || 'LEC Fantasy')} · ${{ lobby: 'Anmeldung', live: 'Draft läuft', done: 'Saison' }[window.LECScoring.draftStatus(A.league)]}</div><h1 style="font-size:40px">Admin</h1></div>
       <div class="row">${issues ? `<span class="pill live">${issues} Fehler</span>` : '<span class="pill teal">konsistent</span>'}${btn('Neu laden', 'reload')}${btn('Admin abmelden', 'alogout')}</div></div>
@@ -542,6 +573,13 @@ async function act(a, d, el) {
       }
       if (a === 'winDel') rules.windows = (cur.windows || []).filter((_, k) => k !== +d.i);
       return op({ op: 'setTradeRules', rules }, a === 'winDel' ? 'Fenster löschen?' : null);
+    }
+    case 'tmStart': case 'tmEnd': case 'tmPickem': case 'tmHall': {
+      if (a === 'tmEnd' && !window.confirm('Testmodus beenden? Liga, Chat und Tipps gehen auf den Stand vor dem Test zurück.')) return;
+      const body = { action: { tmStart: 'start', tmEnd: 'end', tmPickem: 'pickem', tmHall: 'hall' }[a], bots: +val('tmBots') || 3, minutes: +val('tmMin') || 5 };
+      busy = true; draw();
+      try { const r = await api('/api/admin/test', { method: 'POST', body }); flash = { ok: true, text: r.message }; } catch (e) { flash = { ok: false, text: e.message }; }
+      busy = false; return load();
     }
     case 'bkNow':
       try { const r = await api('/api/admin/backup', { method: 'POST', body: { action: 'create' } }); flash = { ok: true, text: r.message }; } catch (e) { flash = { ok: false, text: e.message }; }

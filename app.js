@@ -1182,6 +1182,7 @@ function render() {
   else if ((m = p.match(/^\/team\/([\w-]+)$/))) html = viewTeam(m[1]);
   else if ((m = p.match(/^\/manager\/([\w-]+)$/))) html = viewManager(m[1], m[1] === me());
   else html = card('Nicht gefunden', '<div class="empty"><a href="#/">Zur Startseite</a></div>');
+  if (loggedIn() && L().testMode && L().testMode.on) html = `<div class="note" style="border-color:var(--gold);display:flex;gap:10px;align-items:center"><span style="font-size:18px">🧪</span><div><b>Testmodus</b> — ${(L().testMode.bots || []).length} Bots spielen mit. Am Ende setzt der Admin alles zurück.</div></div>` + html;
   $('view').innerHTML = html;
   chrome();
   bind();
