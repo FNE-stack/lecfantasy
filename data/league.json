@@ -59,8 +59,8 @@
     "adminApproval": false,
     "equalCount": true,
     "rosterRules": true,
-    "teamLimit": false,
-    "mode": "always",
+    "teamLimit": true,
+    "mode": "windows",
     "windows": []
   },
   "announcement": null,
