@@ -41,8 +41,9 @@
     "perWeek": 1,
     "adminApproval": false,
     "equalCount": true,
-    "rosterRules": false,
-    "mode": "always",
+    "rosterRules": true,
+    "teamLimit": true,
+    "mode": "windows",
     "windows": []
   },
   "announcement": null
