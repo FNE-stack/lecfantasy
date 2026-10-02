@@ -52,7 +52,7 @@
         5
       ],
       "time": "03:00",
-      "order": "faab"
+      "order": "reverse"
     },
     "enabled": true,
     "freeAgents": true,
