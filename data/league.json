@@ -190,7 +190,22 @@
     "startedAt": "2026-10-02T10:03:45.904Z"
   },
   "adjustments": [],
-  "swaps": [],
+  "swaps": [
+    {
+      "manager": "m53c5dfc1",
+      "out": "105504920899018806",
+      "in": "105501850450507181",
+      "at": "2026-10-02T10:07:46.538Z",
+      "by": "waiver"
+    },
+    {
+      "manager": "ma39be5bd",
+      "out": "105548731617719496",
+      "in": "107464179845128878",
+      "at": "2026-10-02T10:07:46.538Z",
+      "by": "waiver"
+    }
+  ],
   "trades": [
     {
       "id": "t1dba83a8",
@@ -232,5 +247,12 @@
     "mode": "always",
     "windows": []
   },
-  "announcement": null
+  "announcement": null,
+  "waiverRuns": [
+    {
+      "at": "2026-10-02T10:07:46.538Z",
+      "awarded": 2,
+      "failed": 1
+    }
+  ]
 }
