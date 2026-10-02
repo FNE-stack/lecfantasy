@@ -20,9 +20,17 @@
     "maxPerTeam": 2
   },
   "standingsMode": "points",
-  "managers": [],
+  "managers": [
+    {
+      "id": "ma39be5bd",
+      "name": "Bot Alpha",
+      "joined": "2026-10-02T10:01:33.673Z"
+    }
+  ],
   "draft": {
-    "order": [],
+    "order": [
+      "ma39be5bd"
+    ],
     "snake": true,
     "picks": [],
     "status": "lobby",
