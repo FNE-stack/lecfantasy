@@ -26,9 +26,17 @@
     "perRole": 2
   },
   "standingsMode": "points",
-  "managers": [],
+  "managers": [
+    {
+      "id": "m697c1cff",
+      "name": "QA Nav",
+      "joined": "2026-10-03T19:07:40.297Z"
+    }
+  ],
   "draft": {
-    "order": [],
+    "order": [
+      "m697c1cff"
+    ],
     "snake": true,
     "picks": [],
     "status": "lobby",
