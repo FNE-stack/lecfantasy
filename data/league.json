@@ -123,5 +123,19 @@
       "m7087bead",
       "mccf2a083"
     ]
+  },
+  "events": {
+    "msi_2026": {
+      "slug": "msi_2026",
+      "name": "MSI 2026 (Wiederholung)",
+      "budget": 100,
+      "maxPerTeam": 2,
+      "captain": 1.5,
+      "prices": {},
+      "video": "",
+      "createdAt": "2026-10-03T18:26:40.233Z",
+      "lineups": {},
+      "revealed": []
+    }
   }
 }
