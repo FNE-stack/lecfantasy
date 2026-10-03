@@ -96,5 +96,18 @@
     "resetEachSplit": false
   },
   "hall": {},
-  "events": {}
+  "events": {
+    "worlds_2026": {
+      "slug": "worlds_2026",
+      "name": "Worlds 2026",
+      "budget": 100,
+      "maxPerTeam": 2,
+      "captain": 1.5,
+      "prices": {},
+      "video": "fB8TyLTD7EE",
+      "createdAt": "2026-10-03T20:10:44.903Z",
+      "lineups": {},
+      "revealed": []
+    }
+  }
 }
