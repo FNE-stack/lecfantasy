@@ -26,9 +26,17 @@
     "perRole": 2
   },
   "standingsMode": "points",
-  "managers": [],
+  "managers": [
+    {
+      "id": "m02595135",
+      "name": "Fabi",
+      "joined": "2026-10-03T19:20:16.447Z"
+    }
+  ],
   "draft": {
-    "order": [],
+    "order": [
+      "m02595135"
+    ],
     "snake": true,
     "picks": [],
     "status": "lobby",
