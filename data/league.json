@@ -135,7 +135,48 @@
       "video": "",
       "createdAt": "2026-10-03T18:26:40.233Z",
       "lineups": {},
-      "revealed": []
+      "revealed": [],
+      "replay": {
+        "from": 1791052239756,
+        "first": 1782615600000,
+        "speed": 1029
+      },
+      "pickem": {
+        "revealed": false,
+        "lockAt": null,
+        "questions": [
+          {
+            "id": "q1",
+            "type": "champion",
+            "points": 10
+          },
+          {
+            "id": "q2",
+            "type": "finalist",
+            "points": 5
+          },
+          {
+            "id": "q3",
+            "type": "winnerRegion",
+            "points": 5
+          },
+          {
+            "id": "q4",
+            "type": "mostKills",
+            "points": 5
+          },
+          {
+            "id": "q5",
+            "type": "mostPicked",
+            "points": 5
+          },
+          {
+            "id": "q6",
+            "type": "longestGame",
+            "points": 5
+          }
+        ]
+      }
     }
   }
 }
