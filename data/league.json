@@ -26,9 +26,29 @@
     "perRole": 2
   },
   "standingsMode": "points",
-  "managers": [],
+  "managers": [
+    {
+      "id": "mc001b3bc",
+      "name": "Bot Anna",
+      "joined": "2026-10-03T19:15:55.752Z"
+    },
+    {
+      "id": "m8e06a101",
+      "name": "Bot Ben",
+      "joined": "2026-10-03T19:15:55.752Z"
+    },
+    {
+      "id": "mc5355019",
+      "name": "Bot Chris",
+      "joined": "2026-10-03T19:15:55.752Z"
+    }
+  ],
   "draft": {
-    "order": [],
+    "order": [
+      "mc001b3bc",
+      "m8e06a101",
+      "mc5355019"
+    ],
     "snake": true,
     "picks": [],
     "status": "lobby",
@@ -62,7 +82,7 @@
     "rosterRules": true,
     "teamLimit": true,
     "autoWindows": true,
-    "mode": "windows",
+    "mode": "always",
     "windows": []
   },
   "announcement": null,
@@ -101,5 +121,15 @@
       "lineups": {},
       "revealed": []
     }
+  },
+  "testMode": {
+    "on": true,
+    "startedAt": "2026-10-03T19:15:55.752Z",
+    "backupId": "2026-10-03",
+    "bots": [
+      "mc001b3bc",
+      "m8e06a101",
+      "mc5355019"
+    ]
   }
 }
