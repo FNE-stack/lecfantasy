@@ -350,7 +350,7 @@ function viewTest() {
         <li>Beim Start wird ein <b style="color:var(--text)">Backup</b> gemacht.</li>
         <li>Die Bots treten bei. Sie draften sofort, wenn sie dran sind, tippen beim Pick'em, nehmen faire Trades an und antworten manchmal im Chat.</li>
         <li>Du trittst mit einem eigenen Spieler-Account über den Einladungslink bei und spielst ganz normal.</li>
-        <li><b style="color:var(--text)">Testmodus beenden</b> spielt das Backup zurück — danach ist alles wie vorher, auch dein Test-Account ist wieder weg.</li></ol>
+        <li><b style="color:var(--text)">Testmodus beenden</b> spielt das Backup zurück — danach ist alles wie vorher. Wer während des Tests beigetreten ist (z. B. du), bleibt mit Name und Passwort dabei; nur Bots und Testdaten verschwinden.</li></ol>
       ${st !== 'lobby' ? '<div class="msg err">Geht nur vor dem Draft (Status Anmeldung). Erst unter Draft zurücksetzen.</div>' : `<div class="row" style="flex-wrap:wrap;gap:10px">
         <label style="margin:0;display:flex;gap:8px;align-items:center">Bots <select id="tmBots">${[1, 2, 3, 4, 5].map(n => `<option ${n === 3 ? 'selected' : ''}>${n}</option>`).join('')}</select></label>
         ${btn('Testmodus starten', 'tmStart', {}, 'gold')}</div>`}</div>`);

@@ -8,7 +8,7 @@
 // the chat. league.testMode = { on, startedAt, backupId, bots:[ids] }
 // ═══════════════════════════════════════════════════════════════════════════
 import { S, HttpError, readLeagueFresh, writeLeague, publicData, playerIndex, seasonPoints } from './store.js';
-import { backupNow, backupRestore } from './backup.js';
+import { backupNow, backupRestore, backupGet } from './backup.js';
 import { tradeAction } from './draft.js';
 import { chatPost } from './extras.js';
 
@@ -41,8 +41,22 @@ export async function testEnd(env) {
   const { data } = await readLeagueFresh(env);
   const tm = data.testMode;
   if (!tm || !tm.on) throw new HttpError(409, 'Der Testmodus läuft gerade nicht.');
+  // real people who joined during the test keep their account (id, name,
+  // password, sessions); only the bots and the test data go
+  const before = await backupGet(env, tm.backupId);
+  const known = new Set(((before.league || {}).managers || []).map(m => m.id));
+  const keep = (data.managers || []).filter(m => !(tm.bots || []).includes(m.id) && !known.has(m.id));
   await backupRestore(env, { id: tm.backupId });
-  return { message: 'Testmodus beendet — alles ist wieder wie vor dem Test.' };
+  if (keep.length) {
+    await writeLeague(env, l => {
+      for (const m of keep) if (!(l.managers || []).some(x => x.id === m.id)) {
+        l.managers = (l.managers || []).concat({ id: m.id, name: m.name, joined: m.joined });
+        l.draft.order = (l.draft.order || []).concat(m.id);
+      }
+      return l;
+    }, `test: Konten bleiben (${keep.map(m => m.name).join(', ')})`);
+  }
+  return { message: 'Testmodus beendet — alles ist wieder wie vor dem Test.' + (keep.length ? ` Dabei bleiben: ${keep.map(m => m.name).join(', ')} (mit Passwort).` : '') };
 }
 
 // Bots on the clock pick at once, in one write: from their three best legal

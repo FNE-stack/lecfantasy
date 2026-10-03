@@ -774,11 +774,14 @@ tests.test_mode = async () => {
   r = await call('POST', '/api/admin/test', { token: a, body: { action: 'end' } });
   assert(r.status === 200, 'end: ' + JSON.stringify(r.body));
   L = league();
-  assert(!L.testMode && L.managers.length === 0 && L.draft.picks.length === 0 && !L.pickems?.sp, 'restored to the state before the test');
+  assert(!L.testMode && L.managers.length === 1 && L.managers[0].name === 'Fabi' && L.draft.picks.length === 0 && !L.pickems?.sp, 'test data gone, bots gone, Fabi stays: ' + JSON.stringify(L.managers));
+  assert(/Fabi/.test(r.body.message) && L.draft.order.includes(L.managers[0].id), 'Fabi in the draft order');
+  assert((await call('POST', '/api/login', { body: { name: 'Fabi', password: 'secret-Fabi' } })).status === 200, 'Fabi can still log in');
+  assert((await call('GET', '/api/state', { token: me })).status === 200, 'and the old session still works');
   assert(JSON.stringify(L.roster) === JSON.stringify(JSON.parse(before).roster), 'settings as before');
   r = await call('POST', '/api/admin/test', { token: a, body: { action: 'end' } });
   assert(r.status === 409, 'end only while on');
-  return `bots join, pick instantly around me, ${role ? 'accept a fair trade, ' : ''}${robbery ? 'reject a bad one, ' : ''}tip the test pick'em; end restores everything`;
+  return `bots join, pick instantly around me, ${role ? 'accept a fair trade, ' : ''}${robbery ? 'reject a bad one, ' : ''}tip the test pick'em; end removes bots + test data, people who joined keep their account`;
 };
 
 tests.events = async () => {
