@@ -814,6 +814,10 @@ tests.events = async () => {
   assert(r.status === 200, 'pickem open');
   await call('POST', '/api/event/pickem', { token: tok.Ann, body: { slug: 'ev_2026', picks: { q1: 'AAA', q2: 'LCK' } } });
   await call('POST', '/api/event/pickem', { token: tok.Ben, body: { slug: 'ev_2026', picks: { q1: 'BBB', q2: 'LEC' } } });
+  r = await call('POST', '/api/admin/event', { token: a, body: { action: 'pickem', round: 'ko', slug: 'ev_2026', questions: [{ type: 'koFinal', points: 10 }] } });
+  assert(r.status === 200, 'ko round open');
+  r = await call('POST', '/api/event/pickem', { token: tok.Ann, body: { slug: 'ev_2026', round: 'ko', picks: { q1: 'AAA,CCC,AAA,BBB' } } });
+  assert(r.status === 200 && r.body.picks.q1 === 'AAA,CCC', 'multi pick: distinct, cut to 2: ' + JSON.stringify(r.body));
   // stage 0 starts: the cron reveals teams + tips
   EVENT.schedule[0].start = iso(Date.now() - h);
   await worker.scheduled({}, env, { waitUntil() {} });
@@ -824,6 +828,11 @@ tests.events = async () => {
   assert(r.status === 409, 'tips locked');
   r = await call('POST', '/api/event/team', { token: tok.Ann, body: { slug: 'ev_2026', players: team, captain: 'AAA_TOP' } });
   assert(r.status === 200 && r.body.stage === 1, 'changes now go to stage 1');
+  assert(!league().events.ev_2026.pickemKo.revealed, 'ko round still secret after the first stage started');
+  r = await call('POST', '/api/event/pickem', { token: tok.Ann, body: { slug: 'ev_2026', round: 'ko', picks: { q1: 'AAA,CCC' } } });
+  assert(r.status === 200, 'ko tips still open');
+  r = await call('GET', '/api/event?slug=ev_2026', { token: tok.Ann });
+  assert(r.body.rounds.ko.tips.q1 === 'AAA,CCC' && r.body.rounds.pre.locked && !r.body.rounds.ko.locked, 'state per round: ' + JSON.stringify(r.body.rounds));
   // event over: AAA beats CCC in the final -> champion AAA (LCK); hall entry
   Object.assign(EVENT.schedule[0], { state: 'completed', teams: [{ code: 'AAA', outcome: 'win' }, { code: 'BBB', outcome: 'loss' }] });
   Object.assign(EVENT.schedule[1], { start: iso(Date.now() - 0.5 * h), state: 'completed', teams: [{ code: 'AAA', outcome: 'win' }, { code: 'CCC', outcome: 'loss' }] });
@@ -832,7 +841,8 @@ tests.events = async () => {
   ev = league().events.ev_2026;
   const rows = globalThis.LECScoring.eventStandings(league(), ev, EVENT);
   const ann = rows.find(x => x.manager === ids.Ann);
-  assert(ann.pickem === 15 && ann.byStage[1] > 0, 'Ann: both tips right, stage-1 team counts: ' + JSON.stringify(ann));
+  assert(ann.pickem === 15 + 20 && ann.byStage[1] > 0, 'Ann: both pre tips right + both finalists (ko round), stage-1 team counts: ' + JSON.stringify(ann));
+  assert(league().events.ev_2026.pickemKo.revealed, 'ko round revealed at the knockouts');
   const hall = league().hall.event_ev_2026;
   assert(hall && hall.table[0].name === 'Ann' && hall.name === 'Worlds 2026', 'event in the hall of fame');
   r = await call('POST', '/api/admin/event', { token: a, body: { action: 'delete', slug: 'ev_2026' } });

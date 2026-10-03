@@ -295,6 +295,18 @@ tests.events = () => {
     picks: { a: { q1: 'DDD', q2: 'BBB', q3: '13' }, b: { q1: 'AAA', q2: 'AAA', q3: '5' } } };
   const r2 = S.eventStandings(L, lev, d);
   assert(r2.find(r => r.manager === 'a').pickem === 13 && r2.find(r => r.manager === 'b').pickem === 5, 'pick\'em points (closest number wins)');
+  // multi picks (points per correct team) and a second round before the knockouts
+  lev.pickem.questions.push({ id: 'q4', type: 'advance8', points: 2 });
+  lev.pickem.picks.a.q4 = 'AAA,BBB,DDD';                         // AAA + DDD made it: 2 x 2
+  lev.pickemKo = { revealed: true, questions: [{ id: 'q1', type: 'finalScore', points: 10 }, { id: 'q2', type: 'koFinal', points: 5 }],
+    picks: { b: { q1: '1:0', q2: 'DDD,AAA' } } };
+  d.schedule[d.schedule.length - 1].teams = [{ code: 'AAA', outcome: 'loss', wins: 0 }, { code: 'DDD', outcome: 'win', wins: 1 }];
+  d.schedule[d.schedule.length - 1].bestOf = 1;
+  const r3 = S.eventStandings(L, lev, d);
+  const A3 = r3.find(r => r.manager === 'a'), B3 = r3.find(r => r.manager === 'b');
+  assert(A3.pickem === 13 + 4 && A3.hits.q4 === 2, 'advance8: 2 of 3 right = 4 points: ' + JSON.stringify(A3));
+  assert(B3.pickem === 5 + 10 + 10 && B3.correct.includes('ko:q1') && B3.hits['ko:q2'] === 2, 'ko round: exact final score + both finalists: ' + JSON.stringify(B3));
+  assert(JSON.stringify(S.eventFinalScores(d)) === '["1:0"]' && S.eventLevels(d).join() === 'Swiss,Knockouts,Halbfinale,Finale,Sieger', 'score options + levels');
   return 'stages + locks, prices (admin / region), budget, roles, team limit, captain, carry-over lineups, truth incl. Swiss 3-0/0-3 and region, pick\'em';
 };
 

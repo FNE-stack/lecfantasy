@@ -149,16 +149,19 @@ export async function botEvents(env, league) {
           if (!S.eventTeamError(ev, d, sel)) { await env.LEAGUE.put(`evt:${slug}:${stage}:${bot}`, JSON.stringify(sel)); n++; break; }
         }
       }
-      const pe = ev.pickem, lock = eventPickemLock(ev, d);
-      if (pe && !pe.revealed && !(lock && Date.now() >= lock) && !(await env.LEAGUE.get(`evp:${slug}:${bot}`))) {
+      for (const round of ['pre', 'ko']) {
+      const pe = ev[round === 'ko' ? 'pickemKo' : 'pickem'], lock = eventPickemLock(ev, d, round), key = round === 'ko' ? `evp:${slug}:ko:${bot}` : `evp:${slug}:${bot}`;
+      if (pe && !pe.revealed && !(lock && Date.now() >= lock) && !(await env.LEAGUE.get(key))) {
         const regions = [...new Set(d.teams.map(t => t.league).filter(Boolean))];
         const picks = {};
         for (const q of pe.questions || []) {
-          const kind = (S.EVENT_TYPES[q.type] || {}).kind;
-          picks[q.id] = kind === 'team' ? pickOne(d.teams).code : kind === 'player' ? pickOne(d.players).id : kind === 'region' ? pickOne(regions)
+          const def = S.EVENT_TYPES[q.type] || {}, kind = def.kind;
+          if (def.count) { picks[q.id] = d.teams.map(t => t.code).sort(() => Math.random() - .5).slice(0, def.count).join(','); continue; }
+          picks[q.id] = kind === 'score' ? pickOne(S.eventFinalScores(d)) : kind === 'stage' ? pickOne(S.eventLevels(d)) : kind === 'team' ? pickOne(d.teams).code : kind === 'player' ? pickOne(d.players).id : kind === 'region' ? pickOne(regions)
             : kind === 'champion' ? pickOne([...new Set(d.games.map(g => g.champ))].concat('Ahri')) : String(30 + Math.floor(Math.random() * 25));
         }
-        await env.LEAGUE.put(`evp:${slug}:${bot}`, JSON.stringify(picks)); n++;
+        await env.LEAGUE.put(key, JSON.stringify(picks)); n++;
+      }
       }
     }
   }

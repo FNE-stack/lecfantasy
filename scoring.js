@@ -456,6 +456,19 @@
       const pgs = [...perGame.values()];
       out.longestGame = Math.round(Math.max(...pgs.map(x => x.dur)) / 60 * 10) / 10;
       out.bloodiest = Math.max(...pgs.map(x => x.k));
+      const durs = pgs.map(x => x.dur).filter(x => x > 0);
+      if (durs.length) out.shortestGame = Math.round(Math.min(...durs) / 60 * 10) / 10;
+      out.mostDeaths = best(new Map([...kd].map(([k, v]) => [k, v.d])), desc);
+      out.mostAssists = best(new Map([...kd].map(([k, v]) => [k, v.a])), desc);
+      const cw = new Map(), teamGame = new Map();
+      for (const g of rows) {
+        if (g.win) cw.set(g.champ, (cw.get(g.champ) || 0) + 1);
+        const k = g.game + '|' + g.team; teamGame.set(k, (teamGame.get(k) || 0) + g.k);
+      }
+      if (cw.size) out.champMostWins = best(cw, desc);
+      out.distinctChamps = picked.size;
+      out.totalGames = perGame.size;
+      out.teamKillsGame = Math.max(...teamGame.values());
     return out;
   }
 
@@ -490,7 +503,7 @@
   // {pts, correct:[qid]} for one manager's tips. Numbers: the closest guess(es) win.
   function scoreTips(pe, picks, truth, types) {
     types = types || PICKEM_TYPES;
-    const out = { pts: 0, correct: [] };
+    const out = { pts: 0, correct: [], hits: {} };
     for (const q of pe.questions || []) {
       const v = picks[q.id];
       if (v === undefined || v === null || v === '') continue;
@@ -503,6 +516,14 @@
           const dists = Object.values(pe.picks || {}).map(p => p[q.id]).filter(x => x !== undefined && x !== '').map(x => Math.abs(Number(x) - t));
           ok = Math.abs(Number(v) - t) === Math.min(...dists);
         }
+      } else if (def.count) {
+        // several picks, points for each one that is right
+        const t = truth[q.type];
+        if (t instanceof Set) {
+          const hits = [...new Set(String(v).split(',').filter(Boolean))].filter(x => t.has(x)).length;
+          if (hits) { out.pts += hits * (Number(q.points) || 0); out.correct.push(q.id); out.hits[q.id] = hits; }
+        }
+        continue;
       } else ok = truth[q.type] instanceof Set && truth[q.type].has(v);
       if (ok) { out.pts += Number(q.points) || 0; out.correct.push(q.id); }
     }
@@ -930,6 +951,22 @@
   // lineup locks at its first match; without a new one, the last carries on.
   const EVENT_TYPES = {
     champion:    { kind: 'team',   label: 'Turniersieger' },
+    advance8:    { kind: 'team',   count: 8, label: 'Die 8 Teams in der K.-o.-Phase (Punkte pro richtigem Team)' },
+    swiss30s:    { kind: 'team',   count: 2, label: 'Swiss: die zwei 3-0-Teams (pro Treffer)' },
+    swissAdv6:   { kind: 'team',   count: 6, label: 'Swiss: 6 Teams, die mit 3-1 oder 3-2 weiterkommen (pro Treffer)' },
+    swiss03s:    { kind: 'team',   count: 2, label: 'Swiss: die zwei 0-3-Teams (pro Treffer)' },
+    koSemis:     { kind: 'team',   count: 4, label: 'Die 4 Halbfinalisten (pro Treffer)' },
+    koFinal:     { kind: 'team',   count: 2, label: 'Die 2 Finalisten (pro Treffer)' },
+    finalScore:  { kind: 'score',  label: 'Genaues Ergebnis im Finale (Sieger zuerst)' },
+    bestLec:     { kind: 'stage',  label: 'Wie weit kommt das beste LEC-Team?' },
+    regionMostKo:{ kind: 'region', label: 'Region mit den meisten Teams in der K.-o.-Phase' },
+    shortestGame:{ kind: 'number', label: 'Kürzestes Spiel (Minuten, wer am nächsten liegt)' },
+    mostDeaths:  { kind: 'player', label: 'Meiste Tode (Spieler)' },
+    mostAssists: { kind: 'player', label: 'Meiste Assists (Spieler)' },
+    champMostWins:{ kind: 'champion', label: 'Champion mit den meisten Siegen' },
+    distinctChamps:{ kind: 'number', label: 'Wie viele verschiedene Champions werden gespielt? (am nächsten)' },
+    totalGames:  { kind: 'number', label: 'Wie viele Spiele hat das Event? (am nächsten)' },
+    teamKillsGame:{ kind: 'number', label: 'Meiste Kills eines Teams in einem Spiel (am nächsten)' },
     finalist:    { kind: 'team',   label: 'Ein Finalist' },
     swiss30:     { kind: 'team',   label: 'Ein Team, das die Swiss-Phase 3-0 gewinnt' },
     swiss03:     { kind: 'team',   label: 'Ein Team, das in der Swiss-Phase 0-3 rausfliegt' },
@@ -995,6 +1032,31 @@
     for (let i = stage; i >= 0; i--) if (L[i] && L[i][manager]) return L[i][manager];
     return null;
   }
+  // how far a team got: stage index, then semifinal / final / winner inside the knockouts
+  function eventLevels(evData) {
+    const st = ((evData && evData.stages) || []).map(s => s.name);
+    return st.slice(0, -1).concat(st.length ? [st[st.length - 1], 'Halbfinale', 'Finale', 'Sieger'] : []);
+  }
+  function eventTeamLevel(evData, code) {
+    const sched = (evData && evData.schedule) || [], n = ((evData && evData.stages) || []).length;
+    let lv = -1;
+    for (const e of sched) if (e.teams.some(t => t.code === code)) lv = Math.max(lv, e.stage === null || e.stage === undefined ? -1 : e.stage);
+    if (lv === n - 1) {
+      const kos = sched.filter(e => e.stage === n - 1).sort((a, b) => a.start.localeCompare(b.start));
+      const fin = kos[kos.length - 1];
+      if (kos.slice(-3).some(e => e.teams.some(t => t.code === code))) lv = n;
+      if (fin && fin.teams.some(t => t.code === code)) lv = n + 1;
+      if (fin && fin.teams.some(t => t.code === code && t.outcome === 'win')) lv = n + 2;
+    }
+    return Math.max(0, lv);
+  }
+  function eventFinalScores(evData) {
+    const sched = (evData && evData.schedule) || [], n = ((evData && evData.stages) || []).length;
+    const fin = sched.filter(e => e.stage === n - 1).sort((a, b) => a.start.localeCompare(b.start)).pop();
+    const bo = (fin && fin.bestOf) || 5, need = Math.ceil(bo / 2);
+    const out = []; for (let l = 0; l < need; l++) out.push(`${need}:${l}`);
+    return out;
+  }
   function eventTruth(evData, scoring) {
     const out = statTruth((evData && evData.games) || [], scoring);
     const stages = eventStages(evData), sched = (evData && evData.schedule) || [];
@@ -1009,6 +1071,28 @@
         if (team && team.league) out.winnerRegion = new Set([team.league]);
       }
     }
+    // knockout field: once the stage before it is over, its teams are known
+    if (ko && stages.length > 1 && stages[ko.i - 1] && stages[ko.i - 1].done) {
+      const field = new Set(sched.filter(e => e.stage === ko.i).flatMap(e => e.teams.map(t => t.code)).filter(c => c && c !== 'TBD'));
+      if (field.size) {
+        out.advance8 = field;
+        const by = {};
+        for (const c of field) { const t = ((evData && evData.teams) || []).find(x => x.code === c); if (t && t.league) by[t.league] = (by[t.league] || 0) + 1; }
+        const top = Math.max(0, ...Object.values(by));
+        if (top) out.regionMostKo = new Set(Object.keys(by).filter(k => by[k] === top));
+      }
+    }
+    if (ko && ko.done) {
+      const kos = sched.filter(e => e.stage === ko.i).sort((a, b) => a.start.localeCompare(b.start));
+      out.koSemis = new Set(kos.slice(-3).flatMap(e => e.teams.map(t => t.code)));
+      if (out.finalist) out.koFinal = out.finalist;
+      const fin = kos[kos.length - 1];
+      const w = fin && fin.teams.find(t => t.outcome === 'win'), l = fin && fin.teams.find(t => t.outcome === 'loss');
+      if (w && l && w.wins !== undefined && w.wins !== null) out.finalScore = new Set([`${w.wins}:${l.wins || 0}`]);
+      // the best LEC team's level
+      const lv = eventLevels(evData), lec = ((evData && evData.teams) || []).filter(t => t.league === 'LEC').map(t => t.code);
+      if (lec.length) out.bestLec = new Set([lv[Math.max(...lec.map(c => eventTeamLevel(evData, c)))]]);
+    }
     const si = ((evData && evData.stages) || []).findIndex(st => /swiss/i.test(st.name));
     if (si >= 0 && stages[si] && stages[si].done) {
       const rec = {};
@@ -1018,6 +1102,8 @@
       }
       out.swiss30 = new Set(Object.keys(rec).filter(k => rec[k].w === 3 && rec[k].l === 0));
       out.swiss03 = new Set(Object.keys(rec).filter(k => rec[k].w === 0 && rec[k].l === 3));
+      out.swiss30s = out.swiss30; out.swiss03s = out.swiss03;
+      out.swissAdv6 = new Set(Object.keys(rec).filter(k => rec[k].w === 3 && (rec[k].l === 1 || rec[k].l === 2)));
     }
     return out;
   }
@@ -1053,8 +1139,8 @@
   function eventStandings(league, ev, evData) {
     const c = eventConfig(ev), sc = league.scoring;
     const stageOf = new Map(((evData && evData.schedule) || []).map(e => [e.match, e.stage]));
-    const pe = ev.pickem;
-    const truth = pe && pe.revealed && eventDone(evData) ? eventTruth(evData, sc) : null;
+    const rounds = [ev.pickem, ev.pickemKo].filter(x => x && x.revealed);
+    const truth = rounds.length && eventDone(evData) ? eventTruth(evData, sc) : null;
     const rows = (league.managers || []).map(m => {
       const r = { manager: m.id, name: m.name, players: 0, pickem: 0, total: 0, byStage: {}, perPlayer: {}, correct: [] };
       for (const g of (evData && evData.games) || []) {
@@ -1067,7 +1153,11 @@
         pts = r2(pts);
         r.players += pts; r.byStage[st] = r2((r.byStage[st] || 0) + pts); r.perPlayer[g.player] = r2((r.perPlayer[g.player] || 0) + pts);
       }
-      if (truth) { const t = scoreTips(pe, (pe.picks || {})[m.id] || {}, truth, EVENT_TYPES); r.pickem = t.pts; r.correct = t.correct; }
+      if (truth) for (const pe of rounds) {
+        const t = scoreTips(pe, (pe.picks || {})[m.id] || {}, truth, EVENT_TYPES);
+        r.pickem += t.pts; r.correct = r.correct.concat(t.correct.map(q => (pe === ev.pickemKo ? 'ko:' : '') + q));
+        Object.entries(t.hits).forEach(([q, h]) => { (r.hits = r.hits || {})[(pe === ev.pickemKo ? 'ko:' : '') + q] = h; });
+      }
       r.players = r2(r.players); r.total = r2(r.players + r.pickem);
       return r;
     });
@@ -1085,7 +1175,7 @@
     suggestedCapacity, calendar, blockKey, lineupConfig, lineupFor, lineupPreview, scoreBook, autoWindows, faabLeft,
     PICKEM_TYPES, pickemTruth, pickemPoints, pickemLock, splitDone,
     weekRecap, hallEntry, hallDue, statTruth, scoreTips,
-    EVENT_TYPES, eventConfig, eventTeamPrice, eventPrice, eventPlayer, eventStages, eventOpenStage, eventDone, eventTeamError, eventLineup, eventTruth, eventStandings, eventReplay, eventReplayPlan
+    EVENT_TYPES, eventConfig, eventTeamPrice, eventPrice, eventPlayer, eventStages, eventOpenStage, eventDone, eventTeamError, eventLineup, eventTruth, eventStandings, eventReplay, eventReplayPlan, eventLevels, eventTeamLevel, eventFinalScores
   };
 // `this` is undefined in an ES module, so a Cloudflare Worker importing this
 // file would crash on a bare `this`. globalThis works in every place these

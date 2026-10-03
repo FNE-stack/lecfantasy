@@ -382,7 +382,7 @@ select, input, textarea { max-width: 100%; }
 @keyframes evName{0%{letter-spacing:.6em;opacity:0}40%{letter-spacing:.08em;opacity:1}80%{opacity:1}100%{opacity:0}}
 .ev-rise{animation:evRise .9s cubic-bezier(.2,.7,.2,1)}
 @keyframes evRise{from{transform:translateY(60px);opacity:0}to{transform:none;opacity:1}}
-body.ev-on .evhero h1{font-size:clamp(26px,6vw,44px)}
+body.ev-on .evhero h1{font-size:clamp(21px,6vw,44px);overflow-wrap:normal !important}
 .evbar{height:6px;border-radius:3px;background:var(--line-2);margin-top:10px;overflow:hidden}
 .evbar>div{height:100%;background:var(--gold);transition:width .3s}
 .evslots{display:grid;gap:0}
@@ -405,3 +405,15 @@ body.ev-on .evhero h1{font-size:clamp(26px,6vw,44px)}
 .evctl input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:20px;height:20px;border-radius:50%;background:var(--gold-hi);border:0;box-shadow:0 1px 4px rgba(0,0,0,.5)}
 .evctl input[type=range]::-moz-range-thumb{width:20px;height:20px;border-radius:50%;background:var(--gold-hi);border:0}
 @media (max-width:899px){.evctl{bottom:calc(76px + env(safe-area-inset-bottom));right:12px}.evctl input[type=range]{width:90px}}
+
+/* multi pick (event pick'em) */
+.evmulti{display:flex;flex-wrap:wrap;gap:6px}
+.evchip{display:inline-flex;align-items:center;gap:6px;padding:6px 10px 6px 6px;border-radius:999px;border:1px solid var(--line-2);background:var(--surface-2);color:var(--text);font:600 12px var(--font);cursor:pointer}
+.evchip.on{border-color:var(--gold);background:var(--gold-soft);color:var(--gold-hi)}
+
+.evfold{border-top:1px solid var(--line)}
+.evfold>summary{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:12px 16px;cursor:pointer;list-style:none}
+.evfold>summary::-webkit-details-marker{display:none}
+.evfold>summary::after{content:"▾";color:var(--muted);transition:transform .2s}
+.evfold[open]>summary::after{transform:rotate(180deg)}
+.evfold>summary b{flex:1}

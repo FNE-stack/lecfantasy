@@ -47,7 +47,7 @@ async function loadMine(slug) {
   try { EVX.mine[slug] = await api('/api/event?slug=' + encodeURIComponent(slug)); } catch (e) { EVX.mine[slug] = { err: e.message }; }
   const t = EVX.mine[slug].team;
   if (!EVX.form[slug]) EVX.form[slug] = t ? { players: Object.fromEntries(t.players.map(id => [evP(slug, id) ? evP(slug, id).role : '', id])), captain: t.captain } : { players: {}, captain: '' };
-  if (!EVX.tips[slug]) EVX.tips[slug] = Object.assign({}, EVX.mine[slug].tips || {});
+  if (!EVX.tips[slug]) { const r = EVX.mine[slug].rounds || {}; EVX.tips[slug] = { pre: Object.assign({}, (r.pre || {}).tips || EVX.mine[slug].tips || {}), ko: Object.assign({}, (r.ko || {}).tips || {}) }; }
   render();
 }
 
@@ -329,46 +329,65 @@ function evAllTeams(slug) {
 }
 
 // event pick'em
-function evPickInput(slug, q, val, dis) {
-  const d = evD(slug), kind = (S.EVENT_TYPES[q.type] || {}).kind;
-  const attr = `data-evq="${esc(q.id)}" ${dis ? 'disabled' : ''}`;
+const PK_ROUNDS = [['pre', 'pickem', 'Vor dem Event'], ['ko', 'pickemKo', 'Vor der K.-o.-Phase']];
+function evPickInput(slug, round, q, val) {
+  const d = evD(slug), def = S.EVENT_TYPES[q.type] || {}, kind = def.kind;
+  const attr = `data-evq="${esc(q.id)}" data-evr="${round}"`;
+  if (def.count) {
+    // several teams: tap the logos (at most `count`)
+    const on = new Set(String(val || '').split(',').filter(Boolean));
+    return `<div class="evmulti" ${attr} data-max="${def.count}">${d.teams.map(t => `<button type="button" class="evchip ${on.has(t.code) ? 'on' : ''}" data-code="${esc(t.code)}" title="${esc(t.name)}">${evLogo(slug, t.code, 22)}<span>${esc(t.code)}</span></button>`).join('')}</div>
+      <div class="dim" style="font-size:12px;margin-top:6px"><b class="evcount">${on.size}</b> / ${def.count} gewählt</div>`;
+  }
   if (kind === 'number') return `<input type="number" step="0.1" ${attr} value="${esc(val || '')}" style="width:120px">`;
   let opts = [];
   if (kind === 'team') opts = d.teams.map(t => [t.code, `${t.name} (${t.league || '?'})`]);
   if (kind === 'region') opts = [...new Set(d.teams.map(t => t.league).filter(Boolean))].map(r => [r, r]);
   if (kind === 'player') opts = d.players.slice().sort((a, b) => a.team.localeCompare(b.team) || EV_ROLES.indexOf(a.role) - EV_ROLES.indexOf(b.role)).map(p => [p.id, `${p.name} (${p.team} ${p.role})`]);
   if (kind === 'champion') opts = Object.entries(app.D.champs.names || {}).sort((a, b) => a[1].localeCompare(b[1]));
+  if (kind === 'score') opts = S.eventFinalScores(d).map(x => [x, x]);
+  if (kind === 'stage') opts = S.eventLevels(d).map(x => [x, x]);
   return `<select ${attr} style="max-width:100%"><option value="">— wählen —</option>${opts.map(([v, l]) => `<option value="${esc(v)}" ${String(val) === String(v) ? 'selected' : ''}>${esc(l)}</option>`).join('')}</select>`;
 }
 function evPickLabel(slug, q, v) {
   if (v === undefined || v === null || v === '') return '<span class="dim">—</span>';
-  const kind = (S.EVENT_TYPES[q.type] || {}).kind;
+  const def = S.EVENT_TYPES[q.type] || {}, kind = def.kind;
+  if (def.count) return String(v).split(',').filter(Boolean).map(c => `<span style="white-space:nowrap">${evLogo(slug, c, 16)} ${esc(c)}</span>`).join(' ');
   if (kind === 'team') return evLogo(slug, v, 18) + ' ' + esc(v);
   if (kind === 'player') return esc((evP(slug, v) || {}).name || v);
   if (kind === 'champion') return U.champIcon(app.D, v, 20) + ' ' + esc((app.D.champs.names || {})[v] || v);
   return esc(v);
 }
 function evPickem(slug) {
-  const ev = L().events[slug], d = evD(slug), pe = ev.pickem, mine = EVX.mine[slug] || {};
-  if (!pe || !(pe.questions || []).length) return card('Pick\'em', '<div class="empty">' + (adminOnly() ? 'Noch kein Pick\'em — leg ihn unter Admin → Events an.' : 'Noch kein Pick\'em — der Admin öffnet ihn vor dem Event.') + '</div>');
-  const max = pe.questions.reduce((t, q) => t + (Number(q.points) || 0), 0);
-  const locked = pe.revealed || !!mine.pickemLocked;
-  if (!locked && !adminOnly()) {
-    const tips = EVX.tips[slug] || (EVX.tips[slug] = {});
-    return card('Pick\'em', pe.questions.map(q => `<div class="card-b" style="border-bottom:1px solid var(--line)"><div class="row" style="justify-content:space-between;gap:10px;flex-wrap:wrap">
-        <b style="flex:1;min-width:180px">${esc(q.label || S.EVENT_TYPES[q.type].label)} <span class="pill">${q.points} Pkt</span></b><div style="flex:1;min-width:180px">${evPickInput(slug, q, tips[q.id])}</div></div></div>`).join('')
-      + `<div class="card-b row" style="flex-wrap:wrap;gap:10px"><button class="btn gold" id="evTipSave">Tipps speichern</button><span class="muted" style="font-size:12px">${mine.pickemLockAt ? 'Sperre in ' + fmtLeft(Date.parse(mine.pickemLockAt) - Date.now()) + ' · ' : ''}Niemand sieht deine Tipps vorher.</span></div>`, `max. ${max} Punkte`);
-  }
-  if (!pe.revealed) return card('Pick\'em', '<div class="empty">Gesperrt — die Tipps werden in der nächsten Minute aufgedeckt.</div>');
+  const ev = L().events[slug], d = evD(slug), mine = EVX.mine[slug] || {};
+  const rounds = PK_ROUNDS.filter(([, key]) => ev[key] && (ev[key].questions || []).length);
+  if (!rounds.length) return card('Pick\'em', '<div class="empty">' + (adminOnly() ? 'Noch kein Pick\'em — leg ihn unter Admin → Events an.' : 'Noch kein Pick\'em — der Admin öffnet ihn vor dem Event.') + '</div>');
   const truth = S.eventTruth(d, scoring()), done = S.eventDone(d);
   const rows = S.eventStandings(L(), ev, d), mgrs = L().managers || [];
-  const tv = q => { const def = S.EVENT_TYPES[q.type] || {}; if (def.manual) return q.answer ? [q.answer] : []; const t = truth[q.type]; return t instanceof Set ? [...t] : typeof t === 'number' ? [t] : []; };
-  return card('Pick\'em', `<div style="overflow-x:auto"><table class="tight"><thead><tr><th>Frage</th><th>${done ? 'Ergebnis' : 'Stand'}</th>${mgrs.map(m => `<th>${esc(m.name)}</th>`).join('')}</tr></thead><tbody>`
-    + pe.questions.map(q => `<tr><td style="white-space:normal;min-width:140px"><b>${esc(q.label || S.EVENT_TYPES[q.type].label)}</b> <span class="pill">${q.points}</span></td>
-      <td>${tv(q).length ? tv(q).slice(0, 3).map(v => evPickLabel(slug, q, v)).join(', ') : '<span class="dim">offen</span>'}</td>
-      ${mgrs.map(m => { const v = ((pe.picks || {})[m.id] || {})[q.id], ok = (rows.find(r => r.manager === m.id) || {}).correct || [];
-        return `<td style="${m.id === me() ? 'background:var(--gold-soft)' : ''}">${evPickLabel(slug, q, v)}${ok.includes(q.id) ? ' <span class="wl w">✓</span>' : ''}</td>`; }).join('')}</tr>`).join('')
-    + `<tr><td><b>Punkte</b></td><td></td>${mgrs.map(m => `<td class="pts">${done ? fmt((rows.find(r => r.manager === m.id) || {}).pickem || 0) : '—'}</td>`).join('')}</tr></tbody></table></div>`, `max. ${max} Punkte`);
+  return rounds.map(([round, key, title]) => {
+    const pe = ev[key], st = (mine.rounds || {})[round] || {};
+    const max = pe.questions.reduce((t, q) => t + (Number(q.points) || 0) * ((S.EVENT_TYPES[q.type] || {}).count || 1), 0);
+    const locked = pe.revealed || !!st.locked;
+    if (!locked && !adminOnly()) {
+      const tips = (EVX.tips[slug] = EVX.tips[slug] || {})[round] || (EVX.tips[slug][round] = {});
+      return card(`Pick'em · ${title}`, pe.questions.map(q => {
+        const def = S.EVENT_TYPES[q.type] || {};
+        return `<div class="card-b" style="border-bottom:1px solid var(--line)"><div style="margin-bottom:8px"><b>${esc(q.label || def.label)}</b> <span class="pill">${q.points} Pkt${def.count ? ' pro Treffer' : ''}</span></div>${evPickInput(slug, round, q, tips[q.id])}</div>`;
+      }).join('') + `<div class="card-b row" style="flex-wrap:wrap;gap:10px"><button class="btn gold" data-evtipsave="${round}">Tipps speichern</button><span class="muted" style="font-size:12px">${st.lockAt ? 'Sperre in ' + fmtLeft(Date.parse(st.lockAt) - Date.now()) + ' · ' : ''}Niemand sieht deine Tipps vorher.</span></div>`, `max. ${max} Punkte`);
+    }
+    if (!pe.revealed) {
+      return card(`Pick'em · ${title}`, adminOnly() ? pe.questions.map(q => `<div class="card-b" style="border-bottom:1px solid var(--line)"><b>${esc(q.label || S.EVENT_TYPES[q.type].label)}</b> <span class="pill">${q.points} Pkt</span></div>`).join('') + `<div class="card-b muted" style="font-size:12px">Die Tipps werden ${st.lockAt ? 'in ' + fmtLeft(Date.parse(st.lockAt) - Date.now()) : 'bei der Sperre'} aufgedeckt.</div>`
+        : '<div class="empty">Gesperrt — die Tipps werden in der nächsten Minute aufgedeckt.</div>', `max. ${max} Punkte`);
+    }
+    const pre = round === 'ko' ? 'ko:' : '';
+    const tv = q => { const def = S.EVENT_TYPES[q.type] || {}; if (def.manual) return q.answer ? [q.answer] : []; const t = truth[q.type]; return t instanceof Set ? [...t] : typeof t === 'number' ? [t] : []; };
+    return card(`Pick'em · ${title}`, `<div style="overflow-x:auto"><table class="tight"><thead><tr><th>Frage</th><th>${done ? 'Ergebnis' : 'Stand'}</th>${mgrs.map(m => `<th>${esc(m.name)}</th>`).join('')}</tr></thead><tbody>`
+      + pe.questions.map(q => `<tr><td style="white-space:normal;min-width:150px"><b>${esc(q.label || S.EVENT_TYPES[q.type].label)}</b> <span class="pill">${q.points}</span></td>
+        <td style="white-space:normal;min-width:110px">${tv(q).length ? (S.EVENT_TYPES[q.type].count ? evPickLabel(slug, q, tv(q).join(',')) : tv(q).slice(0, 3).map(v => evPickLabel(slug, q, v)).join(', ')) : '<span class="dim">offen</span>'}</td>
+        ${mgrs.map(m => { const v = ((pe.picks || {})[m.id] || {})[q.id], r = rows.find(x => x.manager === m.id) || {}, ok = (r.correct || []).includes(pre + q.id), h = (r.hits || {})[pre + q.id];
+          return `<td style="white-space:normal;min-width:110px;${m.id === me() ? 'background:var(--gold-soft)' : ''}">${evPickLabel(slug, q, v)}${ok ? ` <span class="wl w">✓${h ? h : ''}</span>` : ''}</td>`; }).join('')}</tr>`).join('')
+      + '</tbody></table></div>', `max. ${max} Punkte`);
+  }).join('') + (done ? card('Pick\'em-Punkte', `<table><tbody>${rows.slice().sort((a, b) => b.pickem - a.pickem).map((r, i) => `<tr><td class="rank">${i + 1}</td><td class="fill"><b>${esc(r.name)}</b></td><td class="num pts">${fmt(r.pickem)}</td></tr>`).join('')}</tbody></table>`) : '');
 }
 
 // event table
@@ -466,7 +485,17 @@ function bindEvent() {
   document.querySelectorAll('[data-evdrop]').forEach(b => b.onclick = () => { const f = EVX.form[slug]; if (f.captain === f.players[b.dataset.evdrop]) f.captain = ''; delete f.players[b.dataset.evdrop]; EVX.role = b.dataset.evdrop; render(); });
   document.querySelectorAll('[data-evcap]').forEach(b => b.onclick = () => { EVX.form[slug].captain = b.dataset.evcap; render(); });
   document.querySelectorAll('[data-evopen]').forEach(b => b.onclick = () => { EVX.open = EVX.open === b.dataset.evopen ? null : b.dataset.evopen; render(); });
-  document.querySelectorAll('[data-evq]').forEach(el => el.onchange = () => { (EVX.tips[slug] = EVX.tips[slug] || {})[el.dataset.evq] = el.value; });
+  const tipsOf = r => { EVX.tips[slug] = EVX.tips[slug] || {}; return EVX.tips[slug][r] || (EVX.tips[slug][r] = {}); };
+  document.querySelectorAll('select[data-evq],input[data-evq]').forEach(el => el.onchange = () => { tipsOf(el.dataset.evr)[el.dataset.evq] = el.value; });
+  document.querySelectorAll('.evmulti').forEach(box => box.querySelectorAll('.evchip').forEach(b => b.onclick = () => {
+    const tips = tipsOf(box.dataset.evr), max = +box.dataset.max;
+    const on = String(tips[box.dataset.evq] || '').split(',').filter(Boolean);
+    const i = on.indexOf(b.dataset.code);
+    if (i >= 0) on.splice(i, 1); else if (on.length < max) on.push(b.dataset.code); else return toast(`Höchstens ${max} — erst eins abwählen.`);
+    tips[box.dataset.evq] = on.join(',');
+    b.classList.toggle('on', i < 0);
+    const c = box.parentElement.querySelector('.evcount'); if (c) c.textContent = on.length;
+  }));
   const q = $('evQ'); if (q) q.oninput = e => { EVX.q = e.target.value; render(); };
   const tf = $('evTeamF'); if (tf) tf.onchange = e => { EVX.team = e.target.value; render(); };
   const sv = $('evSave'); if (sv) sv.onclick = async () => {
@@ -474,9 +503,10 @@ function bindEvent() {
     try { await api('/api/event/team', { method: 'POST', body: { slug, players: EV_ROLES.map(r => f.players[r]), captain: f.captain } }); toast('Team gespeichert ✓'); await loadMine(slug); }
     catch (e) { toast(`<span style="color:#ffb1b3">${esc(e.message)}</span>`); }
   };
-  const ts = $('evTipSave'); if (ts) ts.onclick = async () => {
-    try { await api('/api/event/pickem', { method: 'POST', body: { slug, picks: EVX.tips[slug] || {} } }); toast('Tipps gespeichert ✓'); } catch (e) { toast(`<span style="color:#ffb1b3">${esc(e.message)}</span>`); }
-  };
+  document.querySelectorAll('[data-evtipsave]').forEach(b => b.onclick = async () => {
+    const round = b.dataset.evtipsave;
+    try { await api('/api/event/pickem', { method: 'POST', body: { slug, round, picks: tipsOf(round) } }); toast('Tipps gespeichert ✓'); } catch (e) { toast(`<span style="color:#ffb1b3">${esc(e.message)}</span>`); }
+  });
   const vb = $('evVid'); if (vb) vb.onclick = () => { store.set('lf.evVideo', 'on'); EVX.entered[slug] = false; render(); };
 }
 

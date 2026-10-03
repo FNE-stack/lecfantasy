@@ -377,12 +377,20 @@ function viewTest() {
 
 // ── special events ────────────────────────────────────────────────────────
 const EVA = { data: {} };
-const EV_PK_DEFAULT = { champion: 10, finalist: 5, swiss30: 5, swiss03: 5, winnerRegion: 5, mostKills: 5, mostPoints: 5, bestKda: 5, mostChamps: 3, maxKillsGame: 3, mostPicked: 5, longestGame: 5, bloodiest: 5 };
-const EV_PK_ON = ['champion', 'finalist', 'swiss30', 'swiss03', 'winnerRegion', 'mostKills', 'mostPicked', 'longestGame'];
+// points per question (multi picks: per correct team); what is ticked by default per round
+const EV_PK_DEFAULT = { champion: 10, finalist: 5, swiss30: 5, swiss03: 5, winnerRegion: 5, mostKills: 5, mostPoints: 5, bestKda: 5, mostChamps: 3, maxKillsGame: 3, mostPicked: 5, longestGame: 5, bloodiest: 5,
+  advance8: 2, swiss30s: 5, swissAdv6: 2, swiss03s: 5, koSemis: 5, koFinal: 10, finalScore: 10, bestLec: 5, regionMostKo: 5, shortestGame: 5, mostDeaths: 5, mostAssists: 5,
+  champMostWins: 5, distinctChamps: 5, totalGames: 5, teamKillsGame: 5 };
+const EV_PK_ON = { pre: ['champion', 'swiss30s', 'swissAdv6', 'swiss03s', 'bestLec', 'regionMostKo', 'mostKills', 'mostDeaths', 'mostPicked', 'shortestGame', 'totalGames'],
+                   ko: ['koSemis', 'koFinal', 'champion', 'finalScore'] };
+const EV_KO_DEFAULT = { champion: 20 };
 function evaData(slug) {
   if (EVA.data[slug] === undefined) { EVA.data[slug] = null; ctx.U.getJson('data/events/' + slug + '.json', true).then(d => { EVA.data[slug] = d || {}; draw(); }); }
   return EVA.data[slug];
 }
+// collapsible section (closed by default; remembers what is open while the tab is shown)
+const EV_OPEN = new Set();
+const fold = (title, meta, body, id) => `<details class="evfold" data-fold="${esc(id || title)}" ${EV_OPEN.has(id || title) ? 'open' : ''}><summary><b>${title}</b><span class="dim" style="font-size:12px">${meta}</span></summary>${body}</details>`;
 function viewEventsAdmin() {
   const S = window.LECScoring, idx = ((ctx.D.eventsIndex || {}).events) || [], evs = A.league.events || {};
   if (!idx.length) return card('Events', '<div class="empty">Noch keine Event-Daten — die kommen mit dem nächsten Stats-Update (Stats → Jetzt aktualisieren).</div>');
@@ -404,27 +412,34 @@ function viewEventsAdmin() {
       : `<div class="card-b" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px">${d.teams.map(t => `<label class="row" style="gap:8px;margin:0;color:var(--text)">${t.logo ? `<img src="${esc(t.logo)}" alt="" width="22" height="22">` : ''}<span style="flex:1"><b>${esc(t.code)}</b> <span class="dim" style="font-size:11px">${esc(t.league)}</span></span>
           <input type="number" min="1" max="100" data-evprice="${esc(t.code)}" value="${S.eventTeamPrice(ev, d, t.code)}" style="width:62px"></label>`).join('')}</div>
         <p class="muted" style="font-size:12px;margin:0 16px 12px">Credits pro Spieler. Vorschlag: LCK/LPL 25, LEC 20, Rest 15 — 5 Spieler, Budget ${c.budget}.</p>`;
-    const pe = ev.pickem || {}, on = new Set((pe.questions || []).map(q => q.type)), pts = Object.fromEntries((pe.questions || []).map(q => [q.type, q.points]));
-    const firstLock = d && S.eventStages(d).find(x => x.lock !== null);
-    const lockVal = pe.lockAt ? pe.lockAt.slice(0, 16) : '';
-    const types = Object.entries(S.EVENT_TYPES).filter(([, t]) => !t.manual);
-    const pk = pe.revealed
-      ? `<div class="card-b muted" style="font-size:13px">Aufgedeckt — ${Object.keys(pe.picks || {}).length} Manager haben getippt.</div>` + (pe.questions || []).filter(q => S.EVENT_TYPES[q.type].manual).map(q => `<div class="card-b row" style="gap:8px;flex-wrap:wrap"><b style="flex:1">${esc(q.label || q.type)}</b><input id="eva_${info.slug}_${q.id}" value="${esc(q.answer || '')}" placeholder="Antwort (Kürzel / Name)">${btn('Antwort', 'evAnswer', { slug: info.slug, qid: q.id })}</div>`).join('')
-      : `<div class="card-b">${types.map(([k, t]) => `<label class="row" style="gap:8px;margin:0 0 6px;color:var(--text)"><input type="checkbox" data-evpk="${info.slug}" value="${k}" ${(pe.questions ? on.has(k) : EV_PK_ON.includes(k)) ? 'checked' : ''} style="width:auto"><span style="flex:1">${esc(t.label)}</span><input type="number" min="0" data-evpkp="${info.slug}" data-t="${k}" value="${pts[k] ?? EV_PK_DEFAULT[k] ?? 5}" style="width:60px"> Pkt</label>`).join('')}
-        <label>Eigene Frage (Antwort trägst du nach dem Event ein)</label><div class="row" style="gap:8px;flex-wrap:wrap"><input id="evcq_${info.slug}" placeholder="z. B. MVP der Finals" style="flex:1;min-width:160px" value="${esc(((pe.questions || []).find(q => q.type === 'manualPlayer') || {}).label || '')}"><input id="evcp_${info.slug}" type="number" value="5" style="width:60px"> Pkt</div>
-        <label>Tipp-Schluss (leer = erstes Spiel${firstLock ? ': ' + new Date(firstLock.lock).toLocaleString('de-DE', { dateStyle: 'short', timeStyle: 'short' }) : ''})</label><input type="datetime-local" id="evl_${info.slug}" value="${esc(lockVal)}">
-        <div style="margin-top:12px">${btn(pe.questions ? "Pick'em speichern" : "Pick'em öffnen", 'evPickem', { slug: info.slug }, 'gold')}</div></div>`;
+    const st = d ? S.eventStages(d) : [];
+    const pkSection = (round, title, hint) => {
+      const key = round === 'ko' ? 'pickemKo' : 'pickem', pe = ev[key] || {}, id = info.slug + '_' + round;
+      const on = new Set((pe.questions || []).map(q => q.type)), pts = Object.fromEntries((pe.questions || []).map(q => [q.type, q.points]));
+      const lockStage = round === 'ko' ? st[st.length - 1] : st.find(x => x.lock !== null);
+      const types = Object.entries(S.EVENT_TYPES).filter(([, t]) => !t.manual);
+      const body = pe.revealed
+        ? `<div class="card-b muted" style="font-size:13px">Aufgedeckt — ${Object.keys(pe.picks || {}).length} Manager haben getippt.</div>` + (pe.questions || []).filter(q => S.EVENT_TYPES[q.type].manual).map(q => `<div class="card-b row" style="gap:8px;flex-wrap:wrap"><b style="flex:1">${esc(q.label || q.type)}</b><input id="eva_${id}_${q.id}" value="${esc(q.answer || '')}" placeholder="Antwort (Kürzel / Name)">${btn('Antwort', 'evAnswer', { slug: info.slug, round, qid: q.id })}</div>`).join('')
+        : `<div class="card-b"><p class="muted" style="font-size:12px;margin-top:0">${hint}</p>${types.map(([k, t]) => `<label class="row" style="gap:8px;margin:0 0 6px;color:var(--text)"><input type="checkbox" data-evpk="${id}" value="${k}" ${(pe.questions ? on.has(k) : EV_PK_ON[round].includes(k)) ? 'checked' : ''} style="width:auto"><span style="flex:1">${esc(t.label)}</span><input type="number" min="0" data-evpkp="${id}" data-t="${k}" value="${pts[k] ?? (round === 'ko' ? EV_KO_DEFAULT[k] : null) ?? EV_PK_DEFAULT[k] ?? 5}" style="width:60px"> Pkt</label>`).join('')}
+          <label>Eigene Frage (Antwort trägst du danach ein)</label><div class="row" style="gap:8px;flex-wrap:wrap"><input id="evcq_${id}" placeholder="z. B. MVP der Finals" style="flex:1;min-width:160px" value="${esc(((pe.questions || []).find(q => q.type === 'manualPlayer') || {}).label || '')}"><input id="evcp_${id}" type="number" value="5" style="width:60px"> Pkt</div>
+          <label>Tipp-Schluss (leer = ${round === 'ko' ? 'erstes K.-o.-Spiel' : 'erstes Spiel'}${lockStage && lockStage.lock ? ': ' + new Date(lockStage.lock).toLocaleString('de-DE', { dateStyle: 'short', timeStyle: 'short' }) : ''})</label><input type="datetime-local" id="evl_${id}" value="${esc(pe.lockAt ? pe.lockAt.slice(0, 16) : '')}">
+          <div style="margin-top:12px">${btn(pe.questions ? "Pick'em speichern" : "Pick'em öffnen", 'evPickem', { slug: info.slug, round }, 'gold')}</div></div>`;
+      return fold(title, pe.questions ? (pe.revealed ? 'aufgedeckt' : `offen · ${pe.questions.length} Fragen`) : 'noch nicht geöffnet', body, id + '_pk');
+    };
+    const pk = pkSection('pre', "Pick'em · vor dem Event", 'Runde 1, sperrt beim ersten Spiel. Teams mit „pro Treffer": jeder Spieler wählt mehrere Teams, Punkte für jedes richtige.')
+      + pkSection('ko', "Pick'em · vor der K.-o.-Phase", 'Runde 2 — am besten öffnen, sobald die Swiss-Phase vorbei ist (dann stehen die K.-o.-Teams fest). Sperrt beim ersten K.-o.-Spiel.');
     return card(esc(ev.name), head
-      + `<div class="card-b" style="border-top:1px solid var(--line)"><div class="grid g-2" style="gap:10px">
+      + fold('Einstellungen', `Budget ${c.budget} · Kapitän ×${c.captain}${ev.video ? ' · Video' : ''}`, `<div class="card-b"><div class="grid g-2" style="gap:10px">
           <label style="margin:0">Name<input id="evn_${info.slug}" value="${esc(ev.name)}" style="width:100%"></label>
           <label style="margin:0">Budget<input id="evb_${info.slug}" type="number" value="${c.budget}" style="width:100%"></label>
           <label style="margin:0">Max. Spieler pro Team<input id="evm_${info.slug}" type="number" min="1" max="5" value="${c.maxPerTeam}" style="width:100%"></label>
           <label style="margin:0">Kapitän ×<input id="evc_${info.slug}" type="number" step="0.1" value="${c.captain}" style="width:100%"></label>
           <label style="margin:0">YouTube-Link (Intro &amp; Musik)<input id="evv_${info.slug}" value="${ev.video ? 'https://youtu.be/' + esc(ev.video) : ''}" placeholder="leer = kein Video" style="width:100%"></label>
           <label style="margin:0">Video ab Sekunde<input id="evs_${info.slug}" type="number" min="0" value="${ev.videoStart || 0}" style="width:100%"></label></div>
-        <div class="row" style="margin-top:12px;gap:8px;flex-wrap:wrap">${btn('Speichern', 'evSave', { slug: info.slug }, 'gold')}<a class="btn sm" href="#/event/${esc(info.slug)}">Event-Seite</a>${btn('Event löschen', 'evDelete', { slug: info.slug })}</div></div>`
-      + `<div class="card-h" style="border-top:1px solid var(--line)"><h2>Team-Preise</h2></div>${prices}`
-      + `<div class="card-h" style="border-top:1px solid var(--line)"><h2>Pick'em</h2></div>${pk}`);
+        <div class="row" style="margin-top:12px;gap:8px;flex-wrap:wrap">${btn('Speichern', 'evSave', { slug: info.slug }, 'gold')}${btn('Event löschen', 'evDelete', { slug: info.slug })}</div></div>`, info.slug + '_set')
+      + fold('Team-Preise', d && (d.teams || []).length ? d.teams.length + ' Teams' : 'Teams stehen noch nicht fest', prices, info.slug + '_price')
+      + `<div class="card-b" style="border-top:1px solid var(--line)"><a class="btn sm" href="#/event/${esc(info.slug)}">Event-Seite öffnen →</a></div>`
+      + pk);
   }).join('');
 }
 
@@ -492,6 +507,7 @@ function bind() {
     try { const r = await api('/api/admin/backup', { method: 'POST', body: { action: 'restore', data } }); flash = { ok: true, text: r.message }; await load(); } catch (e) { flash = { ok: false, text: e.message }; }
     loadBackups();
   };
+  root.querySelectorAll('details.evfold').forEach(dt => { dt.ontoggle = () => { if (dt.open) EV_OPEN.add(dt.dataset.fold); else EV_OPEN.delete(dt.dataset.fold); }; });
   root.querySelectorAll('[data-tab]').forEach(b => b.onclick = () => { tab = b.dataset.tab; flash = null; if (tab === 'history') loadHistory(); if (tab === 'backup') loadBackups(); draw(); });
   root.querySelectorAll('[data-act]').forEach(el => {
     const ev = el.tagName === 'SELECT' ? 'onchange' : 'onclick';
@@ -652,13 +668,13 @@ async function act(a, d, el) {
         if (Object.keys(prices).length) body.prices = prices;
       }
       if (a === 'evPickem') {
-        const qs = [];
-        root.querySelectorAll(`[data-evpk="${slug}"]`).forEach(cb => { if (cb.checked) qs.push({ type: cb.value, points: +root.querySelector(`[data-evpkp="${slug}"][data-t="${cb.value}"]`).value || 0 }); });
-        if (v('evcq').trim()) qs.push({ type: 'manualPlayer', label: v('evcq').trim(), points: +v('evcp') || 0 });
-        const l = v('evl');
-        body = { action: 'pickem', slug, questions: qs, lockAt: l ? new Date(l).toISOString() : null };
+        const id = slug + '_' + d.round, qs = [];
+        root.querySelectorAll(`[data-evpk="${id}"]`).forEach(cb => { if (cb.checked) qs.push({ type: cb.value, points: +root.querySelector(`[data-evpkp="${id}"][data-t="${cb.value}"]`).value || 0 }); });
+        if (val('evcq_' + id).trim()) qs.push({ type: 'manualPlayer', label: val('evcq_' + id).trim(), points: +val('evcp_' + id) || 0 });
+        const l = val('evl_' + id);
+        body = { action: 'pickem', round: d.round, slug, questions: qs, lockAt: l ? new Date(l).toISOString() : null };
       }
-      if (a === 'evAnswer') body = { action: 'answer', slug, qid: d.qid, answer: val('eva_' + slug + '_' + d.qid) };
+      if (a === 'evAnswer') body = { action: 'answer', round: d.round, slug, qid: d.qid, answer: val('eva_' + slug + '_' + d.round + '_' + d.qid) };
       if (a === 'evDelete') { if (!window.confirm('Event löschen? Teams und Tipps dazu sind dann weg.')) return; body = { action: 'delete', slug }; }
       try { const r = await api('/api/admin/event', { method: 'POST', body }); flash = { ok: true, text: r.message }; } catch (e) { flash = { ok: false, text: e.message }; }
       return load();

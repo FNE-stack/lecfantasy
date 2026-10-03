@@ -3,7 +3,8 @@
 //
 // Like the split pick'em, nothing a member saves is visible to the others
 // before the lock: a stage's team waits in KV (`evt:<slug>:<stage>:<id>`), the
-// event pick'em in `evp:<slug>:<id>`. The cron moves them into league.json once
+// event pick'em in `evp:<slug>:<id>` (round before the knockouts:
+// `evp:<slug>:ko:<id>`). The cron moves them into league.json once
 // the stage (or the pick'em) has started. Rules: scoring.js (event*).
 // ═══════════════════════════════════════════════════════════════════════════
 import { S, HttpError, readLeague, readLeagueFresh, writeLeague, publicData } from './store.js';
@@ -20,11 +21,16 @@ function eventOf(league, slug) {
   if (!ev) throw new HttpError(404, 'Dieses Event ist in der Liga nicht angelegt.');
   return ev;
 }
-export function eventPickemLock(ev, evData) {
-  const pe = ev.pickem || {};
+// two pick'em rounds: 'pre' (ev.pickem, locks at the first match) and 'ko'
+// (ev.pickemKo, locks at the first knockout match)
+const ROUNDS = { pre: 'pickem', ko: 'pickemKo' };
+const tipKey = (slug, round, id) => round === 'ko' ? `evp:${slug}:ko:${id}` : `evp:${slug}:${id}`;
+export function eventPickemLock(ev, evData, round) {
+  const pe = ev[ROUNDS[round || 'pre']] || {};
   if (pe.lockAt) return Date.parse(pe.lockAt);
-  const st = S.eventStages(evData).find(x => x.lock !== null);
-  return st ? st.lock : null;
+  const st = S.eventStages(evData);
+  const s = round === 'ko' ? st[st.length - 1] : st.find(x => x.lock !== null);
+  return s && s.lock !== null ? s.lock : null;
 }
 
 // my (secret) team for the open stage + my tips
@@ -34,9 +40,17 @@ export async function eventState(env, me, slug) {
   const stage = S.eventOpenStage(d);
   let team = stage === null ? null : await env.LEAGUE.get(`evt:${slug}:${stage}:${me}`, 'json');
   if (!team && stage !== null) team = S.eventLineup(ev, me, stage - 1);    // carried over from the last stage
-  const tips = (ev.pickem && ev.pickem.revealed) ? ((ev.pickem.picks || {})[me] || {}) : ((await env.LEAGUE.get(`evp:${slug}:${me}`, 'json')) || {});
-  const lock = eventPickemLock(ev, d);
-  return { stage, team, tips, pickemLocked: !!(ev.pickem && (ev.pickem.revealed || (lock && Date.now() >= lock))), pickemLockAt: lock ? new Date(lock).toISOString() : null };
+  const rounds = {};
+  for (const [round, key] of Object.entries(ROUNDS)) {
+    const pe = ev[key];
+    if (!pe) continue;
+    const lock = eventPickemLock(ev, d, round);
+    rounds[round] = { tips: pe.revealed ? ((pe.picks || {})[me] || {}) : ((await env.LEAGUE.get(tipKey(slug, round, me), 'json')) || {}),
+                      locked: !!(pe.revealed || (lock && Date.now() >= lock)), lockAt: lock ? new Date(lock).toISOString() : null };
+  }
+  // older pages read tips/pickemLocked/pickemLockAt
+  const pre = rounds.pre || {};
+  return { stage, team, rounds, tips: pre.tips || {}, pickemLocked: !!pre.locked, pickemLockAt: pre.lockAt || null };
 }
 
 export async function eventSaveTeam(env, me, body) {
@@ -56,14 +70,21 @@ export async function eventSavePickem(env, me, body) {
   const slug = String(body.slug || '');
   const { data: league } = await readLeagueFresh(env);
   const ev = eventOf(league, slug), d = await eventData(env, slug, ev);
-  const pe = ev.pickem;
+  const round = body.round === 'ko' ? 'ko' : 'pre';
+  const pe = ev[ROUNDS[round]];
   if (!pe || !(pe.questions || []).length) throw new HttpError(404, 'Für dieses Event ist noch kein Pick\'em offen.');
-  const lock = eventPickemLock(ev, d);
-  if (pe.revealed || (lock && Date.now() >= lock)) throw new HttpError(409, 'Pick\'em ist gesperrt — das Event hat begonnen.');
-  const ids = new Set(pe.questions.map(q => q.id)), picks = {};
-  for (const [k, v] of Object.entries(body.picks || {})) if (ids.has(k) && v !== '' && v !== null && v !== undefined) picks[k] = String(v).slice(0, 60);
-  await env.LEAGUE.put(`evp:${slug}:${me}`, JSON.stringify(picks));
-  return { picks };
+  const lock = eventPickemLock(ev, d, round);
+  if (pe.revealed || (lock && Date.now() >= lock)) throw new HttpError(409, round === 'ko' ? 'Pick\'em ist gesperrt — die K.-o.-Phase hat begonnen.' : 'Pick\'em ist gesperrt — das Event hat begonnen.');
+  const qs = new Map(pe.questions.map(q => [q.id, q])), picks = {};
+  for (const [k, v] of Object.entries(body.picks || {})) {
+    const q = qs.get(k);
+    if (!q || v === '' || v === null || v === undefined) continue;
+    const def = S.EVENT_TYPES[q.type] || {};
+    // several picks: distinct, at most `count`
+    picks[k] = def.count ? [...new Set(String(v).split(',').map(x => x.trim()).filter(Boolean))].slice(0, def.count).join(',').slice(0, 200) : String(v).slice(0, 60);
+  }
+  await env.LEAGUE.put(tipKey(slug, round, me), JSON.stringify(picks));
+  return { picks, round };
 }
 
 // cron: move teams/tips of everything that has started into league.json;
@@ -83,10 +104,13 @@ export async function eventCron(env, league) {
       p.stages[st.i] = {};
       for (const id of ids) { const t = await env.LEAGUE.get(`evt:${slug}:${st.i}:${id}`, 'json'); if (t) p.stages[st.i][id] = t; }
     }
-    const lock = eventPickemLock(ev, d);
-    if (ev.pickem && !ev.pickem.revealed && lock && lock <= now) {
-      p.tips = {};
-      for (const id of ids) { const t = await env.LEAGUE.get(`evp:${slug}:${id}`, 'json'); if (t) p.tips[id] = t; }
+    for (const [round, key] of Object.entries(ROUNDS)) {
+      const lock = eventPickemLock(ev, d, round);
+      if (ev[key] && !ev[key].revealed && lock && lock <= now) {
+        const tips = {};
+        for (const id of ids) { const t = await env.LEAGUE.get(tipKey(slug, round, id), 'json'); if (t) tips[id] = t; }
+        (p.tips = p.tips || {})[key] = tips;
+      }
     }
     if (S.eventDone(d) && !(league.hall || {})['event_' + slug] && Object.keys(ev.lineups || {}).length) p.hall = { d };
     if (Object.keys(p.stages).length || p.tips || p.hall) patch[slug] = p;
@@ -102,7 +126,10 @@ export async function eventCron(env, league) {
         ev.lineups[i] = Object.assign({}, ev.lineups[i] || {}, teams);
         ev.revealed.push(+i);
       }
-      if (p.tips && ev.pickem && !ev.pickem.revealed) { ev.pickem.picks = Object.assign({}, ev.pickem.picks || {}, p.tips); ev.pickem.revealed = true; ev.pickem.revealedAt = new Date().toISOString(); }
+      for (const [key, tips] of Object.entries(p.tips || {})) {
+        const pe = ev[key];
+        if (pe && !pe.revealed) { pe.picks = Object.assign({}, pe.picks || {}, tips); pe.revealed = true; pe.revealedAt = new Date().toISOString(); }
+      }
       if (p.hall && !(l.hall || {})['event_' + slug]) {
         const rows = S.eventStandings(l, ev, p.hall.d);
         l.hall = l.hall || {};
@@ -151,17 +178,18 @@ export async function eventAdmin(env, body) {
       }
       msg = `Event ${ev.name} gespeichert`;
     } else if (a === 'pickem') {
-      if (ev.pickem && ev.pickem.revealed) throw new HttpError(409, 'Pick\'em ist schon aufgedeckt.');
+      const key = body.round === 'ko' ? 'pickemKo' : 'pickem';
+      if (ev[key] && ev[key].revealed) throw new HttpError(409, 'Pick\'em ist schon aufgedeckt.');
       const qs = (body.questions || []).map((q, i) => {
         if (!S.EVENT_TYPES[q.type]) throw new HttpError(400, 'Unbekannter Fragetyp: ' + q.type);
         return { id: 'q' + (i + 1), type: q.type, points: Math.max(0, Number(q.points) || 0), label: String(q.label || '').slice(0, 80) || undefined };
       });
       if (!qs.length) throw new HttpError(400, 'Mindestens eine Frage');
-      ev.pickem = Object.assign({}, ev.pickem || {}, { questions: qs, revealed: false, lockAt: body.lockAt || null });
-      msg = `Pick'em für ${ev.name}: ${qs.length} Fragen`;
+      ev[key] = Object.assign({}, ev[key] || {}, { questions: qs, revealed: false, lockAt: body.lockAt || null });
+      msg = `Pick'em ${body.round === 'ko' ? '(K.-o.-Runde) ' : ''}für ${ev.name}: ${qs.length} Fragen`;
       void d;
     } else if (a === 'answer') {
-      const q = ((ev.pickem || {}).questions || []).find(x => x.id === body.qid);
+      const q = ((ev[body.round === 'ko' ? 'pickemKo' : 'pickem'] || {}).questions || []).find(x => x.id === body.qid);
       if (!q || !(S.EVENT_TYPES[q.type] || {}).manual) throw new HttpError(400, 'Nur eigene Fragen bekommen eine Antwort');
       q.answer = body.answer ? String(body.answer) : null;
       msg = `Antwort gesetzt`;
