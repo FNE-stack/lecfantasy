@@ -41,13 +41,19 @@
       "id": "mccf2a083",
       "name": "Bot Chris",
       "joined": "2026-10-03T18:26:36.782Z"
+    },
+    {
+      "id": "m2f5f76a2",
+      "name": "Fabi Test",
+      "joined": "2026-10-03T18:26:38.692Z"
     }
   ],
   "draft": {
     "order": [
       "m86aad915",
       "m7087bead",
-      "mccf2a083"
+      "mccf2a083",
+      "m2f5f76a2"
     ],
     "snake": true,
     "picks": [],
