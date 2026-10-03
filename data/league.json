@@ -31,29 +31,11 @@
       "id": "m02595135",
       "name": "Fabi",
       "joined": "2026-10-03T19:20:16.447Z"
-    },
-    {
-      "id": "m68767a03",
-      "name": "Bot Anna",
-      "joined": "2026-10-03T20:05:58.191Z"
-    },
-    {
-      "id": "mc657c249",
-      "name": "Bot Ben",
-      "joined": "2026-10-03T20:05:58.191Z"
-    },
-    {
-      "id": "m5f14b828",
-      "name": "Bot Chris",
-      "joined": "2026-10-03T20:05:58.191Z"
     }
   ],
   "draft": {
     "order": [
-      "m02595135",
-      "m68767a03",
-      "mc657c249",
-      "m5f14b828"
+      "m02595135"
     ],
     "snake": true,
     "picks": [],
@@ -88,7 +70,7 @@
     "rosterRules": true,
     "teamLimit": true,
     "autoWindows": true,
-    "mode": "always",
+    "mode": "windows",
     "windows": []
   },
   "announcement": null,
@@ -114,79 +96,5 @@
     "resetEachSplit": false
   },
   "hall": {},
-  "events": {
-    "first_stand_2026": {
-      "slug": "first_stand_2026",
-      "name": "First Stand 2026 (Wiederholung)",
-      "budget": 100,
-      "maxPerTeam": 2,
-      "captain": 1.5,
-      "prices": {
-        "BFX": 25,
-        "BLG": 25,
-        "G2": 20,
-        "GEN": 25,
-        "JDG": 25,
-        "LOUD": 15,
-        "LYON": 15,
-        "TSW": 15
-      },
-      "video": "",
-      "createdAt": "2026-10-03T20:06:10.039Z",
-      "lineups": {},
-      "revealed": [],
-      "replay": {
-        "from": 1791058569662,
-        "first": 1773666000000,
-        "speed": 296
-      },
-      "pickem": {
-        "revealed": false,
-        "lockAt": null,
-        "questions": [
-          {
-            "id": "q1",
-            "type": "champion",
-            "points": 10
-          },
-          {
-            "id": "q2",
-            "type": "finalist",
-            "points": 5
-          },
-          {
-            "id": "q3",
-            "type": "winnerRegion",
-            "points": 5
-          },
-          {
-            "id": "q4",
-            "type": "mostKills",
-            "points": 5
-          },
-          {
-            "id": "q5",
-            "type": "mostPicked",
-            "points": 5
-          },
-          {
-            "id": "q6",
-            "type": "longestGame",
-            "points": 5
-          }
-        ]
-      },
-      "videoStart": 0
-    }
-  },
-  "testMode": {
-    "on": true,
-    "startedAt": "2026-10-03T20:05:58.191Z",
-    "backupId": "2026-10-03-3",
-    "bots": [
-      "m68767a03",
-      "mc657c249",
-      "m5f14b828"
-    ]
-  }
+  "events": {}
 }
