@@ -114,7 +114,20 @@
     "resetEachSplit": false
   },
   "hall": {},
-  "events": {},
+  "events": {
+    "first_stand_2026": {
+      "slug": "first_stand_2026",
+      "name": "First Stand 2026 (Wiederholung)",
+      "budget": 100,
+      "maxPerTeam": 2,
+      "captain": 1.5,
+      "prices": {},
+      "video": "",
+      "createdAt": "2026-10-03T20:06:10.039Z",
+      "lineups": {},
+      "revealed": []
+    }
+  },
   "testMode": {
     "on": true,
     "startedAt": "2026-10-03T20:05:58.191Z",
