@@ -2,7 +2,7 @@
    theme.css — the whole look, shared by every page.
    Palette taken from lolesports.com's own CSS variables (near-black surfaces,
    gold #c79e57 accent, teal #00c8c8 for interactive, red for LIVE). Headings
-   in Barlow Condensed as the free stand-in for their TT Norms Pro Compact.
+   in Cinzel (the Worlds look, Fabian's choice for the whole site, 03.10.2026).
    ═══════════════════════════════════════════════════════════════════════════ */
 :root{
   --bg:#070708; --bg-2:#0c0d0f;
@@ -13,7 +13,7 @@
   --teal:#00c8c8; --teal-hi:#10e4f9; --teal-soft:rgba(0,200,200,.12);
   --live:#ff2e3b; --win:#4ade80; --loss:#ff5a5f;
   --r:6px;
-  --display:'Barlow Condensed','Arial Narrow',Inter,system-ui,sans-serif;
+  --display:'Cinzel',Georgia,'Times New Roman',serif;
   --font:Inter,system-ui,-apple-system,'Segoe UI',sans-serif;
   /* aliases the older helper code still refers to */
   --fg:var(--text); --blue:var(--teal); --up:var(--win); --down:var(--loss);
@@ -364,11 +364,6 @@ select, input, textarea { max-width: 100%; }
 
 /* ── special events ─────────────────────────────────────────────────────── */
 .evbg{position:fixed;inset:0;z-index:-1;overflow:hidden;background:#000;opacity:0;transition:opacity 1.2s}
-.evbg.intro{inset:auto;z-index:61;opacity:1;border-radius:12px;box-shadow:0 20px 60px rgba(0,0,0,.6),0 0 0 1px var(--gold-soft)}
-.evbg.intro iframe{top:0;left:0;width:100%;height:100%;min-width:0;min-height:0;transform:none;pointer-events:auto}
-.evbg.intro::after{display:none}
-.evbg.grow{z-index:59;transition:top 1.2s cubic-bezier(.2,.7,.2,1),left 1.2s cubic-bezier(.2,.7,.2,1),width 1.2s cubic-bezier(.2,.7,.2,1),height 1.2s cubic-bezier(.2,.7,.2,1),border-radius 1.2s;border-radius:0}
-.evbg.grow iframe{pointer-events:none}
 .evbg.on{opacity:1}
 .evbg iframe{position:absolute;top:50%;left:50%;width:100vw;height:56.25vw;min-height:100vh;min-width:177.78vh;transform:translate(-50%,-50%) scale(1.32);pointer-events:none;border:0}
 .evbg::after{content:"";position:absolute;inset:0;background:linear-gradient(180deg,rgba(0,0,0,.55),rgba(0,0,0,.35) 40%,rgba(0,0,0,.8))}
@@ -376,14 +371,11 @@ select, input, textarea { max-width: 100%; }
 .evintro.play{background:radial-gradient(ellipse at center,rgba(0,0,0,.35),rgba(0,0,0,.85) 75%);backdrop-filter:none;-webkit-backdrop-filter:none}
 .evintro.out{opacity:0;pointer-events:none}
 .evintro-in{text-align:center;padding:24px;max-width:92vw}
-.evintro-logo{max-height:96px;max-width:60vw;object-fit:contain;filter:drop-shadow(0 0 30px var(--gold-soft))}
+.evintro-logo{max-height:140px;max-width:70vw;object-fit:contain;filter:drop-shadow(0 0 30px var(--gold-soft))}
 .evintro-name{font-family:var(--display);font-size:clamp(24px,6vw,48px);font-weight:700;letter-spacing:.06em;color:var(--gold-hi);margin-top:14px;text-transform:uppercase}
 .evintro-sub{color:var(--muted);letter-spacing:.2em;text-transform:uppercase;font-size:12px;margin:6px 0 18px}
-.evintro-slot{width:min(560px,86vw);aspect-ratio:16/9;margin:0 auto;border-radius:12px;background:rgba(255,255,255,.04)}
-.evintro-hint{margin-top:16px;color:var(--gold-hi);font-weight:600}
-.evintro.play .evintro-hint,.evintro.play .evintro-slot{opacity:0;transition:opacity .3s}
 .evintro-skip{display:block;margin-top:16px;color:var(--muted);font-size:13px}
-.evintro.play .evintro-skip,.evintro.play .evintro-sub{opacity:0;transition:opacity .4s}
+.evintro.play .evintro-go,.evintro.play .evintro-skip,.evintro.play .evintro-sub{opacity:0;transition:opacity .4s}
 .evintro.play .evintro-logo{animation:evLogo 2.6s cubic-bezier(.2,.7,.2,1) forwards}
 .evintro.play .evintro-name{animation:evName 2.6s ease forwards}
 @keyframes evLogo{0%{transform:scale(.6);opacity:0;filter:blur(8px) drop-shadow(0 0 0 transparent)}35%{transform:scale(1.05);opacity:1;filter:blur(0) drop-shadow(0 0 40px var(--gold))}75%{transform:scale(1)}100%{transform:scale(1.15);opacity:0}}
@@ -400,3 +392,16 @@ body.ev-on .evhero h1{font-size:clamp(26px,6vw,44px)}
 .evslot .role{width:36px;text-align:center}
 .evslot img.ph,.evslot .ph{width:38px;height:38px;flex-shrink:0}
 @media (prefers-reduced-motion:reduce){.evintro.play .evintro-logo,.evintro.play .evintro-name,.ev-rise{animation:none}}
+
+/* video controls (event pages) */
+.evctl{position:fixed;right:16px;bottom:20px;z-index:40;display:flex;align-items:center;gap:8px;padding:8px 10px;border-radius:999px;
+  background:rgba(0,0,0,.6);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);border:1px solid rgba(255,255,255,.12)}
+.evctl-b{background:none;border:0;color:var(--text);font:600 13px var(--font);cursor:pointer;padding:6px 8px;border-radius:999px;min-width:36px;min-height:36px}
+.evctl-b:hover{background:rgba(255,255,255,.08)}
+.evctl.hint #evMute{background:var(--gold);color:#000;animation:evPulse 1.4s ease-in-out infinite}
+@keyframes evPulse{50%{box-shadow:0 0 0 6px var(--gold-soft)}}
+.evctl input[type=range]{-webkit-appearance:none;appearance:none;width:110px;height:6px;border-radius:3px;margin:0;padding:0;border:0;
+  background:linear-gradient(90deg,var(--gold) var(--v,70%),rgba(255,255,255,.2) var(--v,70%));touch-action:none}
+.evctl input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:20px;height:20px;border-radius:50%;background:var(--gold-hi);border:0;box-shadow:0 1px 4px rgba(0,0,0,.5)}
+.evctl input[type=range]::-moz-range-thumb{width:20px;height:20px;border-radius:50%;background:var(--gold-hi);border:0}
+@media (max-width:899px){.evctl{bottom:calc(76px + env(safe-area-inset-bottom));right:12px}.evctl input[type=range]{width:90px}}

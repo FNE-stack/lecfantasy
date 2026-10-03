@@ -133,13 +133,14 @@ Admin-Tabs; ausgeloggt keine Mitgliedsdaten sichtbar.
   League-of-Legends-YouTube-Kanal → Link im Admin → Events eintragen.
 - Testmodus → „Special Event testen": spielt ein fertiges Event (MSI 2026) im Zeitraffer
   ab (`ev.replay`, `S.eventReplay`), inkl. Phasen-Sperren, Aufdecken, Punkte, Auflösung.
-- Ton: Browser (v. a. iPhone/Android) erlauben Ton nur bei einem Tipp IN den YouTube-Player,
-  nicht bei einem Script-Start nach eigenem Knopf. Deshalb zeigt das Intro das Video als
-  Rahmen mit YouTubes Play-Knopf; der Tipp (Fokus wandert ins iframe) startet den Übergang.
-  Vor Musikvideos läuft oft Werbung — die API meldet dann nie „playing", daher der Fokus-Trick.
-- Alle Events nutzen die Worlds-Schrift (Cinzel). Worlds-Farben aus Riots Hymnen-Artwork 2026.
-- Testmodus-Ende: Leute, die während des Tests beigetreten sind, behalten Konto + Passwort
-  (vorher wurden sie mit dem Backup gelöscht).
+- Intro bei JEDEM Öffnen des Event-Tabs: „Betreten" startet das Video mit Ton (Player vorher
+  ungemutet + pausiert erzeugt, der Tipp drückt nur Play). Blockt ein Browser trotzdem
+  (iPhone Safari kann), läuft es stumm und 🔇 in der Leiste pulsiert. Leiste unten rechts:
+  Stumm, Lautstärke-Regler (gespeichert, `lf.evVol`), „✕ Video". Aus bleibt aus pro Gerät
+  (`lf.evVideo`), bis man im Event-Kopf „Video & Musik an" drückt.
+- Schrift: Cinzel auf der GANZEN Seite (Fabian: nichts soll beim Tabwechsel springen).
+  Worlds-Farben: Riots Hextech-Palette (Gold #c8aa6e, Blau #010a13, Teal #0ac8b9) — kein Pink.
+- Testmodus-Ende: Leute, die während des Tests beigetreten sind, behalten Konto + Passwort.
 - events-ui.js: app.js ist eine Closure → `window.LECEventsInit(app)` bekommt die Helfer.
 
 ## Dateien

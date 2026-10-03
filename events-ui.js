@@ -15,14 +15,12 @@ const { L, S, U, esc, fmt, card, loggedIn, adminOnly, me, api, toast, render, st
 const $ = id => document.getElementById(id);
 const EVX = { data: {}, loading: {}, mine: {}, form: {}, tips: {}, tab: 'team', role: 'TOP', q: '', team: '', open: null, player: null, playerSlug: null, entered: {}, ytReady: null };
 const EV_ROLES = ['TOP', 'JNG', 'MID', 'BOT', 'SUP'];
-// Colors per event. Riot's own event fonts are not free; every event uses
-// Cinzel. Worlds 2026: the palette of Riot's anthem art ("Know My Name",
-// New York by night - navy, royal blue, rose, lavender).
-const EV_FONT = { font: 'Cinzel:wght@600;700;800', display: "'Cinzel', Georgia, serif" };
+// Colors per event (the font is the same on the whole site, theme.css).
+// Worlds: Riot's League/Worlds Hextech palette - gold on deep blue, teal.
 const EV_THEMES = {
-  worlds:      Object.assign({ accent: '#ff6f9c', hi: '#e6deff', soft: 'rgba(255,111,156,.15)', teal: '#7d9bff', bg: '#0a0820', surface: '22,22,58', short: 'Worlds' }, EV_FONT),
-  msi:         Object.assign({ accent: '#8c9bff', hi: '#e2e6ff', soft: 'rgba(140,155,255,.15)', teal: '#5ee6ff', bg: '#06070f', surface: '15,17,34', short: 'MSI' }, EV_FONT),
-  first_stand: Object.assign({ accent: '#d4ff3a', hi: '#f4ffd0', soft: 'rgba(212,255,58,.12)', teal: '#d4ff3a', bg: '#070806', surface: '17,19,13', short: 'First Stand' }, EV_FONT),
+  worlds:      { accent: '#c8aa6e', hi: '#f0e6d2', soft: 'rgba(200,170,110,.14)', teal: '#0ac8b9', bg: '#010a13', surface: '9,20,40', short: 'Worlds' },
+  msi:         { accent: '#8c9bff', hi: '#e2e6ff', soft: 'rgba(140,155,255,.15)', teal: '#5ee6ff', bg: '#06070f', surface: '15,17,34', short: 'MSI' },
+  first_stand: { accent: '#d4ff3a', hi: '#f4ffd0', soft: 'rgba(212,255,58,.12)', teal: '#d4ff3a', bg: '#070806', surface: '17,19,13', short: 'First Stand' },
 };
 const evIndex = () => ((app.D && app.D.eventsIndex && app.D.eventsIndex.events) || []);
 const evInfo = slug => evIndex().find(e => e.slug === slug) || null;
@@ -99,12 +97,8 @@ function applyEventTheme(slug) {
   let st = document.getElementById('evtheme');
   if (!slug) { if (st) st.remove(); document.body.classList.remove('ev-on'); return; }
   const t = evTheme(slug);
-  if (!document.getElementById('evfont-' + t.font)) {
-    const l = document.createElement('link'); l.rel = 'stylesheet'; l.id = 'evfont-' + t.font;
-    l.href = 'https://fonts.googleapis.com/css2?family=' + t.font + '&display=swap'; document.head.appendChild(l);
-  }
   if (!st) { st = document.createElement('style'); st.id = 'evtheme'; document.head.appendChild(st); }
-  st.textContent = `body.ev-on{--gold:${t.accent};--gold-hi:${t.hi};--gold-soft:${t.soft};--teal:${t.teal};--teal-hi:${t.hi};--display:${t.display};--bg:${t.bg};--surface:rgb(${t.surface});--surface-2:rgba(${t.surface},.9);background:${t.bg}}
+  st.textContent = `body.ev-on{--gold:${t.accent};--gold-hi:${t.hi};--gold-soft:${t.soft};--teal:${t.teal};--teal-hi:${t.hi};--bg:${t.bg};--surface:rgb(${t.surface});--surface-2:rgba(${t.surface},.9);background:${t.bg}}
     body.ev-on.ev-video{background:#000}
     body.ev-on.ev-video .card{background:rgba(${t.surface},.66);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);border-color:rgba(255,255,255,.09)}
     body.ev-on.ev-video .topbar,body.ev-on.ev-video .tabbar{background:rgba(0,0,0,.55);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px)}
@@ -122,74 +116,94 @@ function ytApi() {
   return EVX.ytReady;
 }
 const videoOff = () => store.get('lf.evVideo', 'on') === 'off';
-// The player is created UNMUTED but not playing and shown in the intro as a
-// framed video: the visitor taps YouTube's own play button. A tap inside the
-// player is the one thing every browser (iPhone included) accepts for sound -
-// a tap on our own button that starts the video by script is not. Once it
-// plays, the frame grows to full screen and the page comes up in front.
+// Every visit to the event page: intro with "Betreten"; that tap starts the
+// video WITH sound behind the page. The player is created unmuted and paused
+// beforehand so the tap only has to press play. If a browser still refuses
+// sound (iPhone Safari may), the video runs muted and the 🔇 button in the
+// control bar turns it on. "Video aus" sticks per device until switched on.
+const evVol = () => Math.max(0, Math.min(100, Number(store.get('lf.evVol', 70)) || 0));
 async function prepareVideo(slug) {
   const ev = (L().events || {})[slug];
   if (!ev || !ev.video || videoOff() || EVX.playerSlug === slug) return;
   stopVideo();
-  EVX.playerSlug = slug;
+  EVX.playerSlug = slug; EVX.saw = false; EVX.wantPlay = false;
   let bg = document.getElementById('evbg');
-  if (!bg) { bg = document.createElement('div'); bg.id = 'evbg'; bg.className = 'evbg intro'; bg.innerHTML = '<div id="evbgPlayer"></div>'; document.body.appendChild(bg); }
-  placeFrame();
+  if (!bg) { bg = document.createElement('div'); bg.id = 'evbg'; bg.className = 'evbg'; bg.innerHTML = '<div id="evbgPlayer"></div>'; document.body.prepend(bg); }
   const YT = await ytApi();
   if (EVX.playerSlug !== slug) return;
   EVX.player = new YT.Player('evbgPlayer', { videoId: ev.video,
     playerVars: { origin: location.origin, enablejsapi: 1, autoplay: 0, controls: 0, playsinline: 1, rel: 0, modestbranding: 1, disablekb: 1, iv_load_policy: 3, fs: 0, start: ev.videoStart || 0 },
     events: {
-      onReady: () => {
-        EVX.ready = true;
-        try { EVX.player.setVolume(75); } catch (e) { /* ignore */ }
-        // state events from YouTube do not always arrive - watch the state too
-        const pl = EVX.player;
-        const iv = setInterval(() => {
-          if (EVX.player !== pl) return clearInterval(iv);
-          try { if ([1, 3].includes(pl.getPlayerState()) && !EVX.entered[slug]) { clearInterval(iv); enterEvent(slug); } } catch (e) { /* not ready */ }
-        }, 400);
-      },
-      onError: () => { const h = document.getElementById('evHint'); if (h) h.innerHTML = 'Video nicht abspielbar (Link prüfen). <a href="#" id="evNoVid">Weiter ohne Video</a>'; bindIntro(slug); },
+      onReady: () => { EVX.ready = true; try { EVX.player.setVolume(evVol()); } catch (e) { /* ignore */ } if (EVX.wantPlay) playNow(); },
+      onError: () => { toast('Das Video lässt sich nicht abspielen — Link im Admin prüfen.'); stopVideo(); },
       onStateChange: e => {
-        if ((e.data === 1 || e.data === 3) && !EVX.entered[slug]) enterEvent(slug);   // playing / buffering after the tap
+        if (e.data === 1 || e.data === 3) EVX.saw = true;
         if (e.data === 0 && EVX.player === e.target) { e.target.seekTo(ev.videoStart || 0, true); e.target.playVideo(); }   // loop
+        drawControls();
       } } });
 }
-// put the frame exactly over the placeholder in the intro
-function placeFrame() {
-  const bg = document.getElementById('evbg'), slot = document.getElementById('evSlot');
-  if (!bg || !bg.classList.contains('intro')) return;
-  if (!slot) { bg.style.visibility = 'hidden'; return; }
-  const r = slot.getBoundingClientRect();
-  Object.assign(bg.style, { visibility: 'visible', top: r.top + 'px', left: r.left + 'px', width: r.width + 'px', height: r.height + 'px' });
+// inside the tap
+function playNow() {
+  const p = EVX.player;
+  if (!p || !p.playVideo || !EVX.ready) { EVX.wantPlay = true; return; }
+  EVX.wantPlay = false;
+  try { p.unMute(); p.setVolume(evVol()); p.playVideo(); } catch (e) { /* ignore */ }
+  document.body.classList.add('ev-video');
+  const b = document.getElementById('evbg'); if (b) b.classList.add('on');
+  drawControls();
+  // nothing started (no buffering, no ad): this browser blocks sound -> play muted
+  setTimeout(() => {
+    if (EVX.player !== p || EVX.saw) return;
+    try { p.mute(); p.playVideo(); } catch (e) { /* ignore */ }
+    EVX.blocked = true; drawControls();
+  }, 2500);
 }
-window.addEventListener('resize', placeFrame);
 function stopVideo() {
   try { if (EVX.player && EVX.player.destroy) EVX.player.destroy(); } catch (e) { /* gone */ }
-  EVX.player = null; EVX.playerSlug = null; EVX.ready = false;
+  EVX.player = null; EVX.playerSlug = null; EVX.ready = false; EVX.blocked = false;
   const b = document.getElementById('evbg'); if (b) b.remove();
+  const c = document.getElementById('evctl'); if (c) c.remove();
   document.body.classList.remove('ev-video');
+}
+// floating bar: mute, volume, video off
+function drawControls() {
+  const p = EVX.player;
+  let c = document.getElementById('evctl');
+  if (!p || !document.body.classList.contains('ev-video')) { if (c) c.remove(); return; }
+  let muted = false;
+  try { muted = p.isMuted(); } catch (e) { /* not ready */ }
+  if (!c) {
+    c = document.createElement('div'); c.id = 'evctl'; c.className = 'evctl';
+    c.innerHTML = `<button class="evctl-b" id="evMute" title="Ton an/aus"></button>
+      <input type="range" id="evVolR" min="0" max="100" step="1" aria-label="Lautstärke">
+      <button class="evctl-b" id="evOff" title="Video aus">✕ Video</button>`;
+    document.body.appendChild(c);
+    c.querySelector('#evMute').onclick = () => {
+      const pl = EVX.player; if (!pl) return;
+      try { if (pl.isMuted()) { pl.unMute(); pl.setVolume(evVol() || 50); if (!evVol()) store.set('lf.evVol', 50); pl.playVideo(); EVX.blocked = false; } else pl.mute(); } catch (e) { /* ignore */ }
+      setTimeout(drawControls, 120);
+    };
+    const r = c.querySelector('#evVolR');
+    r.oninput = () => {
+      const v = +r.value; store.set('lf.evVol', v);
+      const pl = EVX.player; if (!pl) return;
+      try { pl.setVolume(v); if (v > 0 && pl.isMuted()) pl.unMute(); if (v === 0) pl.mute(); } catch (e) { /* ignore */ }
+      r.style.setProperty('--v', v + '%');
+      c.querySelector('#evMute').textContent = v === 0 ? '🔇' : '🔊';
+    };
+    c.querySelector('#evOff').onclick = () => { store.set('lf.evVideo', 'off'); stopVideo(); render(); };
+  }
+  const r = c.querySelector('#evVolR');
+  if (document.activeElement !== r) { r.value = muted ? 0 : evVol(); r.style.setProperty('--v', r.value + '%'); }
+  c.querySelector('#evMute').textContent = muted || EVX.blocked ? '🔇' : '🔊';
+  c.classList.toggle('hint', !!(muted && EVX.blocked));
 }
 function enterEvent(slug) {
   EVX.entered[slug] = true;
-  const o = document.getElementById('evintro'), bg = document.getElementById('evbg');
-  document.body.classList.add('ev-video');
-  if (bg) { bg.classList.add('grow'); Object.assign(bg.style, { top: '0px', left: '0px', width: '100vw', height: '100vh' }); setTimeout(() => { bg.classList.remove('intro', 'grow'); bg.classList.add('on'); bg.removeAttribute('style'); }, 1300); }
-  if (o) { o.classList.add('play'); setTimeout(() => { o.classList.add('out'); const v = $('view'); if (v) { v.classList.remove('ev-rise'); void v.offsetWidth; v.classList.add('ev-rise'); } }, 2400); setTimeout(() => { o.remove(); render(); }, 3300); }
-}
-function bindIntro(slug) {
+  playNow();                                         // inside the tap: sound allowed
   const o = document.getElementById('evintro');
-  if (!o) return;
-  const skip = e => { e.preventDefault(); store.set('lf.evVideo', 'off'); stopVideo(); EVX.entered[slug] = true; o.remove(); render(); };
-  o.querySelectorAll('#evSkip,#evNoVid').forEach(a => { a.onclick = skip; });
+  if (o) { o.classList.add('play'); setTimeout(() => { o.classList.add('out'); const v = $('view'); if (v) { v.classList.remove('ev-rise'); void v.offsetWidth; v.classList.add('ev-rise'); } }, 2600); setTimeout(() => { o.remove(); render(); }, 3500); }
 }
-window.addEventListener('blur', () => {
-  setTimeout(() => {
-    const f = document.querySelector('#evbg.intro iframe'), slug = EVX.playerSlug;
-    if (f && document.activeElement === f && slug && !EVX.entered[slug]) enterEvent(slug);
-  }, 150);
-});
 function introOverlay(slug) {
   if (document.getElementById('evintro')) return;
   const info = evInfo(slug) || {}, ev = L().events[slug];
@@ -198,13 +212,11 @@ function introOverlay(slug) {
   o.innerHTML = `<div class="evintro-in">${info.logo ? `<img class="evintro-logo" src="${esc(info.logo)}" alt="">` : ''}
     <div class="evintro-name">${esc(ev.name || info.name || slug)}</div>
     <div class="evintro-sub">${esc(info.start ? new Date(info.start).toLocaleDateString('de-DE', { day: '2-digit', month: 'long' }) + ' – ' + new Date(info.end).toLocaleDateString('de-DE', { day: '2-digit', month: 'long', year: 'numeric' }) : '')}</div>
-    <div id="evSlot" class="evintro-slot"></div>
-    <div class="evintro-hint" id="evHint">▶ Tippe aufs Video — mit Ton geht's rein</div>
+    <button class="btn gold lg evintro-go" id="evGo">Betreten 🔊</button>
     <a href="#" class="evintro-skip" id="evSkip">ohne Video &amp; Musik</a></div>`;
   document.body.appendChild(o);
-  bindIntro(slug);
-  requestAnimationFrame(placeFrame);
-  setTimeout(placeFrame, 300);
+  o.querySelector('#evGo').onclick = () => enterEvent(slug);
+  o.querySelector('#evSkip').onclick = e => { e.preventDefault(); store.set('lf.evVideo', 'off'); stopVideo(); EVX.entered[slug] = true; o.remove(); render(); };
 }
 // called by app.js render() on every route
 function eventRouteHook(p) {
@@ -232,7 +244,7 @@ function viewEvent(slug) {
       <div class="row" style="gap:18px;align-items:center;flex-wrap:wrap">${info.logo ? `<img src="${esc(info.logo)}" alt="" style="height:64px;max-width:160px;object-fit:contain">` : ''}
       <div style="min-width:0;flex:1"><div class="eyebrow">Special Event · ${esc(info.start ? new Date(info.start).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit' }) + ' – ' + new Date(info.end).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' }) : '')}</div>
       <h1 style="margin:2px 0 4px;overflow-wrap:anywhere">${esc(ev.name)}</h1><div class="sub">${stageLine(slug)}</div>
-      ${ev.video ? `<button class="btn sm" id="evVid" style="margin-top:10px">${videoOff() ? '▶ Intro &amp; Musik an' : (EVX.player ? '🔇 Video aus' : '▶ Intro')}</button>` : ''}</div></div></section>`;
+      ${ev.video && videoOff() ? `<button class="btn sm" id="evVid" style="margin-top:10px">▶ Video &amp; Musik an</button>` : ''}</div></div></section>`;
   const chips = `<div class="chips" style="margin:0 0 16px">${tabs.map(([k, l]) => `<button class="chip ${EVX.tab === k ? 'on' : ''}" data-evtab="${k}">${l}</button>`).join('')}</div>`;
   let body = '';
   if (!d.teams.length && EVX.tab !== 'tour') body = card(esc(ev.name), '<div class="empty">Die Teilnehmer stehen noch nicht fest. Sobald Riot sie einträgt (meist ein paar Tage vorher), kannst du hier dein Team bauen.</div>');
@@ -438,8 +450,8 @@ function eventBanner() {
   const started = ev.replay ? Date.now() >= ev.replay.from : Date.parse(info.start) <= Date.now();
   return `<a href="#/event/${esc(slug)}" class="card evbanner" style="display:flex;gap:16px;align-items:center;padding:16px 18px;margin-bottom:16px;text-decoration:none;color:inherit;border-color:${t.accent};background:linear-gradient(110deg,${t.bg} 0%,rgba(${t.surface},1) 60%,${t.soft} 100%)">
     ${info.logo ? `<img src="${esc(info.logo)}" alt="" style="height:46px;max-width:110px;object-fit:contain">` : ''}
-    <div style="flex:1;min-width:0"><div style="font-family:${t.display};color:${t.accent};font-size:12px;letter-spacing:.14em;text-transform:uppercase">Special Event</div>
-      <div style="font-family:${t.display};font-size:22px;font-weight:700;color:#fff">${esc(ev.name)}</div>
+    <div style="flex:1;min-width:0"><div style="font-family:var(--display);color:${t.accent};font-size:12px;letter-spacing:.14em;text-transform:uppercase">Special Event</div>
+      <div style="font-family:var(--display);font-size:22px;font-weight:700;color:#fff">${esc(ev.name)}</div>
       <div class="dim" style="font-size:12px">${started ? 'läuft — Team & Tabelle' : ev.replay ? 'Wiederholung startet ' + esc(new Date(ev.replay.from).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' })) + ' Uhr' : 'ab ' + esc(new Date(info.start).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit' })) + ' · jetzt Team bauen & tippen'}</div></div>
     <span class="btn sm" style="border-color:${t.accent};color:${t.accent}">Öffnen →</span></a>`;
 }
@@ -465,11 +477,7 @@ function bindEvent() {
   const ts = $('evTipSave'); if (ts) ts.onclick = async () => {
     try { await api('/api/event/pickem', { method: 'POST', body: { slug, picks: EVX.tips[slug] || {} } }); toast('Tipps gespeichert ✓'); } catch (e) { toast(`<span style="color:#ffb1b3">${esc(e.message)}</span>`); }
   };
-  const vb = $('evVid'); if (vb) vb.onclick = () => {
-    if (videoOff()) { store.set('lf.evVideo', 'on'); EVX.entered[slug] = false; render(); return; }
-    if (EVX.player) { store.set('lf.evVideo', 'off'); stopVideo(); render(); return; }
-    EVX.entered[slug] = false; stopVideo(); render();
-  };
+  const vb = $('evVid'); if (vb) vb.onclick = () => { store.set('lf.evVideo', 'on'); EVX.entered[slug] = false; render(); };
 }
 
 return { viewEvent, eventRouteHook, bindEvent, eventBanner, currentEventSlug, evInfo, evShort };
