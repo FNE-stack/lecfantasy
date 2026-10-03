@@ -7,7 +7,7 @@ name: update-stats
 on:
   schedule:
     # 04:20 and 16:20 UTC - after EU match days finish
-    - cron: '20 4,16 * * *'
+    - cron: '20 */2 * * *'
   workflow_dispatch:
     inputs:
       tournament:
@@ -43,11 +43,16 @@ jobs:
             python scripts/fetch_lolesports.py
           fi
 
+      - name: Fetch special events (First Stand, MSI, Worlds)
+        continue-on-error: true
+        run: python scripts/fetch_events.py
+
       - name: Commit if changed
         run: |
           git config user.name  'lec-fantasy-bot'
           git config user.email 'actions@users.noreply.github.com'
           git add data/teams.json data/players.json data/stats.json data/champions.json data/schedule.json data/season.json data/standings.json
+          [ -d data/events ] && git add data/events
           if git diff --staged --quiet; then
             echo "no changes"
             exit 0

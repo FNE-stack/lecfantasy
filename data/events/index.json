@@ -1,0 +1,38 @@
+{
+ "season": 2026,
+ "events": [
+  {
+   "slug": "first_stand_2026",
+   "league": "first_stand",
+   "name": "First Stand",
+   "start": "2026-03-16",
+   "end": "2026-03-23",
+   "logo": "https://static.lolesports.com/leagues/1740042025201_RG_LOL_FIRST_STAND_LOGO_VOLT_ALPHA.png",
+   "ready": true,
+   "teams": 8,
+   "done": true
+  },
+  {
+   "slug": "msi_2026",
+   "league": "msi",
+   "name": "MSI",
+   "start": "2026-06-27",
+   "end": "2026-07-12",
+   "logo": "https://static.lolesports.com/leagues/1592594634248_MSIDarkBG.png",
+   "ready": true,
+   "teams": 11,
+   "done": true
+  },
+  {
+   "slug": "worlds_2026",
+   "league": "worlds",
+   "name": "Worlds",
+   "start": "2026-10-15",
+   "end": "2026-11-15",
+   "logo": "https://static.lolesports.com/leagues/1592594612171_WorldsDarkBG.png",
+   "ready": false,
+   "teams": 0,
+   "done": false
+  }
+ ]
+}
