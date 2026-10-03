@@ -114,7 +114,20 @@
     "resetEachSplit": false
   },
   "hall": {},
-  "events": {},
+  "events": {
+    "worlds_2026": {
+      "slug": "worlds_2026",
+      "name": "Worlds 2026 (QA)",
+      "budget": 100,
+      "maxPerTeam": 2,
+      "captain": 1.5,
+      "prices": {},
+      "video": "C3GouGa0noM",
+      "createdAt": "2026-10-03T19:47:51.853Z",
+      "lineups": {},
+      "revealed": []
+    }
+  },
   "testMode": {
     "on": true,
     "startedAt": "2026-10-03T19:15:55.752Z",
