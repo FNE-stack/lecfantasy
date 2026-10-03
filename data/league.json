@@ -31,11 +31,29 @@
       "id": "m02595135",
       "name": "Fabi",
       "joined": "2026-10-03T19:20:16.447Z"
+    },
+    {
+      "id": "m68767a03",
+      "name": "Bot Anna",
+      "joined": "2026-10-03T20:05:58.191Z"
+    },
+    {
+      "id": "mc657c249",
+      "name": "Bot Ben",
+      "joined": "2026-10-03T20:05:58.191Z"
+    },
+    {
+      "id": "m5f14b828",
+      "name": "Bot Chris",
+      "joined": "2026-10-03T20:05:58.191Z"
     }
   ],
   "draft": {
     "order": [
-      "m02595135"
+      "m02595135",
+      "m68767a03",
+      "mc657c249",
+      "m5f14b828"
     ],
     "snake": true,
     "picks": [],
@@ -70,7 +88,7 @@
     "rosterRules": true,
     "teamLimit": true,
     "autoWindows": true,
-    "mode": "windows",
+    "mode": "always",
     "windows": []
   },
   "announcement": null,
@@ -96,5 +114,15 @@
     "resetEachSplit": false
   },
   "hall": {},
-  "events": {}
+  "events": {},
+  "testMode": {
+    "on": true,
+    "startedAt": "2026-10-03T20:05:58.191Z",
+    "backupId": "2026-10-03-3",
+    "bots": [
+      "m68767a03",
+      "mc657c249",
+      "m5f14b828"
+    ]
+  }
 }
