@@ -132,7 +132,7 @@
       "maxPerTeam": 2,
       "captain": 1.5,
       "prices": {},
-      "video": "",
+      "video": "C3GouGa0noM",
       "createdAt": "2026-10-03T18:26:40.233Z",
       "lineups": {},
       "revealed": [],
@@ -176,7 +176,8 @@
             "points": 5
           }
         ]
-      }
+      },
+      "videoStart": 5
     }
   }
 }
