@@ -113,7 +113,45 @@
     "budget": 100,
     "resetEachSplit": false
   },
-  "hall": {},
+  "hall": {
+    "event_msi_2026": {
+      "event": true,
+      "slug": "msi_2026",
+      "name": "MSI 2026 (Wiederholung)",
+      "logo": "https://static.lolesports.com/leagues/1592594634248_MSIDarkBG.png",
+      "at": "2026-10-03T19:02:28.107Z",
+      "table": [
+        {
+          "manager": "m86aad915",
+          "name": "Bot Anna",
+          "pts": 1128.13,
+          "players": 1128.13,
+          "pickem": 0
+        },
+        {
+          "manager": "m7087bead",
+          "name": "Bot Ben",
+          "pts": 836.29,
+          "players": 831.29,
+          "pickem": 5
+        },
+        {
+          "manager": "m2f5f76a2",
+          "name": "Fabi Test",
+          "pts": 546.28,
+          "players": 546.28,
+          "pickem": 0
+        },
+        {
+          "manager": "mccf2a083",
+          "name": "Bot Chris",
+          "pts": 195.98,
+          "players": 190.98,
+          "pickem": 5
+        }
+      ]
+    }
+  },
   "testMode": {
     "on": true,
     "startedAt": "2026-10-03T18:26:36.782Z",
