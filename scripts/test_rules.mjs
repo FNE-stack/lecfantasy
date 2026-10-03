@@ -252,6 +252,52 @@ tests.week_recap_and_hall = () => {
   return 'recap: winner, player/flop of the week, bench pain, best free player, record; hall: totals, best week, steal, due timing';
 };
 
+function eventFixture() {
+  const R = ['TOP', 'JNG', 'MID', 'BOT', 'SUP'];
+  const teams = [['AAA', 'LCK'], ['BBB', 'LEC'], ['CCC', 'LCS'], ['DDD', 'LPL']].map(([code, league]) => ({ code, league, name: code }));
+  const players = teams.flatMap(t => R.map(r => ({ id: t.code + '_' + r, name: t.code + r, team: t.code, role: r })));
+  const m = (id, stage, start, a, b, win) => ({ match: id, stage, start, state: 'completed', teams: [{ code: a, outcome: win === a ? 'win' : 'loss' }, { code: b, outcome: win === b ? 'win' : 'loss' }] });
+  const schedule = [m('s1', 0, '2026-10-15T10:00:00Z', 'AAA', 'BBB', 'AAA'), m('s2', 0, '2026-10-15T12:00:00Z', 'CCC', 'DDD', 'DDD'),
+    m('s3', 0, '2026-10-16T10:00:00Z', 'AAA', 'DDD', 'AAA'), m('s4', 0, '2026-10-16T12:00:00Z', 'BBB', 'CCC', 'BBB'),
+    m('s5', 0, '2026-10-17T10:00:00Z', 'AAA', 'CCC', 'AAA'), m('s6', 0, '2026-10-17T12:00:00Z', 'BBB', 'DDD', 'DDD'),
+    m('k1', 1, '2026-10-20T10:00:00Z', 'AAA', 'DDD', 'DDD')];
+  const g = (match, player, k) => ({ game: match + 'g', match, player, k, d: 0, a: 0, cs: 0, win: false, dur: 1800 });
+  const games = [g('s1', 'AAA_MID', 10), g('s1', 'BBB_MID', 2), g('k1', 'AAA_MID', 4), g('k1', 'DDD_MID', 8)];
+  return { teams, players, schedule, games, stages: [{ name: 'Swiss' }, { name: 'Knockouts' }] };
+}
+
+tests.events = () => {
+  const d = eventFixture(), sc = { kill: 3, death: 0, assist: 0, cs10: 0, win: 0 };
+  const st = S.eventStages(d);
+  assert(st.length === 2 && st[0].done && st[1].done && st[1].lock === Date.parse('2026-10-20T10:00:00Z'), 'stages with locks');
+  assert(S.eventOpenStage(d, Date.parse('2026-10-01T00:00:00Z')) === 0 && S.eventOpenStage(d, Date.parse('2026-10-18T00:00:00Z')) === 1 && S.eventOpenStage(d, Date.parse('2026-11-01T00:00:00Z')) === null, 'open stage by time');
+  const ev = { slug: 'w', prices: { AAA: 30 } };
+  const team = (ids, cap) => ({ players: ids, captain: cap });
+  assert(S.eventTeamPrice(ev, d, 'AAA') === 30 && S.eventTeamPrice(ev, d, 'BBB') === 20 && S.eventTeamPrice(ev, d, 'CCC') === 15, 'admin price, else by region');
+  const ok = team(['AAA_TOP', 'BBB_JNG', 'AAA_MID', 'CCC_BOT', 'CCC_SUP'], 'AAA_MID');           // 30+20+30+15+15 = 110
+  assert(/Zu teuer: 110/.test(S.eventTeamError(ev, d, ok)), 'budget');
+  const fine = team(['AAA_TOP', 'BBB_JNG', 'AAA_MID', 'CCC_BOT', 'CCC_SUP'], 'AAA_MID');
+  assert(S.eventTeamError(Object.assign({}, ev, { budget: 110 }), d, fine) === null, 'valid at budget 110');
+  assert(/pro Rolle/.test(S.eventTeamError(ev, d, team(['AAA_TOP', 'BBB_TOP', 'CCC_MID', 'CCC_BOT', 'DDD_SUP'], 'AAA_TOP'))), 'one per role');
+  assert(/pro Team/.test(S.eventTeamError(Object.assign({}, ev, { budget: 999 }), d, team(['AAA_TOP', 'AAA_JNG', 'AAA_MID', 'CCC_BOT', 'DDD_SUP'], 'AAA_TOP'))), 'max 2 per team');
+  assert(/Kapitän/.test(S.eventTeamError(Object.assign({}, ev, { budget: 999 }), d, team(fine.players, 'DDD_MID'))), 'captain must be own');
+  // lineups: stage 0 set, stage 1 carried; captain x1.5
+  const lev = Object.assign({}, ev, { budget: 999, lineups: { 0: { a: fine, b: team(['DDD_TOP', 'BBB_JNG', 'BBB_MID', 'CCC_BOT', 'CCC_SUP'], 'BBB_MID') }, 1: { b: team(['DDD_TOP', 'BBB_JNG', 'DDD_MID', 'CCC_BOT', 'CCC_SUP'], 'DDD_MID') } } });
+  const L = { managers: [{ id: 'a', name: 'Ann' }, { id: 'b', name: 'Ben' }], scoring: sc };
+  const rows = S.eventStandings(L, lev, d);
+  const A = rows.find(r => r.manager === 'a'), B = rows.find(r => r.manager === 'b');
+  assert(A.players === 30 * 1.5 + 12 * 1.5 && A.byStage[1] === 18, 'Ann: captain both stages, stage 1 carried: ' + JSON.stringify(A));
+  assert(B.players === 6 * 1.5 + 24 * 1.5, 'Ben: stage-1 lineup counts in stage 1: ' + JSON.stringify(B));
+  // truth: champion DDD (LPL), finalists, swiss 3-0 AAA, 0-3 CCC
+  const t = S.eventTruth(d, sc);
+  assert(t.champion.has('DDD') && t.finalist.has('AAA') && t.winnerRegion.has('LPL') && t.swiss30.has('AAA') && t.swiss03.has('CCC') && t.mostKills.has('AAA_MID'), 'truth: ' + JSON.stringify(Object.fromEntries(Object.entries(t).map(([k, v]) => [k, v instanceof Set ? [...v] : v]))));
+  lev.pickem = { revealed: true, questions: [{ id: 'q1', type: 'champion', points: 10 }, { id: 'q2', type: 'swiss30', points: 5 }, { id: 'q3', type: 'bloodiest', points: 3 }],
+    picks: { a: { q1: 'DDD', q2: 'BBB', q3: '13' }, b: { q1: 'AAA', q2: 'AAA', q3: '5' } } };
+  const r2 = S.eventStandings(L, lev, d);
+  assert(r2.find(r => r.manager === 'a').pickem === 13 && r2.find(r => r.manager === 'b').pickem === 5, 'pick\'em points (closest number wins)');
+  return 'stages + locks, prices (admin / region), budget, roles, team limit, captain, carry-over lineups, truth incl. Swiss 3-0/0-3 and region, pick\'em';
+};
+
 tests.pickem = () => {
   const L = league(2);
   const ev = (m, block, a, b, aw, start) => ({ match: m, start, state: 'completed', block, tournament: 'sp',

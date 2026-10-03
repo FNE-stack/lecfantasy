@@ -32,6 +32,7 @@ Profi-Stats) und den Login. Mitglieder, Kader und Picks gibt es nur nach dem Log
 | **Pick'em** | Saison-Tipps vor jedem Split (Fragen + Punkte vom Admin), danach Auflösung; zählt zur Wertung |
 | **Transfers** | Trades mit Vergleich (Punkte, Ø, Form), Free Agents über Waiver (Reihenfolge oder FAAB-Gebote), Fenster automatisch zwischen den Splits |
 | **Chat · Rückblick · Ruhmeshalle** | Liga-Chat mit Push; Wochen-Rückblick (Sieger, Spieler/Flop der Woche); Sieger jedes Splits für immer |
+| **Special Events** | First Stand, MSI, Worlds: Budget-Team aus allen Teilnehmern, Event-Pick'em, eigene Tabelle, Turnierbaum — im Look des Events, mit Intro und Hymne |
 | **Live** | Live-Punkte während LEC-Spielen, auch pro Manager |
 | **LEC** | Spielplan (Filter, „nur meine Spieler“, Kalender-Export .ics), offizielle Tabelle, Playoff-Baum, Teams — je Split |
 | **Spieler** | alle Profis mit Form, Champion-Pool, Game-Log |

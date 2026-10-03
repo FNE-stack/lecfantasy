@@ -427,6 +427,38 @@
   // the correct answer(s) per question type for one split, or null if unknown
   // `official` (optional): standings.json for the split - its regular-season
   // ranking includes the official tiebreaks, so it wins over our own count
+  // pick'em answers that come from the game rows alone (season and events)
+  function statTruth(rows, scoring) {
+    const out = {};
+    if (!rows.length) return out;
+    const best = (m, cmp) => { let top = null; const set = new Set(); m.forEach((v, k) => { if (top === null || cmp(v, top) > 0) { top = v; set.clear(); set.add(k); } else if (cmp(v, top) === 0) set.add(k); }); return set; };
+    const desc = (a, b) => a - b;
+      const kills = new Map(), pts = new Map(), games = new Map(), kd = new Map(), champs = new Map(), picked = new Map(), maxK = new Map();
+      const perGame = new Map();
+      for (const g of rows) {
+        kills.set(g.player, (kills.get(g.player) || 0) + g.k);
+        pts.set(g.player, (pts.get(g.player) || 0) + gamePoints(g, scoring));
+        games.set(g.player, (games.get(g.player) || 0) + 1);
+        const x = kd.get(g.player) || { k: 0, d: 0, a: 0 }; x.k += g.k; x.d += g.d; x.a += g.a; kd.set(g.player, x);
+        if (!champs.has(g.player)) champs.set(g.player, new Set()); champs.get(g.player).add(g.champ);
+        picked.set(g.champ, (picked.get(g.champ) || 0) + 1);
+        maxK.set(g.player, Math.max(maxK.get(g.player) || 0, g.k));
+        const pg = perGame.get(g.game) || { k: 0, dur: g.dur || 0 }; pg.k += g.k; perGame.set(g.game, pg);
+      }
+      const r1 = n => Math.round(n * 100) / 100;
+      out.mostKills = best(kills, desc);
+      out.mostPoints = best(new Map([...pts].map(([k, v]) => [k, r1(v)])), desc);
+      const maxGames = Math.max(...games.values());
+      out.bestKda = best(new Map([...kd].filter(([k]) => games.get(k) >= maxGames / 2).map(([k, v]) => [k, r1((v.k + v.a) / Math.max(1, v.d))])), desc);
+      out.mostChamps = best(new Map([...champs].map(([k, v]) => [k, v.size])), desc);
+      out.maxKillsGame = best(maxK, desc);
+      out.mostPicked = best(picked, desc);
+      const pgs = [...perGame.values()];
+      out.longestGame = Math.round(Math.max(...pgs.map(x => x.dur)) / 60 * 10) / 10;
+      out.bloodiest = Math.max(...pgs.map(x => x.k));
+    return out;
+  }
+
   function pickemTruth(league, stats, schedule, split, playerIndex, official) {
     const ev = ((schedule && schedule.events) || []).filter(e => e.tournament === split && e.state === 'completed').sort((a, b) => a.start.localeCompare(b.start));
     const rows = ((stats && stats.games) || []).filter(g => g.tournament === split);
@@ -451,30 +483,28 @@
         out.lastRegular = best(score, (a, b) => b - a);
       }
     }
-    if (rows.length) {
-      const kills = new Map(), pts = new Map(), games = new Map(), kd = new Map(), champs = new Map(), picked = new Map(), maxK = new Map();
-      const perGame = new Map();
-      for (const g of rows) {
-        kills.set(g.player, (kills.get(g.player) || 0) + g.k);
-        pts.set(g.player, (pts.get(g.player) || 0) + gamePoints(g, league.scoring));
-        games.set(g.player, (games.get(g.player) || 0) + 1);
-        const x = kd.get(g.player) || { k: 0, d: 0, a: 0 }; x.k += g.k; x.d += g.d; x.a += g.a; kd.set(g.player, x);
-        if (!champs.has(g.player)) champs.set(g.player, new Set()); champs.get(g.player).add(g.champ);
-        picked.set(g.champ, (picked.get(g.champ) || 0) + 1);
-        maxK.set(g.player, Math.max(maxK.get(g.player) || 0, g.k));
-        const pg = perGame.get(g.game) || { k: 0, dur: g.dur || 0 }; pg.k += g.k; perGame.set(g.game, pg);
-      }
-      const r1 = n => Math.round(n * 100) / 100;
-      out.mostKills = best(kills, desc);
-      out.mostPoints = best(new Map([...pts].map(([k, v]) => [k, r1(v)])), desc);
-      const maxGames = Math.max(...games.values());
-      out.bestKda = best(new Map([...kd].filter(([k]) => games.get(k) >= maxGames / 2).map(([k, v]) => [k, r1((v.k + v.a) / Math.max(1, v.d))])), desc);
-      out.mostChamps = best(new Map([...champs].map(([k, v]) => [k, v.size])), desc);
-      out.maxKillsGame = best(maxK, desc);
-      out.mostPicked = best(picked, desc);
-      const pgs = [...perGame.values()];
-      out.longestGame = Math.round(Math.max(...pgs.map(x => x.dur)) / 60 * 10) / 10;
-      out.bloodiest = Math.max(...pgs.map(x => x.k));
+    Object.assign(out, statTruth(rows, league.scoring));
+    return out;
+  }
+
+  // {pts, correct:[qid]} for one manager's tips. Numbers: the closest guess(es) win.
+  function scoreTips(pe, picks, truth, types) {
+    types = types || PICKEM_TYPES;
+    const out = { pts: 0, correct: [] };
+    for (const q of pe.questions || []) {
+      const v = picks[q.id];
+      if (v === undefined || v === null || v === '') continue;
+      const def = types[q.type] || {};
+      let ok = false;
+      if (def.manual) ok = q.answer !== undefined && q.answer !== null && String(q.answer) === String(v);
+      else if (def.kind === 'number') {
+        const t = truth[q.type];
+        if (typeof t === 'number') {
+          const dists = Object.values(pe.picks || {}).map(p => p[q.id]).filter(x => x !== undefined && x !== '').map(x => Math.abs(Number(x) - t));
+          ok = Math.abs(Number(v) - t) === Math.min(...dists);
+        }
+      } else ok = truth[q.type] instanceof Set && truth[q.type].has(v);
+      if (ok) { out.pts += Number(q.points) || 0; out.correct.push(q.id); }
     }
     return out;
   }
@@ -488,22 +518,7 @@
       for (const [m, picks] of Object.entries(pe.picks || {})) {
         const r = res[m] || (res[m] = { total: 0, bySplit: {} });
         const sp = r.bySplit[split] = { pts: 0, correct: [] };
-        for (const q of pe.questions || []) {
-          const v = picks[q.id];
-          if (v === undefined || v === null || v === '') continue;
-          const def = PICKEM_TYPES[q.type] || {};
-          let ok = false;
-          if (def.manual) ok = q.answer !== undefined && q.answer !== null && String(q.answer) === String(v);
-          else if (def.kind === 'number') {
-            // closest guess(es) win
-            const t = truth[q.type];
-            if (typeof t === 'number') {
-              const dists = Object.values(pe.picks).map(p => p[q.id]).filter(x => x !== undefined && x !== '').map(x => Math.abs(Number(x) - t));
-              ok = Math.abs(Number(v) - t) === Math.min(...dists);
-            }
-          } else ok = truth[q.type] instanceof Set && truth[q.type].has(v);
-          if (ok) { sp.pts += Number(q.points) || 0; sp.correct.push(q.id); }
-        }
+        Object.assign(sp, scoreTips(pe, picks, truth));
         r.total += sp.pts;
       }
     }
@@ -906,6 +921,159 @@
       && Date.parse(x.lastMatch) + 12 * 3600e3 <= t && started < x.lastMatch && !(league.hall || {})[x.slug]).map(x => x.slug);
   }
 
+  // ── special events (First Stand, MSI, Worlds) ───────────────────────────
+  // league.events[slug] = { slug, name, budget, maxPerTeam, prices:{team:n},
+  //   captain, video, accent, pickem:{questions, lockAt, revealed, picks},
+  //   lineups:{ [stage]: { [manager]: {players:[5 ids], captain} } }, createdAt }
+  // evData = data/events/<slug>.json. Every manager builds 5 players (one per
+  // role) within the budget; two managers may own the same player. A stage's
+  // lineup locks at its first match; without a new one, the last carries on.
+  const EVENT_TYPES = {
+    champion:    { kind: 'team',   label: 'Turniersieger' },
+    finalist:    { kind: 'team',   label: 'Ein Finalist' },
+    swiss30:     { kind: 'team',   label: 'Ein Team, das die Swiss-Phase 3-0 gewinnt' },
+    swiss03:     { kind: 'team',   label: 'Ein Team, das in der Swiss-Phase 0-3 rausfliegt' },
+    winnerRegion:{ kind: 'region', label: 'Region des Siegers' },
+    mostKills: PICKEM_TYPES.mostKills, mostPoints: PICKEM_TYPES.mostPoints, bestKda: PICKEM_TYPES.bestKda,
+    mostChamps: PICKEM_TYPES.mostChamps, maxKillsGame: PICKEM_TYPES.maxKillsGame, mostPicked: PICKEM_TYPES.mostPicked,
+    longestGame: PICKEM_TYPES.longestGame, bloodiest: PICKEM_TYPES.bloodiest,
+    manualChamp: PICKEM_TYPES.manualChamp, manualTeam: PICKEM_TYPES.manualTeam, manualPlayer: PICKEM_TYPES.manualPlayer,
+  };
+  const EVENT_PRICE = { LCK: 25, LPL: 25, LEC: 20 };
+  function eventConfig(ev) {
+    return Object.assign({ budget: 100, maxPerTeam: 2, captain: 1.5, prices: {} }, ev || {});
+  }
+  function eventTeamPrice(ev, evData, code) {
+    const p = eventConfig(ev).prices[code];
+    if (typeof p === 'number') return p;
+    const t = ((evData && evData.teams) || []).find(x => x.code === code);
+    return EVENT_PRICE[t && t.league] || 15;
+  }
+  function eventPlayer(evData, id) { return ((evData && evData.players) || []).find(p => p.id === id) || null; }
+  function eventPrice(ev, evData, id) { const p = eventPlayer(evData, id); return p ? eventTeamPrice(ev, evData, p.team) : 0; }
+  // [{i, name, lock (ms|null), end (ms|null), done}]
+  function eventStages(evData) {
+    const sched = (evData && evData.schedule) || [];
+    return ((evData && evData.stages) || []).map((st, i) => {
+      const ev = sched.filter(e => e.stage === i);
+      const ts = ev.map(e => Date.parse(e.start)).filter(Boolean);
+      return { i, name: st.name, lock: ts.length ? Math.min(...ts) : null, end: ts.length ? Math.max(...ts) : null,
+               done: ev.length > 0 && ev.every(e => e.state === 'completed') };
+    });
+  }
+  // the stage a lineup saved now is for (first one not started); null = event over
+  function eventOpenStage(evData, now) {
+    const t = now === undefined ? Date.now() : now;
+    const st = eventStages(evData).find(x => x.lock === null || x.lock > t);
+    return st ? st.i : null;
+  }
+  function eventDone(evData) {
+    const sched = (evData && evData.schedule) || [];
+    const ko = eventStages(evData).slice(-1)[0];
+    return sched.length > 0 && sched.every(e => e.state === 'completed') && !!ko && ko.done;
+  }
+  // null when fine, else the reason (German, shown to the user)
+  function eventTeamError(ev, evData, sel) {
+    const c = eventConfig(ev);
+    const ids = (sel && sel.players) || [];
+    if (ids.length !== 5 || new Set(ids).size !== 5) return 'Genau 5 verschiedene Spieler.';
+    const ps = ids.map(id => eventPlayer(evData, id));
+    if (ps.some(p => !p)) return 'Ein Spieler spielt bei diesem Event nicht mit.';
+    const roles = ps.map(p => p.role);
+    for (const r of ['TOP', 'JNG', 'MID', 'BOT', 'SUP']) if (!roles.includes(r)) return 'Je ein Spieler pro Rolle (Top, Jungle, Mid, Bot, Support).';
+    const per = {};
+    for (const p of ps) per[p.team] = (per[p.team] || 0) + 1;
+    const over = Object.keys(per).find(k => per[k] > c.maxPerTeam);
+    if (over) return `Höchstens ${c.maxPerTeam} Spieler pro Team (${over}).`;
+    const cost = ids.reduce((t, id) => t + eventPrice(ev, evData, id), 0);
+    if (cost > c.budget) return `Zu teuer: ${cost} von ${c.budget}.`;
+    if (!ids.includes(sel.captain)) return 'Wähl einen Kapitän aus deinen 5.';
+    return null;
+  }
+  function eventLineup(ev, manager, stage) {
+    const L = (ev && ev.lineups) || {};
+    for (let i = stage; i >= 0; i--) if (L[i] && L[i][manager]) return L[i][manager];
+    return null;
+  }
+  function eventTruth(evData, scoring) {
+    const out = statTruth((evData && evData.games) || [], scoring);
+    const stages = eventStages(evData), sched = (evData && evData.schedule) || [];
+    const ko = stages[stages.length - 1];
+    if (ko && ko.done) {
+      const fin = sched.filter(e => e.stage === ko.i).sort((a, b) => a.start.localeCompare(b.start)).pop();
+      const w = fin && fin.teams.find(t => t.outcome === 'win');
+      if (fin) out.finalist = new Set(fin.teams.map(t => t.code));
+      if (w) {
+        out.champion = new Set([w.code]);
+        const team = ((evData && evData.teams) || []).find(t => t.code === w.code);
+        if (team && team.league) out.winnerRegion = new Set([team.league]);
+      }
+    }
+    const si = ((evData && evData.stages) || []).findIndex(st => /swiss/i.test(st.name));
+    if (si >= 0 && stages[si] && stages[si].done) {
+      const rec = {};
+      for (const e of sched.filter(x => x.stage === si)) for (const t of e.teams) {
+        const r = rec[t.code] || (rec[t.code] = { w: 0, l: 0 });
+        if (t.outcome === 'win') r.w++; else if (t.outcome === 'loss') r.l++;
+      }
+      out.swiss30 = new Set(Object.keys(rec).filter(k => rec[k].w === 3 && rec[k].l === 0));
+      out.swiss03 = new Set(Object.keys(rec).filter(k => rec[k].w === 0 && rec[k].l === 3));
+    }
+    return out;
+  }
+  // Test replay of a finished event: replay = { from (ms), first (ms), speed }.
+  // Original time t plays at from + (t - first) / speed. A match counts as
+  // finished once its games (by their length) are over in replay time; until
+  // then it has no result and its games are not in the stats.
+  function eventReplay(raw, replay, now) {
+    if (!raw || !replay) return raw;
+    const t = now === undefined ? Date.now() : now;
+    const map = ms => replay.from + (ms - replay.first) / replay.speed;
+    const durOf = {};
+    for (const g of raw.games || []) durOf[g.match] = (durOf[g.match] || 0) + ((g.dur || 1800) * 1000 + 10 * 60000) / 10;   // 10 rows per game
+    // like the real schedule: later rounds are TBD until they start
+    const firstDay = {};
+    for (const e of raw.schedule || []) { const k = e.stage, dd = e.start.slice(0, 10); if (!firstDay[k] || dd < firstDay[k]) firstDay[k] = dd; }
+    const done = new Set(), schedule = (raw.schedule || []).map(e => {
+      const start = map(Date.parse(e.start)), end = map(Date.parse(e.start) + (durOf[e.match] || 3600e3));
+      const st = t >= end ? 'completed' : t >= start ? 'inProgress' : 'unstarted';
+      if (st === 'completed') done.add(e.match);
+      return Object.assign({}, e, { start: new Date(start).toISOString(), state: st,
+        teams: st === 'completed' ? e.teams : e.teams.map(x => ({ code: st === 'unstarted' && e.start.slice(0, 10) > firstDay[e.stage] ? 'TBD' : x.code })) });
+    });
+    const games = (raw.games || []).filter(g => done.has(g.match)).map(g => Object.assign({}, g, { ts: new Date(map(Date.parse(g.ts))).toISOString() }));
+    return Object.assign({}, raw, { schedule, games, replay: true });
+  }
+  function eventReplayPlan(raw, minutes, leadMinutes, now) {
+    const ts = (raw.schedule || []).map(e => Date.parse(e.start)).filter(Boolean);
+    const first = Math.min(...ts), last = Math.max(...ts) + 4 * 3600e3;
+    return { from: (now === undefined ? Date.now() : now) + leadMinutes * 60000, first, speed: (last - first) / (minutes * 60000) };
+  }
+  // [{manager, name, players, pickem, total, byStage:{i:pts}, perPlayer:{id:pts}, correct:[qid]}] best first
+  function eventStandings(league, ev, evData) {
+    const c = eventConfig(ev), sc = league.scoring;
+    const stageOf = new Map(((evData && evData.schedule) || []).map(e => [e.match, e.stage]));
+    const pe = ev.pickem;
+    const truth = pe && pe.revealed && eventDone(evData) ? eventTruth(evData, sc) : null;
+    const rows = (league.managers || []).map(m => {
+      const r = { manager: m.id, name: m.name, players: 0, pickem: 0, total: 0, byStage: {}, perPlayer: {}, correct: [] };
+      for (const g of (evData && evData.games) || []) {
+        const st = stageOf.get(g.match);
+        if (st === undefined || st === null) continue;
+        const lu = eventLineup(ev, m.id, st);
+        if (!lu || !lu.players.includes(g.player)) continue;
+        let pts = gamePoints(g, sc);
+        if (g.player === lu.captain) pts *= c.captain;
+        pts = r2(pts);
+        r.players += pts; r.byStage[st] = r2((r.byStage[st] || 0) + pts); r.perPlayer[g.player] = r2((r.perPlayer[g.player] || 0) + pts);
+      }
+      if (truth) { const t = scoreTips(pe, (pe.picks || {})[m.id] || {}, truth, EVENT_TYPES); r.pickem = t.pts; r.correct = t.correct; }
+      r.players = r2(r.players); r.total = r2(r.players + r.pickem);
+      return r;
+    });
+    return rows.sort((a, b) => b.total - a.total);
+  }
+
   global.LECScoring = {
     gamePoints, byPlayer, playerTotal, applyOverrides,
     draftStatus, rosterSize, capacity,
@@ -916,7 +1084,8 @@
     berlinParts, berlinAt, waiverRules, waiverSlots, nextWaiverRun, lastWaiverSlot, waiverOrder,
     suggestedCapacity, calendar, blockKey, lineupConfig, lineupFor, lineupPreview, scoreBook, autoWindows, faabLeft,
     PICKEM_TYPES, pickemTruth, pickemPoints, pickemLock, splitDone,
-    weekRecap, hallEntry, hallDue
+    weekRecap, hallEntry, hallDue, statTruth, scoreTips,
+    EVENT_TYPES, eventConfig, eventTeamPrice, eventPrice, eventPlayer, eventStages, eventOpenStage, eventDone, eventTeamError, eventLineup, eventTruth, eventStandings, eventReplay, eventReplayPlan
   };
 // `this` is undefined in an ES module, so a Cloudflare Worker importing this
 // file would crash on a bare `this`. globalThis works in every place these

@@ -6,7 +6,7 @@ Punkte, Entscheidungen und Fallen, in die man schon getreten ist.
 ## Stand
 
 **LIVE, leer, bereit.** Liga im Status *Anmeldung*, 0 Mitglieder, frischer
-Einladungslink im Admin. Alle Tests grün (Regeln 17/17, Worker 24/24, Punkte 4/4).
+Einladungslink im Admin. Alle Tests grün (Regeln 18/18, Worker 25/25, Punkte 4/4).
 Saison 2026 komplett geladen (3 Splits, 382 Spiele, 186/186 Serien = offiziell).
 Live per echtem Browser geprüft: Einladung → Beitreten → Login → Draft → Pick →
 Admin-Pick → Undo → Restore → Health; Layout auf 5 Breiten × alle Seiten × alle
@@ -110,6 +110,30 @@ Admin-Tabs; ausgeloggt keine Mitgliedsdaten sichtbar.
 - Admin-Bereich auf 360/390 px geprüft (alle Tabs): Listen mit Knöpfen sind Blöcke statt
   Tabellen (Mitglieder, Picks, Verlauf, Backups); `select/input/textarea` nie breiter
   als ihr Platz (theme.css).
+
+## Special Events: First Stand, MSI, Worlds (03.10.2026)
+
+- Daten: `scripts/fetch_events.py` → `data/events/<slug>.json` (Teams aller Regionen mit
+  Kadern, Spielplan mit Phase je Match, Swiss/Bracket, Stats je Spiel) + `index.json`.
+  Workflow läuft jetzt alle 2 h. Teams kommen erst, wenn Riot sie einträgt (vorher TBD).
+- Modus (Fabians Wahl): **Budget-Teams** — 5 Spieler je Rolle, Budget 100, Preis pro Team
+  (Vorschlag LCK/LPL 25, LEC 20, Rest 15, im Admin änderbar), max. 2 pro Team, Kapitän ×1,5.
+  Gleiche Spieler bei mehreren Managern erlaubt. Pro Phase neu wählbar (Sperre = erstes
+  Spiel der Phase), sonst gilt das letzte Team weiter. **Eigene Tabelle** pro Event,
+  zählt nicht zur Saison; Sieger kommt in die Ruhmeshalle (`hall.event_<slug>`).
+- Geheim bis zur Sperre wie beim Pick'em: KV `evt:<slug>:<phase>:<id>`, `evp:<slug>:<id>`;
+  der Cron schreibt sie in `league.events[slug]` (`lineups`, `revealed`, `pickem`).
+- Event-Pick'em: Sieger, Finalist, Swiss 3-0 / 0-3, Region des Siegers, Spieler-/
+  Champion-Statistiken, eigene Frage. Regeln in scoring.js (`event*`, `EVENT_TYPES`).
+- Look je Event (worlds/msi/first_stand): Farben + Google-Font als Annäherung (Riots
+  Schriften sind nicht frei) + offizielles Logo aus der API. Intro: YouTube-Link im Admin,
+  Tap auf „Betreten" startet das Video MIT Ton (Browser erlauben Ton nur nach Tap), die
+  Seite liegt als Glas davor. Video wird nur eingebettet (youtube-nocookie), nie kopiert.
+- Worlds-2026-Hymne „Know My Name" (True Damage) erscheint am 08.10. 18:00 PDT auf dem
+  League-of-Legends-YouTube-Kanal → Link im Admin → Events eintragen.
+- Testmodus → „Special Event testen": spielt ein fertiges Event (MSI 2026) im Zeitraffer
+  ab (`ev.replay`, `S.eventReplay`), inkl. Phasen-Sperren, Aufdecken, Punkte, Auflösung.
+- events-ui.js: app.js ist eine Closure → `window.LECEventsInit(app)` bekommt die Helfer.
 
 ## Dateien
 

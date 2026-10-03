@@ -87,12 +87,12 @@ const LEAGUE = {
   swaps: [], trades: [], adjustments: [],
 };
 const SECRET_TOKEN = 'ghp_SECRET_never_leaves', ADMIN_PW = 'admin-pass-123456';
-let SCHEDULE = { events: [] }, SEASON = { tournaments: [] };
+let SCHEDULE = { events: [] }, SEASON = { tournaments: [] }, EVENT = null;
 
 let worker, env, gh, realFetch = globalThis.fetch;
 async function setup() {
   gh = makeGitHub({ 'league.json': JSON.parse(JSON.stringify(LEAGUE)) });
-  SCHEDULE = { events: [] }; SEASON = { tournaments: [] };
+  SCHEDULE = { events: [] }; SEASON = { tournaments: [] }; EVENT = null;
   globalThis.fetch = async (url, init) => {
     const u = String(url);
     if (u.startsWith('https://api.github.com/')) return gh.handle(u.replace('https://api.github.com', 'https://x'), init);
@@ -100,6 +100,8 @@ async function setup() {
     if (u.startsWith('https://pages.test/data/stats.json')) return J(STATS);
     if (u.startsWith('https://pages.test/data/schedule.json')) return J(SCHEDULE);
     if (u.startsWith('https://pages.test/data/season.json')) return J(SEASON);
+    if (u.startsWith('https://pages.test/data/events/ev_2026.json')) return EVENT ? J(EVENT) : new Response('nope', { status: 404 });
+    if (u.startsWith('https://pages.test/data/events/')) return new Response('nope', { status: 404 });
     if (u.startsWith('https://pages.test/data/')) return J({ updated: Math.floor(Date.now() / 1000), tournament: 't' });
     return new Response('unexpected fetch ' + u, { status: 599 });
   };
@@ -777,6 +779,62 @@ tests.test_mode = async () => {
   r = await call('POST', '/api/admin/test', { token: a, body: { action: 'end' } });
   assert(r.status === 409, 'end only while on');
   return `bots join, pick instantly around me, ${role ? 'accept a fair trade, ' : ''}${robbery ? 'reject a bad one, ' : ''}tip the test pick'em; end restores everything`;
+};
+
+tests.events = async () => {
+  const R = ['TOP', 'JNG', 'MID', 'BOT', 'SUP'];
+  const teams = [['AAA', 'LCK'], ['BBB', 'LEC'], ['CCC', 'LCS']].map(([code, league]) => ({ code, league, name: code }));
+  const players = teams.flatMap(t => R.map(r => ({ id: t.code + '_' + r, name: t.code + r, team: t.code, role: r })));
+  const h = 3600e3, iso = ms => new Date(ms).toISOString();
+  EVENT = { slug: 'ev_2026', name: 'Worlds', logo: '', teams, players, stages: [{ name: 'Swiss' }, { name: 'Knockouts' }], games: [],
+    schedule: [{ match: 'm1', stage: 0, start: iso(Date.now() + 5 * h), state: 'unstarted', teams: [{ code: 'AAA' }, { code: 'BBB' }] },
+               { match: 'm2', stage: 1, start: iso(Date.now() + 50 * h), state: 'unstarted', teams: [{ code: 'AAA' }, { code: 'CCC' }] }] };
+  const { a, tok, ids } = await liveLeague(['Ann', 'Ben']);
+  let r = await call('POST', '/api/admin/event', { token: a, body: { action: 'create', slug: 'nope_2026' } });
+  assert(r.status === 404, 'no data -> no event');
+  r = await call('POST', '/api/admin/event', { token: a, body: { action: 'create', slug: 'ev_2026', name: 'Worlds 2026', video: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ' } });
+  assert(r.status === 200 && league().events.ev_2026.video === 'dQw4w9WgXcQ', 'created with video id: ' + JSON.stringify(r.body));
+  r = await call('POST', '/api/admin/event', { token: a, body: { action: 'update', slug: 'ev_2026', budget: 110, prices: { AAA: 30 } } });
+  assert(r.status === 200 && league().events.ev_2026.budget === 110, 'budget + prices');
+  const team = ['AAA_TOP', 'BBB_JNG', 'AAA_MID', 'CCC_BOT', 'CCC_SUP'];          // 30+20+30+15+15 = 110
+  r = await call('POST', '/api/event/team', { token: tok.Ann, body: { slug: 'ev_2026', players: team, captain: 'AAA_MID' } });
+  assert(r.status === 200 && r.body.stage === 0, 'Ann saves for stage 0: ' + JSON.stringify(r.body));
+  r = await call('POST', '/api/event/team', { token: tok.Ben, body: { slug: 'ev_2026', players: ['AAA_TOP', 'AAA_JNG', 'AAA_MID', 'CCC_BOT', 'CCC_SUP'], captain: 'AAA_MID' } });
+  assert(r.status === 400 && /pro Team/.test(r.body.error), 'rules checked on the server');
+  await call('POST', '/api/event/team', { token: tok.Ben, body: { slug: 'ev_2026', players: ['BBB_TOP', 'BBB_JNG', 'AAA_MID', 'CCC_BOT', 'CCC_SUP'], captain: 'BBB_TOP' } });
+  r = await call('GET', '/api/event?slug=ev_2026', { token: tok.Ann });
+  assert(r.body.stage === 0 && r.body.team.captain === 'AAA_MID', 'own team readable');
+  assert(!JSON.stringify(league()).includes('CCC_BOT'), 'teams secret before the lock');
+  r = await call('POST', '/api/admin/event', { token: a, body: { action: 'pickem', slug: 'ev_2026', questions: [{ type: 'champion', points: 10 }, { type: 'nonsense', points: 1 }] } });
+  assert(r.status === 400, 'unknown question type refused');
+  r = await call('POST', '/api/admin/event', { token: a, body: { action: 'pickem', slug: 'ev_2026', questions: [{ type: 'champion', points: 10 }, { type: 'winnerRegion', points: 5 }] } });
+  assert(r.status === 200, 'pickem open');
+  await call('POST', '/api/event/pickem', { token: tok.Ann, body: { slug: 'ev_2026', picks: { q1: 'AAA', q2: 'LCK' } } });
+  await call('POST', '/api/event/pickem', { token: tok.Ben, body: { slug: 'ev_2026', picks: { q1: 'BBB', q2: 'LEC' } } });
+  // stage 0 starts: the cron reveals teams + tips
+  EVENT.schedule[0].start = iso(Date.now() - h);
+  await worker.scheduled({}, env, { waitUntil() {} });
+  let ev = league().events.ev_2026;
+  assert(ev.lineups[0][ids.Ann].captain === 'AAA_MID' && ev.lineups[0][ids.Ben] && ev.revealed.includes(0), 'stage 0 teams revealed');
+  assert(ev.pickem.revealed && ev.pickem.picks[ids.Ann].q1 === 'AAA', 'tips revealed at the first match');
+  r = await call('POST', '/api/event/pickem', { token: tok.Ann, body: { slug: 'ev_2026', picks: { q1: 'BBB' } } });
+  assert(r.status === 409, 'tips locked');
+  r = await call('POST', '/api/event/team', { token: tok.Ann, body: { slug: 'ev_2026', players: team, captain: 'AAA_TOP' } });
+  assert(r.status === 200 && r.body.stage === 1, 'changes now go to stage 1');
+  // event over: AAA beats CCC in the final -> champion AAA (LCK); hall entry
+  Object.assign(EVENT.schedule[0], { state: 'completed', teams: [{ code: 'AAA', outcome: 'win' }, { code: 'BBB', outcome: 'loss' }] });
+  Object.assign(EVENT.schedule[1], { start: iso(Date.now() - 0.5 * h), state: 'completed', teams: [{ code: 'AAA', outcome: 'win' }, { code: 'CCC', outcome: 'loss' }] });
+  EVENT.games = [{ game: 'g1', match: 'm1', player: 'AAA_MID', k: 10, d: 0, a: 0, cs: 0, win: true, dur: 1800 }, { game: 'g2', match: 'm2', player: 'AAA_TOP', k: 4, d: 0, a: 0, cs: 0, win: true, dur: 1800 }];
+  await worker.scheduled({}, env, { waitUntil() {} });
+  ev = league().events.ev_2026;
+  const rows = globalThis.LECScoring.eventStandings(league(), ev, EVENT);
+  const ann = rows.find(x => x.manager === ids.Ann);
+  assert(ann.pickem === 15 && ann.byStage[1] > 0, 'Ann: both tips right, stage-1 team counts: ' + JSON.stringify(ann));
+  const hall = league().hall.event_ev_2026;
+  assert(hall && hall.table[0].name === 'Ann' && hall.name === 'Worlds 2026', 'event in the hall of fame');
+  r = await call('POST', '/api/admin/event', { token: a, body: { action: 'delete', slug: 'ev_2026' } });
+  assert(r.status === 200 && !league().events.ev_2026 && !(await env.LEAGUE.get(`evt:ev_2026:1:${ids.Ann}`)), 'delete clears league + KV');
+  return 'create (needs data, video id), budget/prices, team rules on the server, secret until the stage lock, cron reveal, pickem lock, later stage, scores, hall of fame, delete';
 };
 
 tests.faab = async () => {

@@ -58,6 +58,13 @@ const dt = iso => new Date(iso).toLocaleString('de-DE', { weekday: 'short', day:
 const day = iso => new Date(iso).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit' });
 const tourLabel = () => (D.stats.season ? 'Saison ' + D.stats.season + ' · ' : '') + splitLabel(D.stats.tournament || '');
 const logo = (code, size) => U.teamLogo(D, code, size || 20);
+// special events (events-ui.js), built on first use with this closure's helpers
+let EVU;
+const EV = () => {
+  if (EVU === undefined) EVU = window.LECEventsInit ? window.LECEventsInit({ get D() { return D; }, L, S, U, esc, fmt, card, loggedIn, adminOnly, me,
+    api: (p, o) => api(p, o), toast: (h, pid) => toast(h, pid), render: () => render(), store, path: () => path(), scoring: () => scoring() }) : null;
+  return EVU;
+};
 const pcell = (id, opts) => U.playerCell(D, id, Object.assign({ link: true }, opts || {}));
 const card = (title, body, right) => `<section class="card"><div class="card-h"><h2>${title}</h2>${right ? `<span class="r">${right}</span>` : ''}</div>${body}</section>`;
 const pageHead = (eyebrow, title, right) => `<div class="row" style="justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:12px"><div><div class="eyebrow">${eyebrow}</div><h1 style="font-size:40px">${title}</h1></div>${right || ''}</div>`;
@@ -235,7 +242,7 @@ function viewHome() {
   const st = status(), prog = S.draftProgress(L()), clock = S.currentPicker(L());
   const members = L().managers || [];
   const mode = ui.table || L().standingsMode || 'points';
-  let h = announcement();
+  let h = announcement() + (EV() ? EV().eventBanner() : '');
   const heroSub = st === 'lobby' ? `Anmeldung läuft — ${members.length} Manager dabei. ${L().draft.scheduledAt ? `Draft am <b>${esc(dt(L().draft.scheduledAt))}</b> — noch <b id="countdown" data-deadline="${esc(L().draft.scheduledAt)}">…</b>.` : 'Der Admin startet den Draft.'}`
     : st === 'live' ? (clock ? `Draft läuft · Pick ${prog.done + 1}/${prog.total} — <b>${esc(mgrName(clock))}</b> ist am Zug.` : 'Draft läuft.')
     : 'Kader stehen. Punkte kommen automatisch nach jedem LEC-Spieltag.';
@@ -989,6 +996,12 @@ async function gameFrame(gameId, atIso) {
   return null;
 }
 // all games in progress (LEC only unless ?all=1); ?game=<id>&at=<iso> replays one
+// LEC, plus the league of a running special event (worlds, msi, first_stand)
+function liveLeagues() {
+  const slug = loggedIn() && EV() ? EV().currentEventSlug() : null;
+  const info = slug ? EV().evInfo(slug) : null;
+  return ['lec'].concat(info ? [info.league] : []);
+}
 async function loadLive(params) {
   const out = [];
   if (params.game) {
@@ -996,7 +1009,7 @@ async function loadLive(params) {
     if (g) out.push({ league: 'Replay', block: '', game: g, number: 1, teams: D.teams.teams });
     return out;
   }
-  const evs = ((await gw('getLive')).schedule.events || []).filter(e => e.state === 'inProgress' && e.type === 'match' && (params.all || (e.league && e.league.slug === 'lec')));
+  const evs = ((await gw('getLive')).schedule.events || []).filter(e => e.state === 'inProgress' && e.type === 'match' && (params.all || (e.league && liveLeagues().includes(e.league.slug))));
   for (const e of evs) {
     const det = (await gw('getEventDetails', { id: e.match ? e.match.id : e.id })).event;
     const games = ((det.match || {}).games || []).filter(x => x.state === 'inProgress');
@@ -1088,7 +1101,7 @@ async function disablePush() {
 }
 
 // ── routing & chrome ──────────────────────────────────────────────────────
-const PRIVATE = /^\/(mein-team|draft|manager\/.+|regeln|transfers|pickem|chat|rueckblick|ruhmeshalle)$/;
+const PRIVATE = /^\/(mein-team|draft|manager\/.+|regeln|transfers|pickem|chat|rueckblick|ruhmeshalle|event\/.+)$/;
 const ICONS = {
   home: '<path d="M3 11l9-7 9 7v9a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/>',
   user: '<circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 4-6 8-6s8 2 8 6"/>',
@@ -1096,6 +1109,7 @@ const ICONS = {
   players: '<circle cx="9" cy="8" r="3.5"/><path d="M2 20c0-3.5 3-5.5 7-5.5s7 2 7 5.5"/><path d="M16 4.5a3.5 3.5 0 0 1 0 7M22 20c0-3-2-5-5-5.5"/>',
   shield: '<path d="M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z"/>',
   book: '<path d="M4 4h7a3 3 0 0 1 3 3v13a2 2 0 0 0-2-2H4zM20 4h-5"/><path d="M14 7a3 3 0 0 1 3-3h3v14h-4a2 2 0 0 0-2 2"/>',
+  trophy: '<path d="M7 4h10v4a5 5 0 0 1-10 0z"/><path d="M7 6H4a3 3 0 0 0 3 4M17 6h3a3 3 0 0 1-3 4M12 13v4M8 20h8M9 17h6"/>',
   live: '<circle cx="12" cy="12" r="3"/><path d="M6.3 6.3a8 8 0 0 0 0 11.4M17.7 6.3a8 8 0 0 1 0 11.4"/>',
 };
 const icon = n => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" stroke-linecap="round">${ICONS[n]}</svg>`;
@@ -1105,7 +1119,7 @@ function nav() {
   if (!loggedIn()) return [['#/', 'Saison', 'home', /^\/?$/], ['#/live', 'Live' + liveDot, 'live', /^\/live/], ['#/lec', 'LEC', 'shield', /^\/(lec|team)/], ['#/spieler', 'Spieler', 'players', /^\/spieler/]];
   const draftDone = status() === 'done';
   if (adminOnly()) return [['#/', 'Übersicht', 'home', /^\/(|chat|rueckblick|ruhmeshalle)$/], ...(draftDone ? [] : [['#/draft', 'Draft' + (status() === 'live' ? '<span class="live-dot"></span>' : ''), 'draft', /^\/draft$/]]),
-    ['#/pickem', 'Pick\'em', 'book', /^\/pickem/],
+    ...evNav(), ['#/pickem', 'Pick\'em', evNav().length ? '' : 'book', /^\/pickem/],
     ['#/live', 'Live' + liveDot, draftDone ? 'live' : '', /^\/live/], ['#/spieler', 'Spieler', 'players', /^\/spieler/], ['#/lec', 'LEC', 'shield', /^\/(lec|team)/]];
   // Pick'em is always there (tips happen before the split, often before the
   // draft). The phone tab bar holds 6: until the draft is done, Live is only in
@@ -1113,8 +1127,12 @@ function nav() {
   const dot = '<span class="live-dot" style="background:var(--gold);animation:none"></span>';
   const draft = draftDone ? [] : [['#/draft', 'Draft' + (status() === 'live' ? '<span class="live-dot"></span>' : ''), 'draft', /^\/draft$/]];
   return [['#/', 'Übersicht' + (chatUnread() ? dot : ''), 'home', /^\/(|chat|rueckblick|ruhmeshalle)$/], ['#/mein-team', 'Mein Team' + (pendingForMe() ? dot : ''), 'user', /^\/(mein-team|manager\/.+|transfers)$/],
-    ...draft, ['#/pickem', 'Pick\'em' + (pickemOpenNow() ? dot : ''), 'book', /^\/pickem/],
+    ...draft, ...evNav(), ['#/pickem', 'Pick\'em' + (pickemOpenNow() ? dot : ''), evNav().length ? '' : 'book', /^\/pickem/],
     ['#/live', 'Live' + liveDot, draftDone ? 'live' : '', /^\/live/], ['#/spieler', 'Spieler', 'players', /^\/spieler/], ['#/lec', 'LEC', 'shield', /^\/(lec|team)/]];
+}
+function evNav() {
+  const slug = EV() && L() ? EV().currentEventSlug() : null;
+  return slug ? [['#/event/' + slug, esc(EV().evShort(slug)), 'trophy', new RegExp('^/event/')]] : [];
 }
 // a pick'em is open for tips right now
 function pickemOpenNow() {
@@ -1136,7 +1154,7 @@ function chrome() {
   const mine = loggedIn() && status() === 'live' && S.currentPicker(L()) === me();
   $('turnbar').className = 'turnbar' + (mine ? ' on' : '');
   $('turnbar').innerHTML = mine ? (p === '/draft' ? 'Du bist dran — wähle deinen Spieler' : 'Du bist dran! <a href="#/draft">Jetzt picken →</a>') : '';
-  const title = { '/chat': 'Chat', '/rueckblick': 'Rückblick', '/ruhmeshalle': 'Ruhmeshalle', '/': loggedIn() ? 'Übersicht' : 'Saison', '/draft': 'Draft', '/spieler': 'Spieler', '/teams': 'Teams', '/regeln': 'Regeln', '/mein-team': 'Mein Team', '/live': 'Live', '/admin': 'Admin', '/transfers': 'Transfers', '/pickem': 'Pick\'em', '/lec': 'LEC' }[p] || '';
+  const title = { '/event': 'Event', '/chat': 'Chat', '/rueckblick': 'Rückblick', '/ruhmeshalle': 'Ruhmeshalle', '/': loggedIn() ? 'Übersicht' : 'Saison', '/draft': 'Draft', '/spieler': 'Spieler', '/teams': 'Teams', '/regeln': 'Regeln', '/mein-team': 'Mein Team', '/live': 'Live', '/admin': 'Admin', '/transfers': 'Transfers', '/pickem': 'Pick\'em', '/lec': 'LEC' }[p] || '';
   document.title = (mine ? '▶ Du bist dran · ' : '') + 'LEC Fantasy' + (title ? ' — ' + title : '');
   if (mine && !wasMyTurn) yourTurn();
   wasMyTurn = !!mine;
@@ -1157,6 +1175,7 @@ function render() {
   const caret = typing && document.activeElement.selectionStart;
   if (p === '/admin') { chrome(); if (window.LECAdmin) window.LECAdmin.render($('view'), { D, WORKER, U, S }); return; }
   if (window.LECAdmin) window.LECAdmin.leave();
+  if (EV()) EV().eventRouteHook(p);
   let m, html;
   if ((m = p.match(/^\/join\/([\w-]+)$/))) html = viewJoin(m[1]);
   else if (session && !LIVE) html = liveErr
@@ -1170,6 +1189,7 @@ function render() {
   else if (p === '/mein-team') html = viewMine();
   else if (p === '/transfers') html = viewTransfers();
   else if (p === '/pickem') html = viewPickem();
+  else if ((m = p.match(/^\/event\/([\w-]+)$/)) && EV()) html = EV().viewEvent(m[1]);
   else if (p === '/chat') html = viewChat();
   else if (p === '/rueckblick') html = viewRecap();
   else if (p === '/ruhmeshalle') html = viewHall();
@@ -1196,6 +1216,7 @@ function bind() {
   document.querySelectorAll('[data-href]').forEach(el => el.onclick = e => { if (!e.target.closest('a,button')) location.hash = el.dataset.href; });
   document.querySelectorAll('a.plink').forEach(a => a.onclick = e => { e.preventDefault(); location.hash = '#/spieler/' + a.dataset.pid; });
   bindLogin();
+  if (EV()) EV().bindEvent();
   const on = (id, ev, fn) => { const el = $(id); if (el) el[ev] = fn; };
   on('q', 'oninput', e => { ui.q = e.target.value; render(); });
   on('teamf', 'onchange', e => { ui.team = e.target.value; render(); });
@@ -1347,6 +1368,11 @@ function viewHall() {
   if (!ents.length) return h + card('Ruhmeshalle', '<div class="empty">Noch leer. Nach jedem Split wird hier der Sieger verewigt — mit Pick\'em-König, bester Woche, Schnäppchen und Fehlgriff des Drafts.</div>');
   const medal = ['🏆', '🥈', '🥉'];
   for (const [key, e] of ents) {
+    if (key.startsWith('event_')) {
+      h += card(esc(e.name || key), (e.logo ? `<div class="card-b" style="text-align:center"><img src="${esc(e.logo)}" alt="" style="height:56px;max-width:160px;object-fit:contain"></div>` : '')
+        + e.table.slice(0, 3).map((r, i) => award(medal[i], i ? `Platz ${i + 1}` : 'Event-Sieger', `<div class="row" style="justify-content:space-between"><b>${esc(r.name)}</b><span class="pts">${fmt(r.pts)}</span></div>`)).join(''), 'Special Event');
+      continue;
+    }
     if (key.startsWith('season_')) {
       h += card('Saison ' + esc(e.season), `<div class="card-b" style="text-align:center;padding:22px"><div style="font-size:40px">👑</div><div class="eyebrow">Saisonsieger</div>
         <div style="font-family:var(--display);font-size:30px;margin-top:4px">${esc((e.table[0] || {}).name || '—')}</div><div class="pts">${fmt((e.table[0] || {}).pts || 0)} Punkte</div></div>`
@@ -1365,7 +1391,7 @@ function viewHall() {
   return h;
 }
 function hallCard() {
-  const ents = Object.entries(L().hall || {}).filter(([k]) => !k.startsWith('season_')).sort((a, b) => (b[1].at || '').localeCompare(a[1].at || ''));
+  const ents = Object.entries(L().hall || {}).filter(([k]) => !k.startsWith('season_') && !k.startsWith('event_')).sort((a, b) => (b[1].at || '').localeCompare(a[1].at || ''));
   if (!ents.length) return '';
   const [key, e] = ents[0];
   return card('Ruhmeshalle', award('🏆', esc(splitLabel(key)), `<b>${esc((e.table[0] || {}).name || '—')}</b>`), '<a href="#/ruhmeshalle">alle</a>');

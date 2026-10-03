@@ -1,0 +1,439 @@
+// ═══════════════════════════════════════════════════════════════════════════
+// Special events (First Stand, MSI, Worlds): page #/event/<slug>.
+//
+// Budget team (5 players, one per role, captain), event pick'em, event table,
+// tournament (stages, Swiss records, bracket) and teams - in the look of the
+// event. With a YouTube link set by the admin, the page opens with an intro:
+// a tap ("Betreten") starts the official video WITH sound (browsers only allow
+// sound after a tap), the logo plays in, then the page slides up in front of
+// the running video. app.js is one closure, so it hands its helpers in:
+// window.LECEventsInit(app) returns the functions app.js calls.
+// ═══════════════════════════════════════════════════════════════════════════
+window.LECEventsInit = function (app) {
+'use strict';
+const { L, S, U, esc, fmt, card, loggedIn, adminOnly, me, api, toast, render, store, path, scoring } = app;
+const $ = id => document.getElementById(id);
+const EVX = { data: {}, loading: {}, mine: {}, form: {}, tips: {}, tab: 'team', role: 'TOP', q: '', team: '', open: null, player: null, playerSlug: null, entered: {}, ytReady: null };
+const EV_ROLES = ['TOP', 'JNG', 'MID', 'BOT', 'SUP'];
+const EV_THEMES = {
+  worlds:      { font: 'Cinzel:wght@600;700;800', display: "'Cinzel', Georgia, serif", accent: '#c8aa6e', hi: '#f0e6d2', soft: 'rgba(200,170,110,.15)', teal: '#0ac8b9', bg: '#050a12', surface: '11,19,32', short: 'Worlds' },
+  msi:         { font: 'Chakra+Petch:wght@500;600;700', display: "'Chakra Petch', 'Arial Narrow', sans-serif", accent: '#8c9bff', hi: '#e2e6ff', soft: 'rgba(140,155,255,.15)', teal: '#5ee6ff', bg: '#06070f', surface: '15,17,34', short: 'MSI' },
+  first_stand: { font: 'Orbitron:wght@600;700;800', display: "'Orbitron', 'Arial Narrow', sans-serif", accent: '#d4ff3a', hi: '#f4ffd0', soft: 'rgba(212,255,58,.12)', teal: '#d4ff3a', bg: '#070806', surface: '17,19,13', short: 'First Stand' },
+};
+const evIndex = () => ((app.D && app.D.eventsIndex && app.D.eventsIndex.events) || []);
+const evInfo = slug => evIndex().find(e => e.slug === slug) || null;
+const evTheme = slug => EV_THEMES[(evInfo(slug) || {}).league] || EV_THEMES.worlds;
+const evShort = slug => { const i = evInfo(slug); return (EV_THEMES[i && i.league] || {}).short || (i ? i.name : slug); };
+
+// events of this league that are on (from 30 days before the start to 14 days after the end)
+function activeEvents() {
+  const now = Date.now();
+  return Object.values((L() && L().events) || {}).map(ev => ({ ev, info: evInfo(ev.slug) })).filter(x => x.info && (x.ev.replay ||
+    Date.parse(x.info.start) - 30 * 864e5 <= now && Date.parse(x.info.end) + 15 * 864e5 >= now))
+    .sort((a, b) => a.info.start.localeCompare(b.info.start));
+}
+function currentEventSlug() { const a = activeEvents(); return a.length ? a[0].ev.slug : null; }
+
+function loadEventData(slug) {
+  if (EVX.data[slug] || EVX.loading[slug]) return;
+  EVX.loading[slug] = true;
+  U.getJson('data/events/' + slug + '.json', true).then(d => { EVX.data[slug] = d || { teams: [], players: [], schedule: [], stages: [], games: [] }; })
+    .finally(() => { EVX.loading[slug] = false; render(); });
+}
+async function loadMine(slug) {
+  if (!loggedIn() || adminOnly()) { EVX.mine[slug] = {}; return; }
+  try { EVX.mine[slug] = await api('/api/event?slug=' + encodeURIComponent(slug)); } catch (e) { EVX.mine[slug] = { err: e.message }; }
+  const t = EVX.mine[slug].team;
+  if (!EVX.form[slug]) EVX.form[slug] = t ? { players: Object.fromEntries(t.players.map(id => [evP(slug, id) ? evP(slug, id).role : '', id])), captain: t.captain } : { players: {}, captain: '' };
+  if (!EVX.tips[slug]) EVX.tips[slug] = Object.assign({}, EVX.mine[slug].tips || {});
+  render();
+}
+
+// ── small helpers ─────────────────────────────────────────────────────────
+// event data as of now - a test replay (ev.replay) recomputed at most every 5 s
+const EVR = {};
+function evD(slug) {
+  const raw = EVX.data[slug], ev = ((L() && L().events) || {})[slug];
+  if (!raw || !ev || !ev.replay) return raw;
+  const k = JSON.stringify(ev.replay) + '|' + Math.floor(Date.now() / 5000);
+  if (!EVR[slug] || EVR[slug].k !== k) EVR[slug] = { k, d: S.eventReplay(raw, ev.replay) };
+  return EVR[slug].d;
+}
+setInterval(() => { const m = path().match(/^\/event\/([\w-]+)$/); const ev = m && L() && (L().events || {})[m[1]]; if (ev && ev.replay && !document.hidden && !(document.activeElement && /^(INPUT|SELECT|TEXTAREA)$/.test(document.activeElement.tagName))) render(); }, 15000);
+const evP = (slug, id) => S.eventPlayer(evD(slug), id);
+const evT = (slug, code) => ((evD(slug) || {}).teams || []).find(t => t.code === code);
+function evLogo(slug, code, size) {
+  const t = evT(slug, code);
+  size = size || 20;
+  return t && t.logo ? `<img class="tlogo" src="${esc(t.logo)}" alt="${esc(code)}" title="${esc(t.name)}" width="${size}" height="${size}" loading="lazy">` : `<span class="tcode">${esc(code || '')}</span>`;
+}
+function evCell(slug, id, opts) {
+  opts = opts || {};
+  const p = evP(slug, id);
+  if (!p) return `<span class="pname">${esc(id)}</span>`;
+  const photo = opts.photo ? (p.photo ? `<img class="ph" src="${esc(p.photo)}" alt="" loading="lazy">` : '<span class="ph ph-none"></span>') : '';
+  return `<span class="pcell">${photo}${evLogo(slug, p.team)} <span class="role">${esc(p.role)}</span> <span class="pname">${esc(p.name)}</span></span>`;
+}
+function evPoints(slug) {
+  const d = evD(slug), out = new Map();
+  for (const g of (d && d.games) || []) out.set(g.player, (out.get(g.player) || 0) + S.gamePoints(g, scoring()));
+  return out;
+}
+const fmtLeft = ms => { const s = Math.max(0, Math.floor(ms / 1000)); return s >= 86400 ? `${Math.floor(s / 86400)} T ${Math.floor(s % 86400 / 3600)} Std` : s >= 3600 ? `${Math.floor(s / 3600)} Std ${Math.floor(s / 60) % 60} Min` : `${Math.floor(s / 60)} Min`; };
+function stageLine(slug) {
+  const d = evD(slug), st = S.eventStages(d), now = Date.now();
+  if (!st.length) return 'Spielplan kommt noch';
+  const open = S.eventOpenStage(d, now);
+  if (S.eventDone(d)) return 'vorbei';
+  const cur = st.filter(x => x.lock !== null && x.lock <= now).pop();
+  const nxt = open === null ? null : st[open];
+  return (cur ? `<b>${esc(cur.name)}</b> läuft` : 'startet bald') + (nxt && nxt.lock ? ` · ${cur ? 'nächste Phase' : esc(nxt.name)} in <b>${fmtLeft(nxt.lock - now)}</b>` : '');
+}
+
+// ── theme + video ─────────────────────────────────────────────────────────
+function applyEventTheme(slug) {
+  let st = document.getElementById('evtheme');
+  if (!slug) { if (st) st.remove(); document.body.classList.remove('ev-on'); return; }
+  const t = evTheme(slug);
+  if (!document.getElementById('evfont-' + t.font)) {
+    const l = document.createElement('link'); l.rel = 'stylesheet'; l.id = 'evfont-' + t.font;
+    l.href = 'https://fonts.googleapis.com/css2?family=' + t.font + '&display=swap'; document.head.appendChild(l);
+  }
+  if (!st) { st = document.createElement('style'); st.id = 'evtheme'; document.head.appendChild(st); }
+  st.textContent = `body.ev-on{--gold:${t.accent};--gold-hi:${t.hi};--gold-soft:${t.soft};--teal:${t.teal};--teal-hi:${t.hi};--display:${t.display};--bg:${t.bg};--surface:rgb(${t.surface});--surface-2:rgba(${t.surface},.9);background:${t.bg}}
+    body.ev-on.ev-video{background:#000}
+    body.ev-on.ev-video .card{background:rgba(${t.surface},.66);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);border-color:rgba(255,255,255,.09)}
+    body.ev-on.ev-video .topbar,body.ev-on.ev-video .tabbar{background:rgba(0,0,0,.55);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px)}
+    body.ev-on.ev-video .footer{background:transparent}`;
+  document.body.classList.add('ev-on');
+}
+function ytApi() {
+  if (EVX.ytReady) return EVX.ytReady;
+  EVX.ytReady = new Promise(res => {
+    if (window.YT && window.YT.Player) return res(window.YT);
+    const prev = window.onYouTubeIframeAPIReady;
+    window.onYouTubeIframeAPIReady = () => { if (prev) prev(); res(window.YT); };
+    const s = document.createElement('script'); s.src = 'https://www.youtube.com/iframe_api'; document.head.appendChild(s);
+  });
+  return EVX.ytReady;
+}
+const videoOff = () => store.get('lf.evVideo', 'on') === 'off';
+// background player, created muted + paused before the tap so the tap can start it at once
+async function prepareVideo(slug) {
+  const ev = (L().events || {})[slug];
+  if (!ev || !ev.video || videoOff() || EVX.playerSlug === slug) return;
+  stopVideo();
+  EVX.playerSlug = slug;
+  const YT = await ytApi();
+  if (EVX.playerSlug !== slug) return;
+  let bg = document.getElementById('evbg');
+  if (!bg) { bg = document.createElement('div'); bg.id = 'evbg'; bg.className = 'evbg'; bg.innerHTML = '<div id="evbgPlayer"></div>'; document.body.prepend(bg); }
+  EVX.player = new YT.Player('evbgPlayer', { videoId: ev.video, host: 'https://www.youtube-nocookie.com',
+    playerVars: { autoplay: 0, mute: 1, controls: 0, loop: 1, playlist: ev.video, playsinline: 1, rel: 0, modestbranding: 1, disablekb: 1, iv_load_policy: 3, start: ev.videoStart || 0 },
+    events: { onReady: () => { EVX.ready = true; if (EVX.entered[slug]) startPlayback(); },
+      // loop by hand (YouTube's own loop shows its controls between runs)
+      onStateChange: e => { if (e.data === 0 && EVX.player === e.target) { e.target.seekTo(ev.videoStart || 0, true); e.target.playVideo(); } } } });
+}
+function startPlayback() {
+  const p = EVX.player;
+  if (!p || !p.playVideo) return;
+  try { p.unMute(); p.setVolume(70); p.playVideo(); } catch (e) { /* not ready yet */ }
+  // a browser that still blocks sound: play muted rather than not at all
+  setTimeout(() => { try { if (EVX.player === p && p.getPlayerState && p.getPlayerState() !== 1) { p.mute(); p.playVideo(); toast('Ton blockiert — tippe auf ▶ Intro, um ihn anzumachen.'); } } catch (e) { /* gone */ } }, 1800);
+  document.body.classList.add('ev-video');
+  const b = document.getElementById('evbg'); if (b) b.classList.add('on');
+}
+function stopVideo() {
+  try { if (EVX.player && EVX.player.destroy) EVX.player.destroy(); } catch (e) { /* gone */ }
+  EVX.player = null; EVX.playerSlug = null; EVX.ready = false;
+  const b = document.getElementById('evbg'); if (b) b.remove();
+  document.body.classList.remove('ev-video');
+}
+function enterEvent(slug) {
+  EVX.entered[slug] = true;
+  startPlayback();                                   // inside the tap: sound allowed
+  const o = document.getElementById('evintro');
+  if (o) { o.classList.add('play'); setTimeout(() => { o.classList.add('out'); const v = $('view'); if (v) { v.classList.remove('ev-rise'); void v.offsetWidth; v.classList.add('ev-rise'); } }, 2600); setTimeout(() => { o.remove(); }, 3500); }
+}
+function introOverlay(slug) {
+  if (document.getElementById('evintro')) return;
+  const info = evInfo(slug) || {}, ev = L().events[slug];
+  const o = document.createElement('div');
+  o.id = 'evintro'; o.className = 'evintro';
+  o.innerHTML = `<div class="evintro-in">${info.logo ? `<img class="evintro-logo" src="${esc(info.logo)}" alt="">` : ''}
+    <div class="evintro-name">${esc(ev.name || info.name || slug)}</div>
+    <div class="evintro-sub">${esc(info.start ? new Date(info.start).toLocaleDateString('de-DE', { day: '2-digit', month: 'long' }) + ' – ' + new Date(info.end).toLocaleDateString('de-DE', { day: '2-digit', month: 'long', year: 'numeric' }) : '')}</div>
+    <button class="btn gold lg evintro-go" id="evGo">Betreten 🔊</button>
+    <a href="#" class="evintro-skip" id="evSkip">ohne Video &amp; Musik</a></div>`;
+  document.body.appendChild(o);
+  o.querySelector('#evGo').onclick = () => enterEvent(slug);
+  o.querySelector('#evSkip').onclick = e => { e.preventDefault(); store.set('lf.evVideo', 'off'); stopVideo(); EVX.entered[slug] = true; o.remove(); render(); };
+}
+// called by app.js render() on every route
+function eventRouteHook(p) {
+  const m = p.match(/^\/event\/([\w-]+)$/);
+  const slug = m && loggedIn() && (L().events || {})[m[1]] ? m[1] : null;
+  applyEventTheme(slug);
+  if (!slug) { stopVideo(); const o = document.getElementById('evintro'); if (o) o.remove(); return; }
+  const ev = L().events[slug];
+  if (ev.video && !videoOff()) {
+    prepareVideo(slug);
+    if (!EVX.entered[slug]) introOverlay(slug);
+  } else stopVideo();
+}
+
+// ── page ──────────────────────────────────────────────────────────────────
+function viewEvent(slug) {
+  const ev = (L().events || {})[slug];
+  if (!ev) return card('Event', '<div class="empty">Dieses Event ist nicht angelegt. <a href="#/">Zur Übersicht</a></div>');
+  const d = evD(slug);
+  if (!d) { loadEventData(slug); return card(esc(ev.name), '<div class="empty">lädt …</div>'); }
+  if (EVX.mine[slug] === undefined) { EVX.mine[slug] = null; loadMine(slug); }
+  const info = evInfo(slug) || {};
+  const tabs = [['team', adminOnly() ? 'Teams' : 'Mein Team'], ['pickem', 'Pick\'em'], ['table', 'Tabelle'], ['tour', 'Turnier'], ['teams', 'Teilnehmer']];
+  const hero = `<section class="hero evhero">
+      <div class="row" style="gap:18px;align-items:center;flex-wrap:wrap">${info.logo ? `<img src="${esc(info.logo)}" alt="" style="height:64px;max-width:160px;object-fit:contain">` : ''}
+      <div style="min-width:0;flex:1"><div class="eyebrow">Special Event · ${esc(info.start ? new Date(info.start).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit' }) + ' – ' + new Date(info.end).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' }) : '')}</div>
+      <h1 style="margin:2px 0 4px;overflow-wrap:anywhere">${esc(ev.name)}</h1><div class="sub">${stageLine(slug)}</div>
+      ${ev.video ? `<button class="btn sm" id="evVid" style="margin-top:10px">${videoOff() ? '▶ Intro &amp; Musik an' : (EVX.player ? '🔇 Video aus' : '▶ Intro')}</button>` : ''}</div></div></section>`;
+  const chips = `<div class="chips" style="margin:0 0 16px">${tabs.map(([k, l]) => `<button class="chip ${EVX.tab === k ? 'on' : ''}" data-evtab="${k}">${l}</button>`).join('')}</div>`;
+  let body = '';
+  if (!d.teams.length && EVX.tab !== 'tour') body = card(esc(ev.name), '<div class="empty">Die Teilnehmer stehen noch nicht fest. Sobald Riot sie einträgt (meist ein paar Tage vorher), kannst du hier dein Team bauen.</div>');
+  else if (EVX.tab === 'team') body = adminOnly() ? evAllTeams(slug) : evBuilder(slug);
+  else if (EVX.tab === 'pickem') body = evPickem(slug);
+  else if (EVX.tab === 'table') body = evTable(slug);
+  else if (EVX.tab === 'tour') body = evTour(slug);
+  else body = evTeams(slug);
+  const replay = ev.replay ? `<div class="note" style="border-color:var(--gold)">🧪 <b>Wiederholung im Testmodus</b> — das echte ${esc(info.name || '')} spielt sich im Zeitraffer noch einmal ab. Punkte kommen Spiel für Spiel.</div>` : '';
+  return hero + replay + chips + body;
+}
+
+// team builder
+function evBuilder(slug) {
+  const ev = L().events[slug], d = evD(slug), c = S.eventConfig(ev), mine = EVX.mine[slug];
+  if (mine === null) return card('Mein Team', '<div class="empty">lädt …</div>');
+  const stage = mine.stage;
+  if (stage === null || stage === undefined) return evMyHistory(slug) || card('Mein Team', '<div class="empty">Das Event ist vorbei.</div>');
+  const f = EVX.form[slug] || (EVX.form[slug] = { players: {}, captain: '' });
+  const ids = EV_ROLES.map(r => f.players[r]).filter(Boolean);
+  const cost = ids.reduce((t, id) => t + S.eventPrice(ev, d, id), 0);
+  const left = c.budget - cost;
+  const sel = { players: ids, captain: f.captain };
+  const why = ids.length === 5 ? S.eventTeamError(ev, d, sel) : `Noch ${5 - ids.length} Rolle${5 - ids.length === 1 ? '' : 'n'} frei.`;
+  const saved = mine.team && JSON.stringify([...mine.team.players].sort()) === JSON.stringify([...ids].sort()) && mine.team.captain === f.captain;
+  const st = S.eventStages(d)[stage];
+  const pts = evPoints(slug);
+  const slot = r => {
+    const id = f.players[r];
+    if (!id) return `<div class="evslot empty ${EVX.role === r ? 'on' : ''}" data-evrole="${r}"><span class="role">${r}</span><span class="dim">Spieler wählen</span></div>`;
+    const p = evP(slug, id);
+    return `<div class="evslot ${EVX.role === r ? 'on' : ''}" data-evrole="${r}">${p && p.photo ? `<img class="ph" src="${esc(p.photo)}" alt="">` : '<span class="ph ph-none"></span>'}
+      <div style="flex:1;min-width:0"><div class="row" style="gap:6px;min-width:0">${evLogo(slug, p.team, 18)}<b style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(p.name)}</b></div><div class="dim" style="font-size:12px">${r} · ${S.eventPrice(ev, d, id)} Credits</div></div>
+      <button class="btn sm ${f.captain === id ? 'gold' : ''}" data-evcap="${esc(id)}" title="Kapitän: Punkte ×${fmt(c.captain)}">★</button><button class="btn sm" data-evdrop="${r}">✕</button></div>`;
+  };
+  const head = `<div class="card-b"><div class="row" style="justify-content:space-between;flex-wrap:wrap;gap:8px"><div><b style="font-size:18px">${cost}</b> <span class="dim">/ ${c.budget} Credits</span> · <span style="color:${left < 0 ? 'var(--loss)' : 'var(--win)'}">${left >= 0 ? 'noch ' + left : left + ' drüber'}</span></div>
+      <div class="dim" style="font-size:12px">für <b style="color:var(--text)">${esc(st.name)}</b>${st.lock ? ' · sperrt in ' + fmtLeft(st.lock - Date.now()) : ''}</div></div>
+      <div class="evbar"><div style="width:${Math.min(100, cost / c.budget * 100)}%;${left < 0 ? 'background:var(--loss)' : ''}"></div></div></div>`;
+  const slots = `<div class="evslots">${EV_ROLES.map(slot).join('')}</div>`;
+  const foot = `<div class="card-b row" style="flex-wrap:wrap;gap:10px;border-top:1px solid var(--line)"><button class="btn gold" id="evSave" ${why ? 'disabled' : ''}>${saved ? 'Gespeichert ✓' : 'Team speichern'}</button>
+      <span class="muted" style="font-size:12px">${why ? esc(why) : saved ? 'Bis zur Sperre änderbar. Niemand sieht dein Team vorher.' : 'Noch nicht gespeichert.'} Max. ${c.maxPerTeam} pro Team · Kapitän ×${fmt(c.captain)} · ohne neues Team gilt deins aus der letzten Phase weiter.</span></div>`;
+  // market
+  const q = EVX.q.toLowerCase();
+  const cur = f.players[EVX.role];
+  const curCost = cur ? S.eventPrice(ev, d, cur) : 0;
+  const perTeam = {}; for (const id of ids) { const p = evP(slug, id); if (p && id !== cur) perTeam[p.team] = (perTeam[p.team] || 0) + 1; }
+  const list = d.players.filter(p => p.role === EVX.role && (!EVX.team || p.team === EVX.team) && (!q || [p.name, p.realName, p.team].join(' ').toLowerCase().includes(q)))
+    .map(p => ({ p, price: S.eventPrice(ev, d, p.id), pts: pts.get(p.id) || 0 }))
+    .sort((a, b) => b.price - a.price || b.pts - a.pts || a.p.name.localeCompare(b.p.name));
+  const rows = list.map(x => {
+    const mineNow = cur === x.p.id;
+    const tooMuch = cost - curCost + x.price > c.budget, teamFull = (perTeam[x.p.team] || 0) >= c.maxPerTeam;
+    return `<tr><td class="fill">${evCell(slug, x.p.id, { photo: true })}</td><td class="num"><span class="pill">${x.price}</span></td>${pts.size ? `<td class="num pts hide-s">${fmt(x.pts)}</td>` : ''}
+      <td class="num" style="width:1%">${mineNow ? '<span class="pill gold">drin</span>' : `<button class="btn sm gold" data-evpick="${esc(x.p.id)}" ${tooMuch || teamFull ? 'disabled' : ''} title="${tooMuch ? 'zu teuer' : teamFull ? `schon ${c.maxPerTeam} von ${x.p.team}` : ''}">Nehmen</button>`}</td></tr>`;
+  }).join('');
+  const market = card(`Spieler · ${EVX.role}`, `<div class="card-b row" style="gap:8px;flex-wrap:wrap"><span class="chips">${EV_ROLES.map(r => `<button class="chip ${EVX.role === r ? 'on' : ''}" data-evrole="${r}">${r}</button>`).join('')}</span>
+      <input id="evQ" placeholder="Suchen …" value="${esc(EVX.q)}" style="flex:1;min-width:120px"><select id="evTeamF"><option value="">Alle Teams</option>${d.teams.map(t => `<option value="${esc(t.code)}" ${EVX.team === t.code ? 'selected' : ''}>${esc(t.code)}</option>`).join('')}</select></div>
+      <table class="pool"><tbody>${rows || '<tr><td class="empty">kein Spieler</td></tr>'}</tbody></table>`, 'Preis' + (pts.size ? ' · Event-Punkte' : ''));
+  return `<div class="grid g-main"><div class="stack">${card('Mein Team', head + slots + foot)}${evMyHistory(slug)}</div><div class="stack">${market}</div></div>`;
+}
+// my revealed lineups per stage
+function evMyHistory(slug) {
+  const ev = L().events[slug], d = evD(slug);
+  const row = (S.eventStandings(L(), ev, d).find(r => r.manager === me())) || null;
+  const st = S.eventStages(d).filter(s => (ev.revealed || []).includes(s.i));
+  if (!st.length) return '';
+  return card('Bisher', st.map(s => {
+    const lu = S.eventLineup(ev, me(), s.i);
+    return `<div class="card-b" style="border-bottom:1px solid var(--line)"><div class="row" style="justify-content:space-between"><b>${esc(s.name)}</b><span class="pts">${fmt((row && row.byStage[s.i]) || 0)}</span></div>
+      <div class="dim" style="font-size:12px;margin-top:4px">${lu ? lu.players.map(id => esc((evP(slug, id) || {}).name || id) + (id === lu.captain ? ' ★' : '')).join(' · ') : 'kein Team'}</div></div>`;
+  }).join(''));
+}
+// admin / after the lock: everybody's revealed teams
+function evAllTeams(slug) {
+  const ev = L().events[slug], d = evD(slug);
+  const st = S.eventStages(d).filter(s => (ev.revealed || []).includes(s.i));
+  if (!st.length) return card('Teams', '<div class="empty">Die Teams werden beim ersten Spiel aufgedeckt. Als Admin baust du kein Team — du siehst sie dann hier.</div>');
+  return st.map(s => card(esc(s.name), (L().managers || []).map(m => {
+    const lu = S.eventLineup(ev, m.id, s.i);
+    return `<div class="card-b" style="border-bottom:1px solid var(--line)"><b>${esc(m.name)}</b><div class="dim" style="font-size:12px;margin-top:3px">${lu ? lu.players.map(id => esc((evP(slug, id) || {}).name || id) + (id === lu.captain ? ' ★' : '')).join(' · ') : 'kein Team'}</div></div>`;
+  }).join(''))).join('');
+}
+
+// event pick'em
+function evPickInput(slug, q, val, dis) {
+  const d = evD(slug), kind = (S.EVENT_TYPES[q.type] || {}).kind;
+  const attr = `data-evq="${esc(q.id)}" ${dis ? 'disabled' : ''}`;
+  if (kind === 'number') return `<input type="number" step="0.1" ${attr} value="${esc(val || '')}" style="width:120px">`;
+  let opts = [];
+  if (kind === 'team') opts = d.teams.map(t => [t.code, `${t.name} (${t.league || '?'})`]);
+  if (kind === 'region') opts = [...new Set(d.teams.map(t => t.league).filter(Boolean))].map(r => [r, r]);
+  if (kind === 'player') opts = d.players.slice().sort((a, b) => a.team.localeCompare(b.team) || EV_ROLES.indexOf(a.role) - EV_ROLES.indexOf(b.role)).map(p => [p.id, `${p.name} (${p.team} ${p.role})`]);
+  if (kind === 'champion') opts = Object.entries(app.D.champs.names || {}).sort((a, b) => a[1].localeCompare(b[1]));
+  return `<select ${attr} style="max-width:100%"><option value="">— wählen —</option>${opts.map(([v, l]) => `<option value="${esc(v)}" ${String(val) === String(v) ? 'selected' : ''}>${esc(l)}</option>`).join('')}</select>`;
+}
+function evPickLabel(slug, q, v) {
+  if (v === undefined || v === null || v === '') return '<span class="dim">—</span>';
+  const kind = (S.EVENT_TYPES[q.type] || {}).kind;
+  if (kind === 'team') return evLogo(slug, v, 18) + ' ' + esc(v);
+  if (kind === 'player') return esc((evP(slug, v) || {}).name || v);
+  if (kind === 'champion') return U.champIcon(app.D, v, 20) + ' ' + esc((app.D.champs.names || {})[v] || v);
+  return esc(v);
+}
+function evPickem(slug) {
+  const ev = L().events[slug], d = evD(slug), pe = ev.pickem, mine = EVX.mine[slug] || {};
+  if (!pe || !(pe.questions || []).length) return card('Pick\'em', '<div class="empty">' + (adminOnly() ? 'Noch kein Pick\'em — leg ihn unter Admin → Events an.' : 'Noch kein Pick\'em — der Admin öffnet ihn vor dem Event.') + '</div>');
+  const max = pe.questions.reduce((t, q) => t + (Number(q.points) || 0), 0);
+  const locked = pe.revealed || !!mine.pickemLocked;
+  if (!locked && !adminOnly()) {
+    const tips = EVX.tips[slug] || (EVX.tips[slug] = {});
+    return card('Pick\'em', pe.questions.map(q => `<div class="card-b" style="border-bottom:1px solid var(--line)"><div class="row" style="justify-content:space-between;gap:10px;flex-wrap:wrap">
+        <b style="flex:1;min-width:180px">${esc(q.label || S.EVENT_TYPES[q.type].label)} <span class="pill">${q.points} Pkt</span></b><div style="flex:1;min-width:180px">${evPickInput(slug, q, tips[q.id])}</div></div></div>`).join('')
+      + `<div class="card-b row" style="flex-wrap:wrap;gap:10px"><button class="btn gold" id="evTipSave">Tipps speichern</button><span class="muted" style="font-size:12px">${mine.pickemLockAt ? 'Sperre in ' + fmtLeft(Date.parse(mine.pickemLockAt) - Date.now()) + ' · ' : ''}Niemand sieht deine Tipps vorher.</span></div>`, `max. ${max} Punkte`);
+  }
+  if (!pe.revealed) return card('Pick\'em', '<div class="empty">Gesperrt — die Tipps werden in der nächsten Minute aufgedeckt.</div>');
+  const truth = S.eventTruth(d, scoring()), done = S.eventDone(d);
+  const rows = S.eventStandings(L(), ev, d), mgrs = L().managers || [];
+  const tv = q => { const def = S.EVENT_TYPES[q.type] || {}; if (def.manual) return q.answer ? [q.answer] : []; const t = truth[q.type]; return t instanceof Set ? [...t] : typeof t === 'number' ? [t] : []; };
+  return card('Pick\'em', `<div style="overflow-x:auto"><table class="tight"><thead><tr><th>Frage</th><th>${done ? 'Ergebnis' : 'Stand'}</th>${mgrs.map(m => `<th>${esc(m.name)}</th>`).join('')}</tr></thead><tbody>`
+    + pe.questions.map(q => `<tr><td style="white-space:normal;min-width:140px"><b>${esc(q.label || S.EVENT_TYPES[q.type].label)}</b> <span class="pill">${q.points}</span></td>
+      <td>${tv(q).length ? tv(q).slice(0, 3).map(v => evPickLabel(slug, q, v)).join(', ') : '<span class="dim">offen</span>'}</td>
+      ${mgrs.map(m => { const v = ((pe.picks || {})[m.id] || {})[q.id], ok = (rows.find(r => r.manager === m.id) || {}).correct || [];
+        return `<td style="${m.id === me() ? 'background:var(--gold-soft)' : ''}">${evPickLabel(slug, q, v)}${ok.includes(q.id) ? ' <span class="wl w">✓</span>' : ''}</td>`; }).join('')}</tr>`).join('')
+    + `<tr><td><b>Punkte</b></td><td></td>${mgrs.map(m => `<td class="pts">${done ? fmt((rows.find(r => r.manager === m.id) || {}).pickem || 0) : '—'}</td>`).join('')}</tr></tbody></table></div>`, `max. ${max} Punkte`);
+}
+
+// event table
+function evTable(slug) {
+  const ev = L().events[slug], d = evD(slug);
+  const st = S.eventStages(d), rows = S.eventStandings(L(), ev, d);
+  if (!(ev.revealed || []).length) return card('Tabelle', '<div class="empty">Die Teams werden beim ersten Spiel aufgedeckt — ab dann zählen die Punkte.</div>');
+  const table = `<table><thead><tr><th>#</th><th>Manager</th>${st.map(s => `<th class="num hide-s">${esc(s.name)}</th>`).join('')}<th class="num hide-s">Pick'em</th><th class="num">Punkte</th></tr></thead><tbody>`
+    + rows.map((r, i) => `<tr class="click ${r.manager === me() ? 'me' : ''}" data-evopen="${esc(r.manager)}"><td class="rank r${i + 1}">${i + 1}</td><td class="fill"><b>${esc(r.name)}</b>${r.manager === me() ? ' <span class="pill gold">Du</span>' : ''}</td>
+      ${st.map(s => `<td class="num hide-s">${fmt(r.byStage[s.i] || 0)}</td>`).join('')}<td class="num hide-s">${fmt(r.pickem)}</td><td class="num pts" style="font-size:16px">${fmt(r.total)}</td></tr>`
+      + (EVX.open === r.manager ? `<tr><td></td><td colspan="${st.length + 3}" style="white-space:normal">${st.filter(s => (ev.revealed || []).includes(s.i)).map(s => { const lu = S.eventLineup(ev, r.manager, s.i);
+          return `<div style="margin:4px 0"><span class="dim">${esc(s.name)}:</span> ${lu ? lu.players.map(id => esc((evP(slug, id) || {}).name || id) + (id === lu.captain ? ' ★' : '') + ` <span class="dim">${fmt(r.perPlayer[id] || 0)}</span>`).join(' · ') : '—'}</div>`; }).join('')}</td></tr>` : '')).join('')
+    + '</tbody></table>';
+  return card('Event-Tabelle', table, 'antippen für die Teams');
+}
+
+// tournament: per stage a table (W-L) and the matches; knockouts as a bracket by day
+function evTour(slug) {
+  const d = evD(slug), stages = S.eventStages(d);
+  if (!stages.length) return card('Turnier', '<div class="empty">Spielplan kommt noch.</div>');
+  const mt = e => `<div class="row" style="gap:8px;padding:9px 16px;border-bottom:1px solid var(--line);flex-wrap:wrap">
+      <span class="dim" style="width:92px;font-size:12px">${esc(new Date(e.start).toLocaleString('de-DE', { timeZone: 'Europe/Berlin', weekday: 'short', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }))}</span>
+      ${e.teams.map((t, i) => `${i ? '<b class="num" style="margin:0 6px">' + (e.state === 'completed' ? `${e.teams[0].wins ?? ''}:${e.teams[1].wins ?? ''}` : 'vs') + '</b>' : ''}<span style="${t.outcome === 'loss' ? 'opacity:.5' : ''}">${t.code && t.code !== 'TBD' ? evLogo(slug, t.code, 18) + ' <b>' + esc(t.code) + '</b>' : '<span class="dim">TBD</span>'}</span>`).join('')}</div>`;
+  return stages.map(s => {
+    const ev = d.schedule.filter(e => e.stage === s.i).sort((a, b) => a.start.localeCompare(b.start));
+    const rec = {};
+    for (const e of ev) for (const t of e.teams) { if (!t.code || t.code === 'TBD') continue; const r = rec[t.code] || (rec[t.code] = { w: 0, l: 0 }); if (t.outcome === 'win') r.w++; if (t.outcome === 'loss') r.l++; }
+    const ranked = Object.entries(rec).sort((a, b) => (b[1].w - b[1].l) - (a[1].w - a[1].l) || b[1].w - a[1].w);
+    const isKo = s.i === stages.length - 1 && stages.length > 1;
+    const table = !isKo && ranked.length ? `<table class="tight"><tbody>${ranked.map(([c, r], i) => `<tr><td class="rank">${i + 1}</td><td class="fill">${evLogo(slug, c, 20)} <b>${esc((evT(slug, c) || {}).name || c)}</b></td><td class="num pts">${r.w}–${r.l}</td></tr>`).join('')}</tbody></table>` : '';
+    let matches;
+    if (isKo) matches = evBracket(slug, ev);
+    else matches = ev.map(mt).join('');
+    return card(esc(s.name), (table ? `<div class="grid g-2" style="gap:0"><div>${table}</div><div>${matches}</div></div>` : matches) || '<div class="empty">—</div>', s.done ? 'beendet' : s.lock ? (s.lock > Date.now() ? 'ab ' + esc(new Date(s.lock).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit' })) : 'läuft') : '');
+  }).join('');
+}
+
+// knockout bracket rebuilt from the teams' path (the API links no matches):
+// a team that lost (or came from the lower bracket) plays lower bracket, a
+// round is 1 + the round of the team's previous match there, last = final
+function evBracket(slug, ev) {
+  const known = m => m.teams.length === 2 && m.teams.every(t => t.code && t.code !== 'TBD');
+  const final = ev.length > 1 ? ev[ev.length - 1] : null;
+  const last = new Map(), lost = new Set(), secs = { upper: [], lower: [], final: [], open: [] };
+  for (const m of ev) {
+    const sec = m === final ? 'final' : !known(m) ? 'open' : m.teams.some(t => lost.has(t.code) || (last.get(t.code) || {}).sec === 'lower') ? 'lower' : 'upper';
+    let dep = 0;
+    if (sec === 'upper' || sec === 'lower') for (const t of m.teams) { const l = last.get(t.code); if (l && l.sec === sec) dep = Math.max(dep, l.dep + 1); }
+    (secs[sec][dep] = secs[sec][dep] || []).push(m);
+    for (const t of m.teams) { last.set(t.code, { sec, dep }); if (t.outcome === 'loss') lost.add(t.code); }
+  }
+  const box = m => `<div class="card" style="margin-bottom:8px;min-width:170px">${m.teams.map(t => `<div class="row" style="padding:7px 10px;gap:8px;border-bottom:1px solid var(--line);${t.outcome === 'loss' ? 'opacity:.5' : ''}">${t.code && t.code !== 'TBD' ? evLogo(slug, t.code, 18) : ''}<b style="flex:1">${esc(t.code || 'TBD')}</b><b class="num">${t.wins ?? ''}</b></div>`).join('')}
+      <div class="dim" style="font-size:11px;padding:4px 10px">${esc(new Date(m.start).toLocaleDateString('de-DE', { timeZone: 'Europe/Berlin', day: '2-digit', month: '2-digit' }))}${m.state === 'inProgress' ? ' · <span style="color:var(--live)">live</span>' : ''}</div></div>`;
+  const lane = (cols, name, lastName) => {
+    cols = cols.filter(Boolean);
+    if (!cols.length) return '';
+    const label = i => lastName && cols.length > 1 && i === cols.length - 1 ? lastName : name + (cols.length > 1 ? ' · Runde ' + (i + 1) : '');
+    return `<div style="overflow-x:auto;-webkit-overflow-scrolling:touch"><div class="row" style="align-items:flex-start;gap:12px;min-width:max-content;padding:12px 16px 4px">
+      ${cols.map((c, i) => `<div><div class="eyebrow" style="margin-bottom:6px">${esc(label(i))}</div>${c.map(box).join('')}</div>`).join('')}</div></div>`;
+  };
+  const champ = final && final.state === 'completed' && final.teams.find(t => t.outcome === 'win');
+  const double = secs.lower.length > 0;
+  return (champ ? `<div class="card-b" style="display:flex;gap:10px;align-items:center;border-bottom:1px solid var(--line)">🏆 ${evLogo(slug, champ.code, 28)} <b>${esc((evT(slug, champ.code) || {}).name || champ.code)}</b> gewinnt</div>` : '')
+    + lane(secs.upper, double ? 'Upper Bracket' : 'K.-o.', double ? 'Upper-Finale' : 'Halbfinale') + lane(secs.lower, 'Lower Bracket', 'Lower-Finale') + lane(secs.open, 'Noch offen') + lane(secs.final, 'Finale');
+}
+
+function evTeams(slug) {
+  const ev = L().events[slug], d = evD(slug);
+  return `<div class="grid g-3">${d.teams.map(t => `<section class="card"><div class="card-b row" style="gap:12px">${evLogo(slug, t.code, 44)}<div style="min-width:0;flex:1"><b style="font-size:16px">${esc(t.name)}</b>
+      <div class="dim" style="font-size:12px">${esc(t.league || '')} · ${S.eventTeamPrice(ev, d, t.code)} Credits pro Spieler</div></div></div>
+      <div class="card-b" style="border-top:1px solid var(--line);font-size:13px">${d.players.filter(p => p.team === t.code).map(p => `<span style="white-space:nowrap;margin-right:10px"><span class="dim">${p.role}</span> ${esc(p.name)}</span>`).join(' ')}</div></section>`).join('')}</div>`;
+}
+
+// home banner for the running/next event
+function eventBanner() {
+  const slug = currentEventSlug();
+  if (!slug) return '';
+  const ev = L().events[slug], info = evInfo(slug) || {}, t = evTheme(slug);
+  const started = ev.replay ? Date.now() >= ev.replay.from : Date.parse(info.start) <= Date.now();
+  return `<a href="#/event/${esc(slug)}" class="card evbanner" style="display:flex;gap:16px;align-items:center;padding:16px 18px;margin-bottom:16px;text-decoration:none;color:inherit;border-color:${t.accent};background:linear-gradient(110deg,${t.bg} 0%,rgba(${t.surface},1) 60%,${t.soft} 100%)">
+    ${info.logo ? `<img src="${esc(info.logo)}" alt="" style="height:46px;max-width:110px;object-fit:contain">` : ''}
+    <div style="flex:1;min-width:0"><div style="font-family:${t.display};color:${t.accent};font-size:12px;letter-spacing:.14em;text-transform:uppercase">Special Event</div>
+      <div style="font-family:${t.display};font-size:22px;font-weight:700;color:#fff">${esc(ev.name)}</div>
+      <div class="dim" style="font-size:12px">${started ? 'läuft — Team & Tabelle' : ev.replay ? 'Wiederholung startet ' + esc(new Date(ev.replay.from).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' })) + ' Uhr' : 'ab ' + esc(new Date(info.start).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit' })) + ' · jetzt Team bauen & tippen'}</div></div>
+    <span class="btn sm" style="border-color:${t.accent};color:${t.accent}">Öffnen →</span></a>`;
+}
+
+function bindEvent() {
+  const p = path(), m = p.match(/^\/event\/([\w-]+)$/);
+  if (!m) return;
+  const slug = m[1];
+  document.querySelectorAll('[data-evtab]').forEach(b => b.onclick = () => { EVX.tab = b.dataset.evtab; render(); });
+  document.querySelectorAll('[data-evrole]').forEach(b => b.onclick = e => { if (e.target.closest('button[data-evcap],button[data-evdrop]')) return; EVX.role = b.dataset.evrole; render(); });
+  document.querySelectorAll('[data-evpick]').forEach(b => b.onclick = () => { const pl = evP(slug, b.dataset.evpick), f = EVX.form[slug]; f.players[pl.role] = pl.id; if (!f.captain || !Object.values(f.players).includes(f.captain)) f.captain = pl.id; const nxt = EV_ROLES.find(r => !f.players[r]); if (nxt) EVX.role = nxt; render(); });
+  document.querySelectorAll('[data-evdrop]').forEach(b => b.onclick = () => { const f = EVX.form[slug]; if (f.captain === f.players[b.dataset.evdrop]) f.captain = ''; delete f.players[b.dataset.evdrop]; EVX.role = b.dataset.evdrop; render(); });
+  document.querySelectorAll('[data-evcap]').forEach(b => b.onclick = () => { EVX.form[slug].captain = b.dataset.evcap; render(); });
+  document.querySelectorAll('[data-evopen]').forEach(b => b.onclick = () => { EVX.open = EVX.open === b.dataset.evopen ? null : b.dataset.evopen; render(); });
+  document.querySelectorAll('[data-evq]').forEach(el => el.onchange = () => { (EVX.tips[slug] = EVX.tips[slug] || {})[el.dataset.evq] = el.value; });
+  const q = $('evQ'); if (q) q.oninput = e => { EVX.q = e.target.value; render(); };
+  const tf = $('evTeamF'); if (tf) tf.onchange = e => { EVX.team = e.target.value; render(); };
+  const sv = $('evSave'); if (sv) sv.onclick = async () => {
+    const f = EVX.form[slug];
+    try { await api('/api/event/team', { method: 'POST', body: { slug, players: EV_ROLES.map(r => f.players[r]), captain: f.captain } }); toast('Team gespeichert ✓'); await loadMine(slug); }
+    catch (e) { toast(`<span style="color:#ffb1b3">${esc(e.message)}</span>`); }
+  };
+  const ts = $('evTipSave'); if (ts) ts.onclick = async () => {
+    try { await api('/api/event/pickem', { method: 'POST', body: { slug, picks: EVX.tips[slug] || {} } }); toast('Tipps gespeichert ✓'); } catch (e) { toast(`<span style="color:#ffb1b3">${esc(e.message)}</span>`); }
+  };
+  const vb = $('evVid'); if (vb) vb.onclick = () => {
+    if (videoOff()) { store.set('lf.evVideo', 'on'); EVX.entered[slug] = false; render(); return; }
+    if (EVX.player) { store.set('lf.evVideo', 'off'); stopVideo(); render(); return; }
+    EVX.entered[slug] = false; render();
+  };
+}
+
+return { viewEvent, eventRouteHook, bindEvent, eventBanner, currentEventSlug, evInfo, evShort };
+};

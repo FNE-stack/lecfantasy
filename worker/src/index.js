@@ -9,6 +9,7 @@
 //   member   GET  /api/state    league, me, clock (auto-pick runs here)
 //            POST /api/pick · /api/logout · /api/queue · /api/trade · /api/push
 //            GET|POST|DELETE /api/chat, POST /api/chat/mute
+//            GET /api/event?slug=, POST /api/event/team|pickem
 //   admin    POST /api/admin/login, GET /api/admin/state|health|history,
 //            GET /api/admin/backups|backup?id=, POST /api/admin/backup (create|restore)
 //            POST /api/admin/op|invite|stats|broadcast|hall, GET|POST|DELETE /api/admin/chat
@@ -20,7 +21,8 @@ import { addMember, makePick, autoPickIfDue, deadline, tradeAction, nameKey, cla
          setLineup, pickemState, savePickem, revealPickems } from './draft.js';
 import { runOp, adminState, rotateInvite, health, runStats, broadcast, leagueHistory } from './admin.js';
 import { subscribe, unsubscribe, notify } from './push.js';
-import { testStart, testEnd, runBots, botPickems, botTrade, botChat } from './testmode.js';
+import { eventState, eventSaveTeam, eventSavePickem, eventCron, eventAdmin } from './events.js';
+import { testStart, testEnd, runBots, botPickems, botTrade, botChat, botEvents } from './testmode.js';
 import { backupCron, backupList, backupGet, backupNow, backupRestore, backupDelete } from './backup.js';
 import { chatState, chatLast, chatPost, chatDelete, chatMute, lineupReminders, recapPush, hallCron, hallAdmin } from './extras.js';
 
@@ -116,6 +118,11 @@ async function route(request, env, ctx) {
     if (p === '/api/admin/stats' && method === 'POST') return runStats(env, body.tournament);
     if (p === '/api/admin/broadcast' && method === 'POST') return broadcast(env, body.text || '');
     if (p === '/api/admin/hall' && method === 'POST') return hallAdmin(env, body);
+    if (p === '/api/admin/event' && method === 'POST') {
+      const r = await eventAdmin(env, body);
+      if (body.action === 'pickem') await botEvents(env, r.league).catch(() => 0);
+      return { message: r.message };
+    }
     if (p === '/api/admin/test' && method === 'POST') {
       if (body.action === 'start') return testStart(env, body);
       if (body.action === 'end') return testEnd(env);
@@ -128,6 +135,20 @@ async function route(request, env, ctx) {
           { type: 'mostPicked', points: 5 }, { type: 'longestGame', points: 5 }] });
         await botPickems(env, r.league).catch(() => 0);
         return { message: `Test-Pick'em für ${split} offen — Sperre in ${min} Min. Die Bots haben schon getippt.` };
+      }
+      if (body.action === 'replay') {
+        const { eventAdmin: ea } = await import('./events.js');
+        const slug = String(body.slug || '');
+        const raw = await publicData(env, `events/${slug}.json`, 120);
+        if (!raw || !(raw.schedule || []).length || !(raw.games || []).length) throw new HttpError(404, 'Für dieses Event gibt es keine fertigen Daten zum Wiederholen.');
+        const plan = S.eventReplayPlan(raw, Math.max(10, Math.min(120, Number(body.minutes) || 30)), Math.max(2, Math.min(30, Number(body.lead) || 10)));
+        const { data } = await readLeague(env);
+        if (!(data.events || {})[slug]) await ea(env, { action: 'create', slug, name: `${raw.name || slug} ${raw.year || ''} (Wiederholung)`, video: body.video || '' });
+        const { writeLeague } = await import('./store.js');
+        const r = await writeLeague(env, l => { const ev = l.events[slug]; ev.replay = plan; ev.lineups = {}; ev.revealed = []; ev.pickem = { revealed: false, lockAt: null,
+          questions: ['champion', 'finalist', 'winnerRegion', 'mostKills', 'mostPicked', 'longestGame'].map((type, i) => ({ id: 'q' + (i + 1), type, points: type === 'champion' ? 10 : 5 })) }; return l; }, `test: ${slug} als Wiederholung`);
+        await botEvents(env, r.league).catch(() => 0);
+        return { message: `${raw.name} läuft als Wiederholung: Teams & Tipps bis ${new Date(plan.from).toLocaleTimeString('de-DE', { timeZone: 'Europe/Berlin', hour: '2-digit', minute: '2-digit' })} Uhr, danach spielt sich das Event in ~${Math.round((Number(body.minutes) || 30) * 1.4)} Min ab. Die Bots haben schon gebaut & getippt.` };
       }
       if (body.action === 'hall') {
         const season = await publicData(env, 'season.json', 300);
@@ -201,6 +222,9 @@ async function route(request, env, ctx) {
     return { trade: t };
   }
   if (p === '/api/lineup' && method === 'POST') return setLineup(env, me, body);
+  if (p === '/api/event' && method === 'GET') return eventState(env, me, url.searchParams.get('slug'));
+  if (p === '/api/event/team' && method === 'POST') return eventSaveTeam(env, me, body);
+  if (p === '/api/event/pickem' && method === 'POST') return eventSavePickem(env, me, body);
   if (p === '/api/chat/mute' && method === 'POST') return chatMute(env, me, !!body.mute);
   if (p === '/api/chat') {
     if (method === 'POST') {
@@ -292,8 +316,9 @@ export default {
     try { await recapPush(env, data); } catch (e) { console.error('cron recap', e && e.message); }
     try { await hallCron(env, data); } catch (e) { console.error('cron hall', e && e.message); }
     try { await backupCron(env); } catch (e) { console.error('cron backup', e && e.message); }
+    try { await eventCron(env, data); } catch (e) { console.error('cron events', e && e.message); }
     if (data.testMode && data.testMode.on) {
-      try { await runBots(env, data); await botPickems(env, data); } catch (e) { console.error('cron bots', e && e.message); }
+      try { await runBots(env, data); await botPickems(env, data); await botEvents(env, data); } catch (e) { console.error('cron bots', e && e.message); }
     }
     // waivers at their scheduled times (German time); each slot runs once
     try {

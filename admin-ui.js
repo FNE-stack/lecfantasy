@@ -367,9 +367,65 @@ function viewTest() {
       + step(st !== 'lobby', '2. Draft starten', st === 'lobby' ? `<div class="row" style="flex-wrap:wrap;gap:8px;margin-top:6px">${opBtn('Reihenfolge mischen', { op: 'shuffleOrder' })}${opBtn('Draft jetzt starten', { op: 'setStatus', status: 'live' }, 'Draft starten?', 'gold')}</div>` : st === 'live' ? 'läuft — die Bots picken sofort, wenn sie dran sind' : 'fertig')
       + step(Object.keys(L.pickems || {}).length > 0, "3. Pick'em testen", `Öffnet einen Pick'em mit Sperre in ein paar Minuten. Die Bots tippen sofort; nach der Sperre deckt das System auf und wertet direkt aus (die Saison ist ja gespielt).
           <div class="row" style="flex-wrap:wrap;gap:8px;margin-top:8px"><label style="margin:0;display:flex;gap:6px;align-items:center">Sperre in <select id="tmMin">${[2, 5, 10, 30].map(n => `<option ${n === 5 ? 'selected' : ''}>${n}</option>`).join('')}</select> Min</label>${btn("Test-Pick'em öffnen", 'tmPickem', {}, 'gold')}</div>`)
+      + step(Object.values(L.events || {}).some(e => e.replay), '3b. Special Event testen', `Spielt ein fertiges Event (z. B. MSI 2026) im Zeitraffer noch einmal ab: erst ${'10'} Minuten Team bauen &amp; tippen, dann laufen die echten Spiele im Schnelldurchlauf, mit Punkten, Phasenwechsel, Auflösung und Ruhmeshalle.
+          <div class="row" style="flex-wrap:wrap;gap:8px;margin-top:8px"><select id="tmEv">${(((ctx.D.eventsIndex || {}).events) || []).filter(e => e.done).map(e => `<option value="${esc(e.slug)}">${esc(e.name)} ${esc(String(e.start).slice(0, 4))}</option>`).join('')}</select>
+          <label style="margin:0;display:flex;gap:6px;align-items:center">Dauer <select id="tmEvMin">${[20, 30, 45].map(n => `<option ${n === 30 ? 'selected' : ''}>${n}</option>`).join('')}</select> Min</label>${btn('Event-Wiederholung starten', 'tmReplay', {}, 'gold')}</div>`)
       + step(false, '4. Rumprobieren', `Aufstellung setzen, Trades mit den Bots (faire Angebote nehmen sie an), Chat, Rückblick, LEC-Tab.
           <div class="row" style="flex-wrap:wrap;gap:8px;margin-top:8px">${opBtn('Waiver jetzt laufen lassen', { op: 'runWaivers' })}${btn('Ruhmeshalle füllen', 'tmHall')}</div>`)
       + step(false, '5. Fertig?', `Alles zurück auf den Stand vor dem Test.<div style="margin-top:8px">${btn('Testmodus beenden', 'tmEnd', {}, 'gold')}</div>`));
+}
+
+// ── special events ────────────────────────────────────────────────────────
+const EVA = { data: {} };
+const EV_PK_DEFAULT = { champion: 10, finalist: 5, swiss30: 5, swiss03: 5, winnerRegion: 5, mostKills: 5, mostPoints: 5, bestKda: 5, mostChamps: 3, maxKillsGame: 3, mostPicked: 5, longestGame: 5, bloodiest: 5 };
+const EV_PK_ON = ['champion', 'finalist', 'swiss30', 'swiss03', 'winnerRegion', 'mostKills', 'mostPicked', 'longestGame'];
+function evaData(slug) {
+  if (EVA.data[slug] === undefined) { EVA.data[slug] = null; ctx.U.getJson('data/events/' + slug + '.json', true).then(d => { EVA.data[slug] = d || {}; draw(); }); }
+  return EVA.data[slug];
+}
+function viewEventsAdmin() {
+  const S = window.LECScoring, idx = ((ctx.D.eventsIndex || {}).events) || [], evs = A.league.events || {};
+  if (!idx.length) return card('Events', '<div class="empty">Noch keine Event-Daten — die kommen mit dem nächsten Stats-Update (Stats → Jetzt aktualisieren).</div>');
+  return idx.map(info => {
+    const ev = evs[info.slug];
+    const dates = `${new Date(info.start).toLocaleDateString('de-DE')} – ${new Date(info.end).toLocaleDateString('de-DE')}`;
+    const head = `<div class="card-b row" style="gap:14px;flex-wrap:wrap">${info.logo ? `<img src="${esc(info.logo)}" alt="" style="height:40px;max-width:110px;object-fit:contain">` : ''}
+      <div style="flex:1;min-width:160px"><b>${esc(info.name)} ${esc(String(info.start).slice(0, 4))}</b><div class="dim" style="font-size:12px">${dates} · ${info.ready ? info.teams + ' Teams' + (info.done ? ' · vorbei' : '') : 'Teams stehen noch nicht fest'}</div></div>
+      ${ev ? '<span class="pill teal">angelegt</span>' : ''}</div>`;
+    if (!ev && info.done) return card(esc(info.name), head + '<div class="card-b muted" style="font-size:13px;border-top:1px solid var(--line)">Schon vorbei — zum Ausprobieren unter Testmodus als Wiederholung abspielen.</div>');
+    if (!ev) {
+      return card(esc(info.name), head + `<div class="card-b" style="border-top:1px solid var(--line)">
+        <label>Name</label><input id="evn_${info.slug}" value="${esc(info.name + ' ' + String(info.start).slice(0, 4))}" style="width:100%">
+        <label>YouTube-Link für Intro &amp; Musik (optional, z. B. die offizielle Hymne)</label><input id="evv_${info.slug}" placeholder="https://www.youtube.com/watch?v=…" style="width:100%">
+        <div style="margin-top:12px">${btn('Event anlegen', 'evCreate', { slug: info.slug }, 'gold')}</div></div>`);
+    }
+    const c = S.eventConfig(ev), d = evaData(info.slug);
+    const prices = !d ? '<div class="empty">lade Teams …</div>' : !(d.teams || []).length ? '<div class="empty">Teams stehen noch nicht fest — Preise danach.</div>'
+      : `<div class="card-b" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px">${d.teams.map(t => `<label class="row" style="gap:8px;margin:0;color:var(--text)">${t.logo ? `<img src="${esc(t.logo)}" alt="" width="22" height="22">` : ''}<span style="flex:1"><b>${esc(t.code)}</b> <span class="dim" style="font-size:11px">${esc(t.league)}</span></span>
+          <input type="number" min="1" max="100" data-evprice="${esc(t.code)}" value="${S.eventTeamPrice(ev, d, t.code)}" style="width:62px"></label>`).join('')}</div>
+        <p class="muted" style="font-size:12px;margin:0 16px 12px">Credits pro Spieler. Vorschlag: LCK/LPL 25, LEC 20, Rest 15 — 5 Spieler, Budget ${c.budget}.</p>`;
+    const pe = ev.pickem || {}, on = new Set((pe.questions || []).map(q => q.type)), pts = Object.fromEntries((pe.questions || []).map(q => [q.type, q.points]));
+    const firstLock = d && S.eventStages(d).find(x => x.lock !== null);
+    const lockVal = pe.lockAt ? pe.lockAt.slice(0, 16) : '';
+    const types = Object.entries(S.EVENT_TYPES).filter(([, t]) => !t.manual);
+    const pk = pe.revealed
+      ? `<div class="card-b muted" style="font-size:13px">Aufgedeckt — ${Object.keys(pe.picks || {}).length} Manager haben getippt.</div>` + (pe.questions || []).filter(q => S.EVENT_TYPES[q.type].manual).map(q => `<div class="card-b row" style="gap:8px;flex-wrap:wrap"><b style="flex:1">${esc(q.label || q.type)}</b><input id="eva_${info.slug}_${q.id}" value="${esc(q.answer || '')}" placeholder="Antwort (Kürzel / Name)">${btn('Antwort', 'evAnswer', { slug: info.slug, qid: q.id })}</div>`).join('')
+      : `<div class="card-b">${types.map(([k, t]) => `<label class="row" style="gap:8px;margin:0 0 6px;color:var(--text)"><input type="checkbox" data-evpk="${info.slug}" value="${k}" ${(pe.questions ? on.has(k) : EV_PK_ON.includes(k)) ? 'checked' : ''} style="width:auto"><span style="flex:1">${esc(t.label)}</span><input type="number" min="0" data-evpkp="${info.slug}" data-t="${k}" value="${pts[k] ?? EV_PK_DEFAULT[k] ?? 5}" style="width:60px"> Pkt</label>`).join('')}
+        <label>Eigene Frage (Antwort trägst du nach dem Event ein)</label><div class="row" style="gap:8px;flex-wrap:wrap"><input id="evcq_${info.slug}" placeholder="z. B. MVP der Finals" style="flex:1;min-width:160px" value="${esc(((pe.questions || []).find(q => q.type === 'manualPlayer') || {}).label || '')}"><input id="evcp_${info.slug}" type="number" value="5" style="width:60px"> Pkt</div>
+        <label>Tipp-Schluss (leer = erstes Spiel${firstLock ? ': ' + new Date(firstLock.lock).toLocaleString('de-DE', { dateStyle: 'short', timeStyle: 'short' }) : ''})</label><input type="datetime-local" id="evl_${info.slug}" value="${esc(lockVal)}">
+        <div style="margin-top:12px">${btn(pe.questions ? "Pick'em speichern" : "Pick'em öffnen", 'evPickem', { slug: info.slug }, 'gold')}</div></div>`;
+    return card(esc(ev.name), head
+      + `<div class="card-b" style="border-top:1px solid var(--line)"><div class="grid g-2" style="gap:10px">
+          <label style="margin:0">Name<input id="evn_${info.slug}" value="${esc(ev.name)}" style="width:100%"></label>
+          <label style="margin:0">Budget<input id="evb_${info.slug}" type="number" value="${c.budget}" style="width:100%"></label>
+          <label style="margin:0">Max. Spieler pro Team<input id="evm_${info.slug}" type="number" min="1" max="5" value="${c.maxPerTeam}" style="width:100%"></label>
+          <label style="margin:0">Kapitän ×<input id="evc_${info.slug}" type="number" step="0.1" value="${c.captain}" style="width:100%"></label>
+          <label style="margin:0">YouTube-Link (Intro &amp; Musik)<input id="evv_${info.slug}" value="${ev.video ? 'https://youtu.be/' + esc(ev.video) : ''}" placeholder="leer = kein Video" style="width:100%"></label>
+          <label style="margin:0">Video ab Sekunde<input id="evs_${info.slug}" type="number" min="0" value="${ev.videoStart || 0}" style="width:100%"></label></div>
+        <div class="row" style="margin-top:12px;gap:8px;flex-wrap:wrap">${btn('Speichern', 'evSave', { slug: info.slug }, 'gold')}<a class="btn sm" href="#/event/${esc(info.slug)}">Event-Seite</a>${btn('Event löschen', 'evDelete', { slug: info.slug })}</div></div>`
+      + `<div class="card-h" style="border-top:1px solid var(--line)"><h2>Team-Preise</h2></div>${prices}`
+      + `<div class="card-h" style="border-top:1px solid var(--line)"><h2>Pick'em</h2></div>${pk}`);
+  }).join('');
 }
 
 function viewRaw() {
@@ -399,13 +455,13 @@ function viewEmergency() {
       : `Aktuell öffentlich in ${esc(repo)}. Für echte Privatsphäre: privates Repo <code>lecfantasy-data</code> anlegen, Token darauf erweitern, dann <code>DATA_REPO</code> setzen und neu deployen.`}</div>`);
 }
 
-const TABS = [['overview', 'Übersicht'], ['draft', 'Draft'], ['members', 'Mitglieder'], ['points', 'Punkte'], ['stats', 'Stats'], ['pickem', "Pick'em"], ['settings', 'Einstellungen'], ['history', 'Verlauf'], ['backup', 'Backups'], ['test', 'Testmodus'], ['raw', 'Rohdaten'], ['emergency', 'Notfall']];
+const TABS = [['overview', 'Übersicht'], ['draft', 'Draft'], ['members', 'Mitglieder'], ['points', 'Punkte'], ['stats', 'Stats'], ['pickem', "Pick'em"], ['events', 'Events'], ['settings', 'Einstellungen'], ['history', 'Verlauf'], ['backup', 'Backups'], ['test', 'Testmodus'], ['raw', 'Rohdaten'], ['emergency', 'Notfall']];
 function draw() {
   if (!root) return;
   if (!tokenGet()) { root.innerHTML = viewLogin(flash && !flash.ok ? flash.text : ''); bind(); return; }
   if (!A) { root.innerHTML = '<div class="empty">lade Admin …</div>'; return; }
   const issues = A.validation.errors.length;
-  const body = { overview: viewOverview, draft: viewDraft, members: viewMembers, points: viewPoints, stats: viewStats, backup: viewBackups, test: viewTest, pickem: viewPickemAdmin, settings: viewSettings, history: viewHistory, raw: viewRaw, emergency: viewEmergency }[tab]();
+  const body = { overview: viewOverview, draft: viewDraft, members: viewMembers, points: viewPoints, stats: viewStats, backup: viewBackups, test: viewTest, pickem: viewPickemAdmin, events: viewEventsAdmin, settings: viewSettings, history: viewHistory, raw: viewRaw, emergency: viewEmergency }[tab]();
   root.innerHTML = `<div class="row" style="justify-content:space-between;flex-wrap:wrap;gap:12px;margin-bottom:14px">
       <div><div class="eyebrow">${esc(A.league.name || 'LEC Fantasy')} · ${{ lobby: 'Anmeldung', live: 'Draft läuft', done: 'Saison' }[window.LECScoring.draftStatus(A.league)]}</div><h1 style="font-size:40px">Admin</h1></div>
       <div class="row">${issues ? `<span class="pill live">${issues} Fehler</span>` : '<span class="pill teal">konsistent</span>'}${btn('Neu laden', 'reload')}${btn('Admin abmelden', 'alogout')}</div></div>
@@ -574,12 +630,38 @@ async function act(a, d, el) {
       if (a === 'winDel') rules.windows = (cur.windows || []).filter((_, k) => k !== +d.i);
       return op({ op: 'setTradeRules', rules }, a === 'winDel' ? 'Fenster löschen?' : null);
     }
+    case 'tmReplay':
+      busy = true; draw();
+      try { const r = await api('/api/admin/test', { method: 'POST', body: { action: 'replay', slug: val('tmEv'), minutes: +val('tmEvMin') || 30 } }); flash = { ok: true, text: r.message }; } catch (e) { flash = { ok: false, text: e.message }; }
+      busy = false; return load();
     case 'tmStart': case 'tmEnd': case 'tmPickem': case 'tmHall': {
       if (a === 'tmEnd' && !window.confirm('Testmodus beenden? Liga, Chat und Tipps gehen auf den Stand vor dem Test zurück.')) return;
       const body = { action: { tmStart: 'start', tmEnd: 'end', tmPickem: 'pickem', tmHall: 'hall' }[a], bots: +val('tmBots') || 3, minutes: +val('tmMin') || 5 };
       busy = true; draw();
       try { const r = await api('/api/admin/test', { method: 'POST', body }); flash = { ok: true, text: r.message }; } catch (e) { flash = { ok: false, text: e.message }; }
       busy = false; return load();
+    }
+    case 'evCreate': case 'evSave': case 'evPickem': case 'evAnswer': case 'evDelete': {
+      const slug = d.slug, v = id => val(id + '_' + slug);
+      let body;
+      if (a === 'evCreate') body = { action: 'create', slug, name: v('evn'), video: v('evv') };
+      if (a === 'evSave') {
+        const prices = {};
+        root.querySelectorAll('[data-evprice]').forEach(el => { prices[el.dataset.evprice] = +el.value; });
+        body = { action: 'update', slug, name: v('evn'), budget: +v('evb'), maxPerTeam: +v('evm'), captain: +v('evc'), video: v('evv'), videoStart: +v('evs') || 0 };
+        if (Object.keys(prices).length) body.prices = prices;
+      }
+      if (a === 'evPickem') {
+        const qs = [];
+        root.querySelectorAll(`[data-evpk="${slug}"]`).forEach(cb => { if (cb.checked) qs.push({ type: cb.value, points: +root.querySelector(`[data-evpkp="${slug}"][data-t="${cb.value}"]`).value || 0 }); });
+        if (v('evcq').trim()) qs.push({ type: 'manualPlayer', label: v('evcq').trim(), points: +v('evcp') || 0 });
+        const l = v('evl');
+        body = { action: 'pickem', slug, questions: qs, lockAt: l ? new Date(l).toISOString() : null };
+      }
+      if (a === 'evAnswer') body = { action: 'answer', slug, qid: d.qid, answer: val('eva_' + slug + '_' + d.qid) };
+      if (a === 'evDelete') { if (!window.confirm('Event löschen? Teams und Tipps dazu sind dann weg.')) return; body = { action: 'delete', slug }; }
+      try { const r = await api('/api/admin/event', { method: 'POST', body }); flash = { ok: true, text: r.message }; } catch (e) { flash = { ok: false, text: e.message }; }
+      return load();
     }
     case 'bkNow':
       try { const r = await api('/api/admin/backup', { method: 'POST', body: { action: 'create' } }); flash = { ok: true, text: r.message }; } catch (e) { flash = { ok: false, text: e.message }; }

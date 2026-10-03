@@ -115,3 +115,38 @@ export async function botChat(env, fromId) {
   const bot = pickOne(league.testMode.bots || []);
   return bot ? chatPost(env, bot, pickOne(LINES)).catch(() => null) : null;
 }
+
+// Events: every bot builds a legal team for the open stage (best value it can
+// afford, a bit of chance) and tips the event pick'em.
+export async function botEvents(env, league) {
+  if (!league || !league.testMode || !league.testMode.on) return 0;
+  const { eventData, eventPickemLock } = await import('./events.js');
+  let n = 0;
+  for (const [slug, ev] of Object.entries(league.events || {})) {
+    let d;
+    try { d = await eventData(env, slug, ev); } catch (e) { continue; }
+    const stage = S.eventOpenStage(d);
+    const roles = ['TOP', 'JNG', 'MID', 'BOT', 'SUP'];
+    for (const bot of league.testMode.bots || []) {
+      if (stage !== null && !(await env.LEAGUE.get(`evt:${slug}:${stage}:${bot}`))) {
+        for (let tries = 0; tries < 200; tries++) {
+          const sel = { players: roles.map(r => pickOne(d.players.filter(p => p.role === r)).id) };
+          sel.captain = pickOne(sel.players);
+          if (!S.eventTeamError(ev, d, sel)) { await env.LEAGUE.put(`evt:${slug}:${stage}:${bot}`, JSON.stringify(sel)); n++; break; }
+        }
+      }
+      const pe = ev.pickem, lock = eventPickemLock(ev, d);
+      if (pe && !pe.revealed && !(lock && Date.now() >= lock) && !(await env.LEAGUE.get(`evp:${slug}:${bot}`))) {
+        const regions = [...new Set(d.teams.map(t => t.league).filter(Boolean))];
+        const picks = {};
+        for (const q of pe.questions || []) {
+          const kind = (S.EVENT_TYPES[q.type] || {}).kind;
+          picks[q.id] = kind === 'team' ? pickOne(d.teams).code : kind === 'player' ? pickOne(d.players).id : kind === 'region' ? pickOne(regions)
+            : kind === 'champion' ? pickOne([...new Set(d.games.map(g => g.champ))].concat('Ahri')) : String(30 + Math.floor(Math.random() * 25));
+        }
+        await env.LEAGUE.put(`evp:${slug}:${bot}`, JSON.stringify(picks)); n++;
+      }
+    }
+  }
+  return n;
+}

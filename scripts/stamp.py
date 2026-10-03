@@ -16,7 +16,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 p = os.path.join(ROOT, "index.html")
 s = io.open(p, encoding="utf-8").read()
 v = time.strftime("%Y%m%d%H%M")
-s2 = re.sub(r'((?:src|href)="(?:scoring|common|admin-ui|app)\.js|href="theme\.css)(\?v=\d+)?"',
+s2 = re.sub(r'((?:src|href)="(?:scoring|common|admin-ui|events-ui|app)\.js|href="theme\.css)(\?v=\d+)?"',
             lambda m: f'{m.group(1)}?v={v}"', s)
 io.open(p, "w", encoding="utf-8", newline="\n").write(s2)
 print(f"index.html stamped v={v} ({len(re.findall(r'\\?v=' + v, s2))} files)")
