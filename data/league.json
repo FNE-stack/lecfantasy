@@ -121,7 +121,16 @@
       "budget": 100,
       "maxPerTeam": 2,
       "captain": 1.5,
-      "prices": {},
+      "prices": {
+        "BFX": 25,
+        "BLG": 25,
+        "G2": 20,
+        "GEN": 25,
+        "JDG": 25,
+        "LOUD": 15,
+        "LYON": 15,
+        "TSW": 15
+      },
       "video": "",
       "createdAt": "2026-10-03T20:06:10.039Z",
       "lineups": {},
@@ -166,7 +175,8 @@
             "points": 5
           }
         ]
-      }
+      },
+      "videoStart": 0
     }
   },
   "testMode": {
