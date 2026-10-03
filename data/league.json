@@ -107,7 +107,8 @@
       "video": "",
       "createdAt": "2026-10-03T19:14:54.810Z",
       "lineups": {},
-      "revealed": []
+      "revealed": [],
+      "videoStart": 0
     }
   }
 }
