@@ -383,19 +383,69 @@ function lineupCard() {
   if (lu.key !== key) { lu.key = key; lu.starters = {}; pv.starters.forEach(id => lu.starters[role(id)] = id); lu.captain = pv.captain; lu.vice = pv.vice; }
   const slots = L().roster.slots || [];
   const chosen = slots.map(r => lu.starters[r]).filter(Boolean);
+
+  // Games per team THIS week. Only worth a column when it actually differs -
+  // in the LEC regular season every team plays the same number (3/3/3/2), so
+  // the column would show the same figure on every row. It varies in playoffs,
+  // in a short week and in Swiss stages, and there it matters a lot.
+  const weekGames = new Map();
+  for (const e of (D.schedule.events || [])) {
+    if (S.blockKey(e) !== key) continue;
+    for (const t of (e.teams || [])) if (t.code) weekGames.set(t.code, (weekGames.get(t.code) || 0) + 1);
+  }
+  const gameCounts = new Set([...weekGames.values()]);
+  const showGames = gameCounts.size > 1;
+
+  // Opponents this week, in kickoff order.
+  const weekOpp = new Map();
+  for (const e of (D.schedule.events || []).slice().sort((a, b) => String(a.start).localeCompare(String(b.start)))) {
+    if (S.blockKey(e) !== key) continue;
+    const ts = e.teams || [];
+    if (ts.length !== 2) continue;
+    for (const t of ts) {
+      if (!t.code) continue;
+      const other = ts.find(x => x.code !== t.code);
+      if (!other || !other.code) continue;
+      (weekOpp.get(t.code) || weekOpp.set(t.code, []).get(t.code)).push(other.code);
+    }
+  }
+
+  // One row per player, identical facts for everyone, no ranking and no
+  // highlighting: which numbers matter is the manager's call, not ours.
   const rows = slots.map(r => {
     const opts = pv.roster.filter(id => role(id) === r);
-    return `<div class="r"><span class="rl">${r}</span><span style="flex:1;min-width:0" class="row">${opts.map(id => `<label class="chip ${lu.starters[r] === id ? 'on' : ''}" style="display:inline-flex;align-items:center;gap:6px;cursor:pointer"><input type="radio" name="lu_${r}" value="${esc(id)}" data-lu="${r}" style="display:none" ${lu.starters[r] === id ? 'checked' : ''}>${esc(U.playerName(D, id))}</label>`).join(' ')}</span></div>`;
+    return opts.map((id, i) => {
+      const p = D.P.get(id) || {}, st = season(id);
+      const lastG = st.rows[st.rows.length - 1];
+      const opp = (weekOpp.get(p.team) || []);
+      const on = lu.starters[r] === id;
+      return `<tr class="lur${on ? ' on' : ''}">
+        <td class="lurole">${i === 0 ? esc(r) : ''}</td>
+        <td class="lupick"><label style="display:block;cursor:pointer;padding:2px 0">
+          <input type="radio" name="lu_${r}" value="${esc(id)}" data-lu="${r}" ${on ? 'checked' : ''}></label></td>
+        <td class="fill"><a href="#/spieler/${esc(id)}" style="color:inherit;text-decoration:none">${esc(U.playerName(D, id))}</a>
+          <span class="dim" style="font-size:11px"> ${esc(p.team || '')}</span></td>
+        ${showGames ? `<td class="num">${weekGames.get(p.team) || 0}</td>` : ''}
+        <td class="hide-s dim" style="font-size:12px;white-space:nowrap">${opp.length ? esc(opp.join(', ')) : '—'}</td>
+        <td class="hide-s">${spark(id)}</td>
+        <td class="num hide-s">${lastG ? fmt(S.gamePoints(lastG, sc)) : '—'}</td>
+        <td class="num">${st.games ? fmt(st.avg) : '—'}</td>
+        <td class="num dim hide-s">${st.games || 0}</td></tr>`;
+    }).join('');
   }).join('');
+
+  const head = `<tr><th></th><th></th><th>Spieler</th>${showGames ? '<th class="num" title="Spiele dieser Woche">Sp.</th>' : ''}
+    <th class="hide-s">Gegner</th><th class="hide-s">Form</th><th class="num hide-s">Letztes</th>
+    <th class="num" title="Schnitt pro Spiel diese Saison">Ø</th><th class="num dim hide-s">Spiele</th></tr>`;
   const sel = (id, v) => `<select id="${id}">${chosen.map(x => `<option value="${esc(x)}" ${x === v ? 'selected' : ''}>${esc(U.playerName(D, x))}</option>`).join('')}</select>`;
   const lock = CAL.start.get(key);
   const savedHere = (((L().lineups || {})[me()]) || {})[key];
-  return card(`Aufstellung — ${esc(blockLabel(key))}`, `<div class="best">${rows}</div>
+  return card(`Aufstellung — ${esc(blockLabel(key))}`, `<div style="overflow-x:auto"><table class="tight lineup"><thead>${head}</thead><tbody>${rows}</tbody></table></div>
     <div class="card-b row" style="flex-wrap:wrap;gap:12px;border-top:1px solid var(--line)">
       <label style="margin:0">Kapitän ×${String(S.lineupConfig(L()).captain).replace('.', ',')} ${sel('luCap', lu.captain)}</label><label style="margin:0">Vize ${sel('luVice', lu.vice)}</label>
       <button class="btn gold sm" id="luSave" ${lu.busy ? 'disabled' : ''}>Speichern</button>
-      <span class="muted" style="font-size:12px">${savedHere ? 'gespeichert' : pv.auto ? 'noch automatisch (beste Form)' : 'aus der Vorwoche übernommen'} · Sperre <b id="countdown" data-deadline="${new Date(lock).toISOString()}">…</b></span></div>
-    <div class="card-b muted" style="font-size:12px;padding-top:0">Nur die Starter punkten. Spielt ein Starter in der Woche nicht, springt der Bankspieler seiner Rolle ein; spielt der Kapitän nicht, bekommt der Vize den Bonus.</div>${lastHtml}`,
+      <span class="muted" style="font-size:12px">${savedHere ? 'gespeichert' : pv.carried ? 'Vorwoche wird übernommen' : 'noch nichts gesetzt'} · Sperre <b id="countdown" data-deadline="${new Date(lock).toISOString()}">…</b></span></div>
+    <div class="card-b muted" style="font-size:12px;padding-top:0">Nur die Starter punkten. Spielt ein Starter in der Woche nicht, springt der Bankspieler seiner Rolle ein; spielt der Kapitän nicht, bekommt der Vize den Bonus.<br>Ohne Änderung läuft deine <b>letzte Aufstellung</b> weiter — es wird nichts für dich optimiert.</div>${lastHtml}`,
     `${pv.roster.length} im Kader`);
 }
 async function saveLineup() {

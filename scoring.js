@@ -218,15 +218,20 @@
     ctx.ownAtStart.get(key).forEach((m, pid) => { if (m === managerId) roster.push(pid); });
     const slots = (league.roster && league.roster.slots) || [];
     const role = id => (ctx.playerIndex.get(id) || {}).role;
-    const score = id => avgBefore(ctx.hist, id, t0);
-    const byScore = ids => ids.slice().sort((a, b) => score(b) - score(a) || String(a).localeCompare(String(b)));
-    // this week's lineup, else the most recent earlier one (carried forward,
-    // like Fantasy Premier League keeps your team), else automatic
+    // Neutral ordering only. The game is the manager's judgement, so nothing
+    // here may rank players by form - that would be the system quietly making
+    // the decision. Fallbacks keep LAST WEEK'S lineup; where that is
+    // impossible (a carried player left the roster) we fill the slot in a
+    // stable, opinion-free order so the manager still fields a full five.
+    const stable = ids => ids.slice().sort((a, b) => String(a).localeCompare(String(b)));
+    // this week's lineup, else the most recent earlier one, carried forward
+    // unchanged - missing a week costs you, it does not get auto-optimised.
     const mine = ((league.lineups || {})[managerId]) || {};
     let saved = mine[key];
+    let carried = false;
     if (!saved) {
       const earlier = ctx.cal.keys.slice(0, ctx.cal.keys.indexOf(key)).reverse().find(k => mine[k]);
-      if (earlier) saved = mine[earlier];
+      if (earlier) { saved = mine[earlier]; carried = true; }
     }
     const starters = [];
     let auto = true;
@@ -235,17 +240,17 @@
       for (const r of slots) {
         const pick = saved.starters.find(id => roster.includes(id) && role(id) === r);
         if (pick) starters.push(pick);
-        else { auto = true; const best = byScore(roster.filter(id => role(id) === r))[0]; if (best) starters.push(best); }
+        else { auto = true; const fill = stable(roster.filter(id => role(id) === r))[0]; if (fill) starters.push(fill); }
       }
     } else {
-      for (const r of slots) { const best = byScore(roster.filter(id => role(id) === r))[0]; if (best) starters.push(best); }
+      for (const r of slots) { const fill = stable(roster.filter(id => role(id) === r))[0]; if (fill) starters.push(fill); }
     }
     const benchSaved = saved && Array.isArray(saved.bench) ? saved.bench.filter(id => roster.includes(id) && !starters.includes(id)) : [];
-    const bench = benchSaved.concat(byScore(roster.filter(id => !starters.includes(id) && !benchSaved.includes(id))));
-    const ranked = byScore(starters);
-    let captain = saved && starters.includes(saved.captain) ? saved.captain : ranked[0];
-    let vice = saved && starters.includes(saved.vice) && saved.vice !== captain ? saved.vice : ranked.find(id => id !== captain);
-    return { starters, bench, captain, vice, auto, roster };
+    const bench = benchSaved.concat(stable(roster.filter(id => !starters.includes(id) && !benchSaved.includes(id))));
+    const ordered = stable(starters);
+    let captain = saved && starters.includes(saved.captain) ? saved.captain : ordered[0];
+    let vice = saved && starters.includes(saved.vice) && saved.vice !== captain ? saved.vice : ordered.find(id => id !== captain);
+    return { starters, bench, captain, vice, auto, carried, roster };
   }
 
   // What the lineup for `key` would be right now (for the lineup editor).

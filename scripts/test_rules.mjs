@@ -195,12 +195,15 @@ tests.lineup_auto_captain_autosub = () => {
                           gg('g2', 'B', 't2', '2026-01-17T17:00:00Z', 4), gg('g2', 'B', 'm1x', '2026-01-17T17:00:00Z', 6),
                           gg('g2', 'B', 'm2x', '2026-01-17T17:00:00Z', 9)] };
   const book = S.scoreBook(L, stats, pi, sched).m1;
-  // week 1 auto: no history before -> tie-break by id: starters t1, m1x; captain t1 (id order) ...
+  // Nobody ever saved a lineup here, so both weeks use the neutral fallback:
+  // a stable, opinion-free fill per role. It must NOT sort by form - picking
+  // the in-form player would be the system playing the manager's game for him
+  // (see test_lineup_neutral.mjs). Week 2 must therefore look like week 1.
   const w1 = book.lineups['sp|Week 1'];
-  assert(w1.auto && w1.starters.length === 2, 'week 1 auto lineup');
-  // week 2 auto: by average BEFORE week 2 -> t1 (30) and m1x (15) start, t1 captain, m1x vice
+  assert(w1.auto && w1.starters.length === 2, 'week 1 fallback lineup');
   const w2 = book.lineups['sp|Week 2'];
-  assert(w2.starters.includes('t1') && w2.starters.includes('m1x') && w2.captain === 't1' && w2.vice === 'm1x', 'week 2 auto by prior average: ' + JSON.stringify(w2.starters));
+  assert(w2.starters.join() === w1.starters.join(),
+    'week 2 keeps week 1, no form re-optimisation: ' + JSON.stringify(w2.starters) + ' vs ' + JSON.stringify(w1.starters));
   assert(w2.subs.length === 1 && w2.subs[0].out === 't1' && w2.subs[0].in === 't2', 'auto-sub t2 for t1');
   assert(w2.captainScored === 'm1x', 'vice inherits the captaincy');
   // week 2 points: t2 4*3=12, m1x 6*3=18 x1.5=27, m2x (bench) not counted
