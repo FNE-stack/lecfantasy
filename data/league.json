@@ -108,7 +108,44 @@
     "enabled": true,
     "captain": 1.5
   },
-  "pickems": {},
+  "pickems": {
+    "lec_split_3_2026": {
+      "questions": [
+        {
+          "id": "q1",
+          "type": "champion",
+          "points": 10
+        },
+        {
+          "id": "q2",
+          "type": "finalist",
+          "points": 5
+        },
+        {
+          "id": "q3",
+          "type": "firstRegular",
+          "points": 5
+        },
+        {
+          "id": "q4",
+          "type": "mostKills",
+          "points": 5
+        },
+        {
+          "id": "q5",
+          "type": "mostPicked",
+          "points": 5
+        },
+        {
+          "id": "q6",
+          "type": "longestGame",
+          "points": 5
+        }
+      ],
+      "revealed": false,
+      "lockAt": "2026-10-09T07:58:01.856Z"
+    }
+  },
   "faab": {
     "budget": 100,
     "resetEachSplit": false
