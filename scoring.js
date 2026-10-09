@@ -1057,6 +1057,147 @@
     const out = []; for (let l = 0; l < need; l++) out.push(`${need}:${l}`);
     return out;
   }
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // BINGO - the minigame inside the pickem.
+  //
+  // A card of squares that tick THEMSELVES as games land, so the thing is
+  // alive during the tournament instead of being a form you submit once.
+  // Every square is a predicate over the player-game rows we already fetch
+  // (k/d/a/cs/champ/role/win/dur), so nothing here needs an admin answer.
+  //
+  // Difficulty was tuned against the real MSI 2026 event file (71 games,
+  // 710 player-games). Squares that never happened were dropped - a dead
+  // square is a wasted tile. Notably "a support is the top killer of a game"
+  // occurred 0/71 times and is NOT in here.
+  // ═══════════════════════════════════════════════════════════════════════
+  const BINGO = {
+    // Calibrated on 116 real games (MSI 2026 + First Stand 2026). The number
+    // is the measured per-game hit rate; the aim is 2-10%, which leaves a
+    // square 35-70% likely to still be OPEN after a 20-game stage. The first
+    // draft used much softer thresholds and every card filled completely well
+    // before the final - everyone scored the same and the game was dead.
+    kills12:     { label: '12+ Kills',                   hint: 'ein Spieler in einem Spiel', rate: .103,
+                   test: (g) => g.some(x => x.k >= 12) },
+    cs400:       { label: '400+ CS',                     hint: 'ein Spieler in einem Spiel', rate: .103,
+                   test: (g) => g.some(x => x.cs >= 400) },
+    under25:     { label: 'Spiel unter 25 Min',          hint: 'Stomp', rate: .052,
+                   test: (g) => !!g[0].dur && g[0].dur < 25 * 60 },
+    zeroKA:      { label: 'Spieler 0 Kills & 0 Assists', hint: 'komplett unsichtbar', rate: .052,
+                   test: (g) => g.some(x => x.k === 0 && x.a === 0) },
+    cs450:       { label: '450+ CS',                     hint: 'Farm-Monster', rate: .043,
+                   test: (g) => g.some(x => x.cs >= 450) },
+    kills50game: { label: '50+ Kills im Spiel',          hint: 'beide Teams zusammen', rate: .034,
+                   test: (g) => g.reduce((t, x) => t + x.k, 0) >= 50 },
+    over45:      { label: 'Spiel ueber 45 Min',          hint: 'Marathon', rate: .026,
+                   test: (g) => !!g[0].dur && g[0].dur > 45 * 60 },
+    deaths10:    { label: 'Spieler mit 10+ Toden',       hint: 'ganz schwerer Tag', rate: .026,
+                   test: (g) => g.some(x => x.d >= 10) },
+    kills15:     { label: '15+ Kills',                   hint: 'Hard Carry', rate: .017,
+                   test: (g) => g.some(x => x.k >= 15) },
+    kills55game: { label: '55+ Kills im Spiel',          hint: 'Blutbad', rate: .017,
+                   test: (g) => g.reduce((t, x) => t + x.k, 0) >= 55 },
+    under22:     { label: 'Spiel unter 22 Min',          hint: 'absoluter Stomp', rate: .009,
+                   test: (g) => !!g[0].dur && g[0].dur < 22 * 60 },
+    over50:      { label: 'Spiel ueber 50 Min',          hint: 'nie endender Krieg', rate: .009,
+                   test: (g) => !!g[0].dur && g[0].dur > 50 * 60 },
+    teamDeaths2: { label: 'Team mit max. 2 Toden',       hint: 'im ganzen Spiel', rate: .009,
+                   test: (g) => { const t = {}; for (const x of g) t[x.team] = (t[x.team] || 0) + x.d;
+                     return Object.values(t).some(v => v <= 2); } },
+    // Harder variants of the mid-frequency ones, so a card is not all extremes
+    perfect18:   { label: 'KDA 18+ ohne Tod',            hint: 'K+A >= 18, keine Tode', rate: .10,
+                   test: (g) => g.some(x => x.d === 0 && x.k + x.a >= 18) },
+    fewerKillsWin:{ label: 'Sieger mit weniger Kills',   hint: 'Objectives > Kills', rate: .19,
+                   test: (g) => { const t = {}; for (const x of g) { const e = t[x.team] || (t[x.team] = { k: 0, w: x.win }); e.k += x.k; }
+                     const v = Object.values(t); return v.length === 2 && ((v[0].w && v[0].k < v[1].k) || (v[1].w && v[1].k < v[0].k)); } },
+    jglMostKills:{ label: 'Jungler Top-Killer',          hint: 'mehr Kills als alle anderen', rate: .155,
+                   test: (g) => { const m = Math.max(...g.map(x => x.k)); return m > 0 && g.some(x => x.role === 'JNG' && x.k === m); } },
+    supCarry:    { label: 'Support mit 6+ Kills',        hint: 'Support geht steil', rate: .03,
+                   test: (g) => g.some(x => x.role === 'SUP' && x.k >= 6) },
+    soloHalf:    { label: 'Ein Spieler holt 50% der Teamkills', hint: 'mind. 8 Kills', rate: .09,
+                   test: (g) => { const t = {}; for (const x of g) (t[x.team] = t[x.team] || []).push(x);
+                     return Object.values(t).some(ps => { const tot = ps.reduce((a, b) => a + b.k, 0);
+                       return tot > 0 && ps.some(pl => pl.k >= 8 && pl.k / tot >= 0.5); }); } },
+  };
+
+  // Which squares are already ticked, given the games of an event (or season).
+  // Returns { key: {hit, at, game} } - `at` is the kickoff of the game that did it.
+  function bingoHits(rows) {
+    const byGame = new Map();
+    for (const x of rows || []) { if (!byGame.has(x.game)) byGame.set(x.game, []); byGame.get(x.game).push(x); }
+    const games = [...byGame.entries()].sort((a, b) => String(a[1][0].ts || '').localeCompare(String(b[1][0].ts || '')));
+    const out = {};
+    for (const [key, sq] of Object.entries(BINGO)) {
+      out[key] = { hit: false, at: null, game: null };
+      for (const [gid, g] of games) {
+        let ok = false;
+        try { ok = sq.test(g); } catch (e) { ok = false; }
+        if (ok) { out[key] = { hit: true, at: g[0].ts || null, game: gid }; break; }
+      }
+    }
+    return out;
+  }
+
+  // Games of one stage only. Bingo is scored PER STAGE, not per event: over a
+  // whole tournament every square eventually ticks (measured on MSI 2026: the
+  // card was full after 45 of 71 games, so everyone ended on the same score and
+  // the game was over before the final). A fresh card per stage keeps it live
+  // to the last day and makes Play-Ins / Swiss / Knockouts each worth playing.
+  function bingoStageRows(evData, stageIndex) {
+    const sched = (evData && evData.schedule) || [];
+    const ids = new Set();
+    for (const e of sched) {
+      if (e.stage !== stageIndex) continue;
+      for (const g of (e.games || [])) if (g && g.id) ids.add(String(g.id));
+      if (e.match) ids.add(String(e.match));
+    }
+    const rows = (evData && evData.games) || [];
+    // match games to the stage by match id when we have it, else by date range
+    const byMatch = rows.filter(r => ids.has(String(r.match)));
+    if (byMatch.length) return byMatch;
+    const ts = sched.filter(e => e.stage === stageIndex).map(e => Date.parse(e.start)).filter(Boolean);
+    if (!ts.length) return [];
+    const lo = Math.min(...ts) - 6 * 3600e3, hi = Math.max(...ts) + 18 * 3600e3;
+    return rows.filter(r => { const t = Date.parse(r.ts); return t >= lo && t <= hi; });
+  }
+
+  // A player's card: size x size keys, drawn deterministically from their id
+  // so everyone gets a different card but the same card every time they look.
+  // Seed with manager + stage so each stage is a genuinely new card.
+  function bingoCard(seed, size) {
+    size = size || 4;
+    const keys = Object.keys(BINGO);
+    const need = size * size;
+    let h = 2166136261;
+    const str = String(seed);
+    for (let i = 0; i < str.length; i++) { h ^= str.charCodeAt(i); h = Math.imul(h, 16777619); }
+    const rnd = () => { h ^= h << 13; h ^= h >>> 17; h ^= h << 5; return ((h >>> 0) % 100000) / 100000; };
+    const pool = keys.slice();
+    for (let i = pool.length - 1; i > 0; i--) { const j = Math.floor(rnd() * (i + 1)); const t = pool[i]; pool[i] = pool[j]; pool[j] = t; }
+    const cells = [];
+    for (let i = 0; i < need; i++) cells.push(pool[i % pool.length]);
+    return { size, cells };
+  }
+
+  // Score a card: points per square, per completed line, plus a full-house bonus.
+  function bingoScore(card, hits, cfg) {
+    cfg = Object.assign({ line: 5, full: 15, square: 1 }, cfg || {});
+    const n = card.size, on = i => !!(hits[card.cells[i]] || {}).hit;
+    const lines = [];
+    for (let r = 0; r < n; r++) { const l = []; for (let c = 0; c < n; c++) l.push(r * n + c); lines.push(l); }
+    for (let c = 0; c < n; c++) { const l = []; for (let r = 0; r < n; r++) l.push(r * n + c); lines.push(l); }
+    const d1 = [], d2 = [];
+    for (let i = 0; i < n; i++) { d1.push(i * n + i); d2.push(i * n + (n - 1 - i)); }
+    lines.push(d1); lines.push(d2);
+    const done = lines.filter(l => l.every(on));
+    let squares = 0;
+    for (let i = 0; i < card.cells.length; i++) if (on(i)) squares++;
+    const full = squares === n * n;
+    return { squares, lines: done.length, full,
+             points: r2(squares * cfg.square + done.length * cfg.line + (full ? cfg.full : 0)),
+             lineCells: done };
+  }
+
   function eventTruth(evData, scoring) {
     const out = statTruth((evData && evData.games) || [], scoring);
     const stages = eventStages(evData), sched = (evData && evData.schedule) || [];
@@ -1175,6 +1316,7 @@
     suggestedCapacity, calendar, blockKey, lineupConfig, lineupFor, lineupPreview, scoreBook, autoWindows, faabLeft,
     PICKEM_TYPES, pickemTruth, pickemPoints, pickemLock, splitDone,
     weekRecap, hallEntry, hallDue, statTruth, scoreTips,
+    BINGO, bingoHits, bingoCard, bingoScore, bingoStageRows,
     EVENT_TYPES, eventConfig, eventTeamPrice, eventPrice, eventPlayer, eventStages, eventOpenStage, eventDone, eventTeamError, eventLineup, eventTruth, eventStandings, eventReplay, eventReplayPlan, eventLevels, eventTeamLevel, eventFinalScores
   };
 // `this` is undefined in an ES module, so a Cloudflare Worker importing this

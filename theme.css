@@ -417,3 +417,45 @@ body.ev-on .evhero h1{font-size:clamp(21px,6vw,44px);overflow-wrap:normal !impor
 .evfold>summary::after{content:"▾";color:var(--muted);transition:transform .2s}
 .evfold[open]>summary::after{transform:rotate(180deg)}
 .evfold>summary b{flex:1}
+
+/* ── Turnier: Tabelle und Spiele als getrennte Panels ───────────────────────
+   Vorher lagen Tabelle und Spielplan in einem grid mit gap:0 direkt
+   aneinander - das sah aus wie eine kaputte Tabelle. Jetzt zwei Panels mit
+   eigener Überschrift, klarer Trennlinie und gleichmäßigem Zeilenraster. */
+.evtour{display:grid;grid-template-columns:minmax(260px,.85fr) minmax(0,1.15fr);gap:0}
+.evtour>.evpanel+.evpanel{border-left:1px solid var(--line)}
+.evpanel{min-width:0}
+.evpanel-h{padding:10px 16px;border-bottom:1px solid var(--line);
+  font-family:var(--display,inherit);font-size:11px;letter-spacing:.12em;
+  text-transform:uppercase;color:var(--muted);background:rgba(255,255,255,.015)}
+.evstand td{padding:9px 16px;border-bottom:1px solid var(--line)}
+.evstand tr:last-child td{border-bottom:none}
+.evstand .rank{width:34px;color:var(--muted);font-variant-numeric:tabular-nums}
+.evmatches{display:flex;flex-direction:column}
+
+/* one match row: fixed columns so every row lines up */
+.evm{display:grid;grid-template-columns:132px minmax(0,1fr) 54px minmax(0,1fr);
+  align-items:center;gap:8px;padding:9px 16px;border-bottom:1px solid var(--line)}
+.evm:last-child{border-bottom:none}
+.evm.done{opacity:.82}
+.evm-d{font-size:12px;color:var(--muted);white-space:nowrap;font-variant-numeric:tabular-nums}
+.evm-t{display:flex;align-items:center;gap:7px;min-width:0;overflow:hidden}
+.evm-t.r{justify-content:flex-end}
+.evm-t.lost{opacity:.45}
+.evm-t b{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.evm-t img{flex:0 0 auto}
+.evm-s{text-align:center;font-variant-numeric:tabular-nums;font-weight:700;font-size:13px}
+.evm-x{opacity:.45;margin:0 1px}
+.evm-vs{color:var(--muted);font-weight:600;font-size:11px;letter-spacing:.06em}
+.evm-live{color:var(--live,#ff5a5a);font-size:11px;font-weight:700;letter-spacing:.06em}
+
+@media(max-width:860px){
+  .evtour{grid-template-columns:1fr}
+  .evtour>.evpanel+.evpanel{border-left:none;border-top:1px solid var(--line)}
+  .evm{grid-template-columns:96px minmax(0,1fr) 46px minmax(0,1fr);gap:6px;padding:9px 12px}
+  .evm-d{font-size:11px}
+}
+@media(max-width:480px){
+  .evm{grid-template-columns:minmax(0,1fr) 46px minmax(0,1fr);row-gap:2px}
+  .evm-d{grid-column:1/-1;font-size:10px}
+}

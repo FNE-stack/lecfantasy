@@ -115,7 +115,19 @@ function ytApi() {
   });
   return EVX.ytReady;
 }
-const videoOff = () => store.get('lf.evVideo', 'on') === 'off';
+// Video preference is PER EVENT: switching Worlds off must not silence MSI.
+// (It used to be one global 'lf.evVideo' key - skipping one intro killed the
+// video everywhere.) Old global value is honoured once as a migration.
+const videoOff = slug => {
+  const v = store.get('lf.evVideo.' + slug, null);
+  if (v !== null && v !== undefined) return v === 'off';
+  return store.get('lf.evVideo', 'on') === 'off';          // legacy fallback
+};
+const setVideoOff = (slug, off) => store.set('lf.evVideo.' + slug, off ? 'off' : 'on');
+// The intro is a ONE-TIME welcome per event, remembered across visits and
+// reloads - not a gate you have to click through every time you come back.
+const introSeen = slug => store.get('lf.evSeen.' + slug, '') === '1';
+const markIntroSeen = slug => store.set('lf.evSeen.' + slug, '1');
 // Every visit to the event page: intro with "Betreten"; that tap starts the
 // video WITH sound behind the page. The player is created unmuted and paused
 // beforehand so the tap only has to press play. If a browser still refuses
@@ -124,7 +136,7 @@ const videoOff = () => store.get('lf.evVideo', 'on') === 'off';
 const evVol = () => Math.max(0, Math.min(100, Number(store.get('lf.evVol', 70)) || 0));
 async function prepareVideo(slug) {
   const ev = (L().events || {})[slug];
-  if (!ev || !ev.video || videoOff() || EVX.playerSlug === slug) return;
+  if (!ev || !ev.video || videoOff(slug) || EVX.playerSlug === slug) return;
   stopVideo();
   EVX.playerSlug = slug; EVX.saw = false; EVX.wantPlay = false;
   let bg = document.getElementById('evbg');
@@ -165,6 +177,26 @@ function stopVideo() {
   const c = document.getElementById('evctl'); if (c) c.remove();
   document.body.classList.remove('ev-video');
 }
+// Leaving the video tab must not destroy the player - destroying it loses the
+// playback position AND the browser's "user already allowed sound" state, so
+// coming back would need another tap. Pause and hide instead; resume picks up
+// where it left off.
+function pauseVideo() {
+  const p = EVX.player;
+  if (!p) return;
+  try { if (p.pauseVideo) p.pauseVideo(); } catch (e) { /* ignore */ }
+  document.body.classList.remove('ev-video');
+  const b = document.getElementById('evbg'); if (b) b.classList.remove('on');
+  const c = document.getElementById('evctl'); if (c) c.remove();
+}
+function resumeVideo() {
+  const p = EVX.player;
+  if (!p || !EVX.ready) { EVX.wantPlay = true; return; }
+  try { p.playVideo(); } catch (e) { /* ignore */ }
+  document.body.classList.add('ev-video');
+  const b = document.getElementById('evbg'); if (b) b.classList.add('on');
+  drawControls();
+}
 // floating bar: mute, volume, video off
 function drawControls() {
   const p = EVX.player;
@@ -191,7 +223,7 @@ function drawControls() {
       r.style.setProperty('--v', v + '%');
       c.querySelector('#evMute').textContent = v === 0 ? '🔇' : '🔊';
     };
-    c.querySelector('#evOff').onclick = () => { store.set('lf.evVideo', 'off'); stopVideo(); render(); };
+    c.querySelector('#evOff').onclick = () => { if (EVX.playerSlug) setVideoOff(EVX.playerSlug, true); stopVideo(); render(); };
   }
   const r = c.querySelector('#evVolR');
   if (document.activeElement !== r) { r.value = muted ? 0 : evVol(); r.style.setProperty('--v', r.value + '%'); }
@@ -200,6 +232,8 @@ function drawControls() {
 }
 function enterEvent(slug) {
   EVX.entered[slug] = true;
+  markIntroSeen(slug);                               // never gate this event again
+  setVideoOff(slug, false);
   playNow();                                         // inside the tap: sound allowed
   const o = document.getElementById('evintro');
   if (o) { o.classList.add('play'); setTimeout(() => { o.classList.add('out'); const v = $('view'); if (v) { v.classList.remove('ev-rise'); void v.offsetWidth; v.classList.add('ev-rise'); } }, 2600); setTimeout(() => { o.remove(); render(); }, 3500); }
@@ -216,19 +250,29 @@ function introOverlay(slug) {
     <a href="#" class="evintro-skip" id="evSkip">ohne Video &amp; Musik</a></div>`;
   document.body.appendChild(o);
   o.querySelector('#evGo').onclick = () => enterEvent(slug);
-  o.querySelector('#evSkip').onclick = e => { e.preventDefault(); store.set('lf.evVideo', 'off'); stopVideo(); EVX.entered[slug] = true; o.remove(); render(); };
+  o.querySelector('#evSkip').onclick = e => { e.preventDefault(); setVideoOff(slug, true); stopVideo(); EVX.entered[slug] = true; markIntroSeen(slug); o.remove(); render(); };
 }
 // called by app.js render() on every route
+// Rules:
+//   * the video belongs to the event page - leaving it tears the player down
+//   * the intro overlay is a ONE-TIME welcome per event (persisted), not a gate
+//   * inside the event, the video plays on VIDEO_TAB only; other tabs pause it
+//     (pause, not destroy - so coming back resumes with sound still allowed)
+const VIDEO_TAB = 'team';
 function eventRouteHook(p) {
   const m = p.match(/^\/event\/([\w-]+)$/);
   const slug = m && loggedIn() && (L().events || {})[m[1]] ? m[1] : null;
   applyEventTheme(slug);
   if (!slug) { stopVideo(); EVX.entered = {}; const o = document.getElementById('evintro'); if (o) o.remove(); return; }
   const ev = L().events[slug];
-  if (ev.video && !videoOff()) {
-    prepareVideo(slug);
-    if (!EVX.entered[slug]) introOverlay(slug);
-  } else stopVideo();
+  if (!ev.video || videoOff(slug)) { stopVideo(); return; }
+
+  prepareVideo(slug);
+  // first ever visit to this event: show the intro once
+  if (!EVX.entered[slug] && !introSeen(slug)) { introOverlay(slug); return; }
+  EVX.entered[slug] = true;
+  // already introduced: follow the tab, honouring the saved on/off toggle
+  if (EVX.tab === VIDEO_TAB) resumeVideo(); else pauseVideo();
 }
 
 // ── page ──────────────────────────────────────────────────────────────────
@@ -244,7 +288,7 @@ function viewEvent(slug) {
       <div class="row" style="gap:18px;align-items:center;flex-wrap:wrap">${info.logo ? `<img src="${esc(info.logo)}" alt="" style="height:64px;max-width:160px;object-fit:contain">` : ''}
       <div style="min-width:0;flex:1"><div class="eyebrow">Special Event · ${esc(info.start ? new Date(info.start).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit' }) + ' – ' + new Date(info.end).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' }) : '')}</div>
       <h1 style="margin:2px 0 4px;overflow-wrap:anywhere">${esc(ev.name)}</h1><div class="sub">${stageLine(slug)}</div>
-      ${ev.video && videoOff() ? `<button class="btn sm" id="evVid" style="margin-top:10px">▶ Video &amp; Musik an</button>` : ''}</div></div></section>`;
+      ${ev.video && videoOff(slug) ? `<button class="btn sm" id="evVid" style="margin-top:10px">▶ Video &amp; Musik an</button>` : ''}</div></div></section>`;
   const chips = `<div class="chips" style="margin:0 0 16px">${tabs.map(([k, l]) => `<button class="chip ${EVX.tab === k ? 'on' : ''}" data-evtab="${k}">${l}</button>`).join('')}</div>`;
   let body = '';
   if (!d.teams.length && EVX.tab !== 'tour') body = card(esc(ev.name), '<div class="empty">Die Teilnehmer stehen noch nicht fest. Sobald Riot sie einträgt (meist ein paar Tage vorher), kannst du hier dein Team bauen.</div>');
@@ -408,20 +452,46 @@ function evTable(slug) {
 function evTour(slug) {
   const d = evD(slug), stages = S.eventStages(d);
   if (!stages.length) return card('Turnier', '<div class="empty">Spielplan kommt noch.</div>');
-  const mt = e => `<div class="row" style="gap:8px;padding:9px 16px;border-bottom:1px solid var(--line);flex-wrap:wrap">
-      <span class="dim" style="width:92px;font-size:12px">${esc(new Date(e.start).toLocaleString('de-DE', { timeZone: 'Europe/Berlin', weekday: 'short', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }))}</span>
-      ${e.teams.map((t, i) => `${i ? '<b class="num" style="margin:0 6px">' + (e.state === 'completed' ? `${e.teams[0].wins ?? ''}:${e.teams[1].wins ?? ''}` : 'vs') + '</b>' : ''}<span style="${t.outcome === 'loss' ? 'opacity:.5' : ''}">${t.code && t.code !== 'TBD' ? evLogo(slug, t.code, 18) + ' <b>' + esc(t.code) + '</b>' : '<span class="dim">TBD</span>'}</span>`).join('')}</div>`;
+
+  // One match row. Teams sit in fixed-width cells so every row lines up and the
+  // score column never jumps around when a code is short (G2) or long (MKOI).
+  const mt = e => {
+    const done = e.state === 'completed';
+    const mid = done ? `${e.teams[0] && e.teams[0].wins != null ? e.teams[0].wins : ''}<span class="evm-x">:</span>${e.teams[1] && e.teams[1].wins != null ? e.teams[1].wins : ''}`
+      : e.state === 'inProgress' ? '<span class="evm-live">live</span>' : '<span class="evm-vs">vs</span>';
+    const side = (t, right) => {
+      const known = t && t.code && t.code !== 'TBD';
+      return `<span class="evm-t${right ? ' r' : ''}${t && t.outcome === 'loss' ? ' lost' : ''}">`
+        + (right ? '' : (known ? `<b>${esc(t.code)}</b>` : '<span class="dim">TBD</span>'))
+        + (known ? evLogo(slug, t.code, 18) : (right ? '<span class="dim">TBD</span>' : ''))
+        + (right && known ? `<b>${esc(t.code)}</b>` : '') + '</span>';
+    };
+    return `<div class="evm${done ? ' done' : ''}">
+      <time class="evm-d">${esc(new Date(e.start).toLocaleString('de-DE', { timeZone: 'Europe/Berlin', weekday: 'short', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }))}</time>
+      ${side(e.teams[0], false)}<span class="evm-s">${mid}</span>${side(e.teams[1], true)}</div>`;
+  };
+
   return stages.map(s => {
     const ev = d.schedule.filter(e => e.stage === s.i).sort((a, b) => a.start.localeCompare(b.start));
     const rec = {};
     for (const e of ev) for (const t of e.teams) { if (!t.code || t.code === 'TBD') continue; const r = rec[t.code] || (rec[t.code] = { w: 0, l: 0 }); if (t.outcome === 'win') r.w++; if (t.outcome === 'loss') r.l++; }
     const ranked = Object.entries(rec).sort((a, b) => (b[1].w - b[1].l) - (a[1].w - a[1].l) || b[1].w - a[1].w);
     const isKo = s.i === stages.length - 1 && stages.length > 1;
-    const table = !isKo && ranked.length ? `<table class="tight"><tbody>${ranked.map(([c, r], i) => `<tr><td class="rank">${i + 1}</td><td class="fill">${evLogo(slug, c, 20)} <b>${esc((evT(slug, c) || {}).name || c)}</b></td><td class="num pts">${r.w}–${r.l}</td></tr>`).join('')}</tbody></table>` : '';
-    let matches;
-    if (isKo) matches = evBracket(slug, ev);
-    else matches = ev.map(mt).join('');
-    return card(esc(s.name), (table ? `<div class="grid g-2" style="gap:0"><div>${table}</div><div>${matches}</div></div>` : matches) || '<div class="empty">—</div>', s.done ? 'beendet' : s.lock ? (s.lock > Date.now() ? 'ab ' + esc(new Date(s.lock).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit' })) : 'läuft') : '');
+    const played = ranked.some(([, r]) => r.w || r.l);
+    const note = s.done ? 'beendet' : s.lock ? (s.lock > Date.now() ? 'ab ' + esc(new Date(s.lock).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit' })) : 'läuft') : '';
+
+    if (isKo) return card(esc(s.name), evBracket(slug, ev) || '<div class="empty">—</div>', note);
+
+    // Standings and schedule are two different things - give each its own
+    // panel with a heading instead of mashing them into one gapless grid.
+    const table = ranked.length ? `<div class="evpanel">
+        <div class="evpanel-h">Tabelle${played ? '' : ' <span class="dim">· noch keine Spiele</span>'}</div>
+        <table class="tight evstand"><tbody>${ranked.map(([c, r], i) => `<tr><td class="rank">${i + 1}</td><td class="fill">${evLogo(slug, c, 20)} <b>${esc((evT(slug, c) || {}).name || c)}</b></td><td class="num pts">${r.w}–${r.l}</td></tr>`).join('')}</tbody></table></div>` : '';
+    const list = ev.length ? `<div class="evpanel">
+        <div class="evpanel-h">Spiele <span class="dim">· ${ev.length}</span></div>
+        <div class="evmatches">${ev.map(mt).join('')}</div></div>` : '';
+    const body = table && list ? `<div class="evtour">${table}${list}</div>` : (table || list);
+    return card(esc(s.name), body || '<div class="empty">—</div>', note);
   }).join('');
 }
 
@@ -507,7 +577,16 @@ function bindEvent() {
     const round = b.dataset.evtipsave;
     try { await api('/api/event/pickem', { method: 'POST', body: { slug, round, picks: tipsOf(round) } }); toast('Tipps gespeichert ✓'); } catch (e) { toast(`<span style="color:#ffb1b3">${esc(e.message)}</span>`); }
   });
-  const vb = $('evVid'); if (vb) vb.onclick = () => { store.set('lf.evVideo', 'on'); EVX.entered[slug] = false; render(); };
+  // Switching the video back on resumes it - it does NOT replay the intro.
+  // (That was the old behaviour: entered=false put the welcome gate back up.)
+  const vb = $('evVid'); if (vb) vb.onclick = () => {
+    setVideoOff(slug, false);
+    EVX.entered[slug] = true; markIntroSeen(slug);
+    EVX.tab = VIDEO_TAB;              // the video lives on this tab
+    render();
+    // the click itself is the gesture browsers want for sound
+    setTimeout(() => playNow(), 60);
+  };
 }
 
 return { viewEvent, eventRouteHook, bindEvent, eventBanner, currentEventSlug, evInfo, evShort };
