@@ -341,6 +341,33 @@ function viewBackups() {
       backups ? `${backups.length} Stück` : '');
 }
 
+// ── Vorschau ──────────────────────────────────────────────────────────────
+// Deliberately NOT the test mode: nothing here writes. The real league is kept
+// aside, a synthesized one is rendered by the normal pages, and every write is
+// swallowed. So you can click through a running draft or a finished split
+// without the league ever having been in that state.
+function viewPreview() {
+  const P = window.LECPreview;
+  if (!P) return card('Vorschau', '<div class="empty">preview.js ist nicht geladen.</div>');
+  const on = P.isOn();
+  const cur = on && P.scenarioOf(P.league().__preview);
+  return card('Vorschau', `
+    <div class="card-b">
+      <p class="dim" style="margin:0 0 12px">Zeigt die Seite in jedem Zustand, ohne die Liga zu verändern.
+        Es wird <b>nichts gespeichert</b>: Picks, Trades und Tipps sind in der Vorschau aus.
+        Mit <b>Esc</b> oder „beenden“ bist du sofort wieder in der echten Liga.</p>
+      ${on ? `<div class="msg ok" style="margin-bottom:12px">Vorschau läuft: <b>${esc(cur ? cur.name : '')}</b> —
+        <a href="#/">zur Startseite</a>, <a href="#/draft">Draft</a>, <a href="#/tabelle">Tabelle</a>,
+        <a href="#/mein-team">Mein Team</a> ansehen.</div>` : ''}
+      <div class="grid g-3" style="gap:10px">
+        ${P.SCENARIOS.map(sc => `<button class="btn ${on && cur && cur.id === sc.id ? 'gold' : ''}" data-pv="${sc.id}"
+            style="text-align:left;padding:11px 13px;line-height:1.35">
+            <b>${esc(sc.name)}</b><br><span class="dim" style="font-size:11px">${esc(sc.hint)}</span></button>`).join('')}
+      </div>
+      ${on ? `<div style="margin-top:14px">${btn('Vorschau beenden', 'pvoff')}</div>` : ''}
+    </div>`);
+}
+
 function viewTest() {
   const L = A.league, tm = L.testMode, st = window.LECScoring.draftStatus(L);
   if (!tm || !tm.on) {
@@ -470,13 +497,13 @@ function viewEmergency() {
       : `Aktuell öffentlich in ${esc(repo)}. Für echte Privatsphäre: privates Repo <code>lecfantasy-data</code> anlegen, Token darauf erweitern, dann <code>DATA_REPO</code> setzen und neu deployen.`}</div>`);
 }
 
-const TABS = [['overview', 'Übersicht'], ['draft', 'Draft'], ['members', 'Mitglieder'], ['points', 'Punkte'], ['stats', 'Stats'], ['pickem', "Pick'em"], ['events', 'Events'], ['settings', 'Einstellungen'], ['history', 'Verlauf'], ['backup', 'Backups'], ['test', 'Testmodus'], ['raw', 'Rohdaten'], ['emergency', 'Notfall']];
+const TABS = [['overview', 'Übersicht'], ['draft', 'Draft'], ['members', 'Mitglieder'], ['points', 'Punkte'], ['stats', 'Stats'], ['pickem', "Pick'em"], ['events', 'Events'], ['settings', 'Einstellungen'], ['history', 'Verlauf'], ['backup', 'Backups'], ['preview', 'Vorschau'], ['test', 'Testmodus'], ['raw', 'Rohdaten'], ['emergency', 'Notfall']];
 function draw() {
   if (!root) return;
   if (!tokenGet()) { root.innerHTML = viewLogin(flash && !flash.ok ? flash.text : ''); bind(); return; }
   if (!A) { root.innerHTML = '<div class="empty">lade Admin …</div>'; return; }
   const issues = A.validation.errors.length;
-  const body = { overview: viewOverview, draft: viewDraft, members: viewMembers, points: viewPoints, stats: viewStats, backup: viewBackups, test: viewTest, pickem: viewPickemAdmin, events: viewEventsAdmin, settings: viewSettings, history: viewHistory, raw: viewRaw, emergency: viewEmergency }[tab]();
+  const body = { overview: viewOverview, draft: viewDraft, members: viewMembers, points: viewPoints, stats: viewStats, backup: viewBackups, test: viewTest, preview: viewPreview, pickem: viewPickemAdmin, events: viewEventsAdmin, settings: viewSettings, history: viewHistory, raw: viewRaw, emergency: viewEmergency }[tab]();
   root.innerHTML = `<div class="row" style="justify-content:space-between;flex-wrap:wrap;gap:12px;margin-bottom:14px">
       <div><div class="eyebrow">${esc(A.league.name || 'LEC Fantasy')} · ${{ lobby: 'Anmeldung', live: 'Draft läuft', done: 'Saison' }[window.LECScoring.draftStatus(A.league)]}</div><h1 style="font-size:40px">Admin</h1></div>
       <div class="row">${issues ? `<span class="pill live">${issues} Fehler</span>` : '<span class="pill teal">konsistent</span>'}${btn('Neu laden', 'reload')}${btn('Admin abmelden', 'alogout')}</div></div>
@@ -496,6 +523,11 @@ function bind() {
     lb.onclick = go; document.getElementById('apw').onkeydown = e => { if (e.key === 'Enter') go(); };
     return;
   }
+  document.querySelectorAll('[data-pv]').forEach(b => b.onclick = () => {
+    if (window.__pvSwitch) { window.__pvSwitch(b.dataset.pv); location.hash = '#/'; }
+  });
+  const pvOffBtn = document.querySelector('[data-act="pvoff"]');
+  if (pvOffBtn) pvOffBtn.onclick = () => { if (window.__pvStop) window.__pvStop(); draw(); };
   const bkFile = document.getElementById('bkFile');
   if (bkFile) bkFile.onchange = async () => {
     const f = bkFile.files && bkFile.files[0];

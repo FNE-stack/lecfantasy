@@ -36,10 +36,10 @@ ok('empty_is_safe', Object.keys(none).length === keys.length && !Object.values(n
    'no games -> every square false, nothing throws');
 
 // ── 5) cards are deterministic per seed, different between seeds ──────────
-const a1 = S.bingoCard('fabi', 4), a2 = S.bingoCard('fabi', 4), b1 = S.bingoCard('boy2', 4);
+const a1 = S.bingoCard('fabi'), a2 = S.bingoCard('fabi'), b1 = S.bingoCard('boy2');
 ok('card_stable', JSON.stringify(a1) === JSON.stringify(a2), 'same seed -> same card');
 ok('card_varies', JSON.stringify(a1) !== JSON.stringify(b1), 'different seed -> different card');
-ok('card_size', a1.cells.length === 16 && a1.size === 4, '4x4 = 16 cells');
+ok('card_size', a1.cells.length === 25 && a1.size === 5, '5x5 = 25 cells (classic bingo)');
 ok('card_no_dupes', new Set(a1.cells).size === a1.cells.length,
    `${new Set(a1.cells).size} distinct squares on the card`);
 
@@ -51,7 +51,7 @@ const allOn = {}; for (const k of keys) allOn[k] = { hit: true };
 const full = S.bingoScore(a1, allOn);
 const n = a1.size;
 const expectLines = n * 2 + 2;          // rows + cols + 2 diagonals
-const expectPts = n * n * 1 + expectLines * 5 + 15;
+const expectPts = n * n * 0.5 + expectLines * 12 + 40;
 ok('score_full_house', full.full && full.lines === expectLines && full.points === expectPts,
    `full card: ${full.squares} squares, ${full.lines} lines, ${full.points} pts (expected ${expectPts})`);
 

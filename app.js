@@ -31,7 +31,11 @@ let watch = store.get('lf.watch', []);           // ordered: also the auto-pick 
 let lastPickCount = null, wasMyTurn = false, routeKey = '', liveNow = [];
 
 // ── helpers ───────────────────────────────────────────────────────────────
-const L = () => D && D.league;
+// While a preview is running every page reads the SYNTHESIZED league instead
+// of the real one, so the normal views render the previewed stage unchanged.
+// Nothing is written while it is on (LECPreview.guard blocks the writes).
+const L = () => (window.LECPreview && window.LECPreview.isOn() ? window.LECPreview.league() : (D && D.league));
+const REAL_L = () => D && D.league;
 // The admin logs in through the same form but has no team. While only the
 // admin is logged in, the site shows the whole league read-only instead of
 // looking logged out on every page outside #/admin.
@@ -1168,6 +1172,22 @@ function viewAdminNote() {
     <div class="row" style="gap:10px;flex-wrap:wrap"><a class="btn gold" href="#/admin">Zum Admin-Bereich</a>
     <button class="btn" id="adminToPlayer">Admin abmelden &amp; als Spieler einloggen</button></div></div>`);
 }
+
+// ── preview wiring (admin only) ───────────────────────────────────────────
+window.__pvSwitch = id => {
+  if (!window.LECPreview) return;
+  window.LECPreview.on(id, REAL_L(), window.__pvPlayers || null);
+  render();
+};
+window.__pvStop = () => {
+  if (!window.LECPreview) return;
+  window.LECPreview.off();
+  render();
+};
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape' && window.LECPreview && window.LECPreview.isOn()) window.__pvStop();
+});
+
 function render() {
   if (!D) return;
   const p = path();

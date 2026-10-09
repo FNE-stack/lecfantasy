@@ -1118,6 +1118,37 @@
                    test: (g) => { const t = {}; for (const x of g) (t[x.team] = t[x.team] || []).push(x);
                      return Object.values(t).some(ps => { const tot = ps.reduce((a, b) => a + b.k, 0);
                        return tot > 0 && ps.some(pl => pl.k >= 8 && pl.k / tot >= 0.5); }); } },
+
+    // ── added for the 5x5 card ───────────────────────────────────────────
+    // A 5x5 needs 25 distinct squares; with only 18 every card repeated 7 of
+    // them, which makes lines complete in lockstep and flattens the scoring.
+    // These were measured on the same 116 games and all sit in the 6-17% band.
+    botDeaths6:  { label: 'ADC mit 6+ Toden',            hint: 'schwerer Tag fuer den Carry', rate: .164,
+                   test: (g) => g.some(x => x.role === 'BOT' && x.d >= 6) },
+    mid3540:     { label: 'Spiel zwischen 35 und 40 Min', hint: 'die klassische Laenge', rate: .155,
+                   test: (g) => { const d = g[0].dur || 0; return d >= 35 * 60 && d <= 40 * 60; } },
+    topMostKills:{ label: 'Toplaner Top-Killer',         hint: 'mehr Kills als alle anderen', rate: .147,
+                   test: (g) => { const m = Math.max(...g.map(x => x.k)); return m > 0 && g.some(x => x.role === 'TOP' && x.k === m); } },
+    jglNoKills:  { label: 'Jungler ohne einen Kill',     hint: '0 Kills im ganzen Spiel', rate: .147,
+                   test: (g) => g.some(x => x.role === 'JNG' && x.k === 0) },
+    over38:      { label: 'Spiel ueber 38 Min',          hint: 'zieht sich', rate: .138,
+                   test: (g) => !!g[0].dur && g[0].dur > 38 * 60 },
+    teamDeaths4: { label: 'Team mit max. 4 Toden',       hint: 'saubere Runde', rate: .129,
+                   test: (g) => { const t = {}; for (const x of g) t[x.team] = (t[x.team] || 0) + x.d;
+                     return Object.values(t).some(v => v <= 4); } },
+    supAssists20:{ label: 'Support mit 20+ Assists',     hint: 'ueberall dabei', rate: .103,
+                   test: (g) => g.some(x => x.role === 'SUP' && x.a >= 20) },
+    bothTeams20: { label: 'Beide Teams 20+ Kills',       hint: 'offene Schlacht', rate: .078,
+                   test: (g) => { const t = {}; for (const x of g) t[x.team] = (t[x.team] || 0) + x.k;
+                     const v = Object.values(t); return v.length === 2 && v.every(k => k >= 20); } },
+    shutout:     { label: 'Team mit max. 3 Kills',       hint: 'komplett ueberrannt', rate: .069,
+                   test: (g) => { const t = {}; for (const x of g) t[x.team] = (t[x.team] || 0) + x.k;
+                     return Object.values(t).some(k => k <= 3); } },
+    kda20:       { label: 'K+A 20+ ohne Tod',            hint: 'perfektes Spiel', rate: .069,
+                   test: (g) => g.some(x => x.d === 0 && x.k + x.a >= 20) },
+    team30Kills: { label: 'Team mit 30+ Kills',          hint: 'Massaker', rate: .060,
+                   test: (g) => { const t = {}; for (const x of g) t[x.team] = (t[x.team] || 0) + x.k;
+                     return Object.values(t).some(k => k >= 30); } },
   };
 
   // Which squares are already ticked, given the games of an event (or season).
@@ -1165,7 +1196,7 @@
   // so everyone gets a different card but the same card every time they look.
   // Seed with manager + stage so each stage is a genuinely new card.
   function bingoCard(seed, size) {
-    size = size || 4;
+    size = size || 5;   // 5x5 is the classic bingo card
     const keys = Object.keys(BINGO);
     const need = size * size;
     let h = 2166136261;
@@ -1180,8 +1211,15 @@
   }
 
   // Score a card: points per square, per completed line, plus a full-house bonus.
+  //
+  // Weighting note: with 29 squares on a 5x5 card everyone ends up holding
+  // almost the same set, so scoring mostly by SQUARES made every manager score
+  // within a point of each other (measured on MSI Play-Ins: 20/21/21/21).
+  // Lines are where cards actually differ - which squares sit next to each
+  // other is random per manager - so lines carry the weight and a bare square
+  // is worth little.
   function bingoScore(card, hits, cfg) {
-    cfg = Object.assign({ line: 5, full: 15, square: 1 }, cfg || {});
+    cfg = Object.assign({ line: 12, full: 40, square: 0.5 }, cfg || {});
     const n = card.size, on = i => !!(hits[card.cells[i]] || {}).hit;
     const lines = [];
     for (let r = 0; r < n; r++) { const l = []; for (let c = 0; c < n; c++) l.push(r * n + c); lines.push(l); }
