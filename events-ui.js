@@ -13,7 +13,7 @@ window.LECEventsInit = function (app) {
 'use strict';
 const { L, S, U, esc, fmt, card, loggedIn, adminOnly, me, api, toast, render, store, path, scoring } = app;
 const $ = id => document.getElementById(id);
-const EVX = { data: {}, loading: {}, mine: {}, form: {}, tips: {}, tab: 'team', role: 'TOP', q: '', team: '', open: null, player: null, playerSlug: null, entered: {}, ytReady: null };
+const EVX = { data: {}, loading: {}, mine: {}, form: {}, tips: {}, tab: 'team', role: 'TOP', q: '', team: '', open: null, player: null, playerSlug: null, entered: {}, ytReady: null, bingoStage: null };
 const EV_ROLES = ['TOP', 'JNG', 'MID', 'BOT', 'SUP'];
 // Colors per event (the font is the same on the whole site, theme.css).
 // Worlds: Riot's League/Worlds Hextech palette - gold on deep blue, teal.
@@ -283,7 +283,7 @@ function viewEvent(slug) {
   if (!d) { loadEventData(slug); return card(esc(ev.name), '<div class="empty">lädt …</div>'); }
   if (EVX.mine[slug] === undefined) { EVX.mine[slug] = null; loadMine(slug); }
   const info = evInfo(slug) || {};
-  const tabs = [['team', adminOnly() ? 'Teams' : 'Mein Team'], ['pickem', 'Pick\'em'], ['table', 'Tabelle'], ['tour', 'Turnier'], ['teams', 'Teilnehmer']];
+  const tabs = [['team', adminOnly() ? 'Teams' : 'Mein Team'], ['pickem', 'Pick\'em'], ['bingo', 'Bingo'], ['table', 'Tabelle'], ['tour', 'Turnier'], ['teams', 'Teilnehmer']];
   const hero = `<section class="hero evhero">
       <div class="row" style="gap:18px;align-items:center;flex-wrap:wrap">${info.logo ? `<img src="${esc(info.logo)}" alt="" style="height:64px;max-width:160px;object-fit:contain">` : ''}
       <div style="min-width:0;flex:1"><div class="eyebrow">Special Event · ${esc(info.start ? new Date(info.start).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit' }) + ' – ' + new Date(info.end).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' }) : '')}</div>
@@ -291,9 +291,10 @@ function viewEvent(slug) {
       ${ev.video && videoOff(slug) ? `<button class="btn sm" id="evVid" style="margin-top:10px">▶ Video &amp; Musik an</button>` : ''}</div></div></section>`;
   const chips = `<div class="chips" style="margin:0 0 16px">${tabs.map(([k, l]) => `<button class="chip ${EVX.tab === k ? 'on' : ''}" data-evtab="${k}">${l}</button>`).join('')}</div>`;
   let body = '';
-  if (!d.teams.length && EVX.tab !== 'tour') body = card(esc(ev.name), '<div class="empty">Die Teilnehmer stehen noch nicht fest. Sobald Riot sie einträgt (meist ein paar Tage vorher), kannst du hier dein Team bauen.</div>');
+  if (!d.teams.length && EVX.tab !== 'tour' && EVX.tab !== 'bingo') body = card(esc(ev.name), '<div class="empty">Die Teilnehmer stehen noch nicht fest. Sobald Riot sie einträgt (meist ein paar Tage vorher), kannst du hier dein Team bauen.</div>');
   else if (EVX.tab === 'team') body = adminOnly() ? evAllTeams(slug) : evBuilder(slug);
   else if (EVX.tab === 'pickem') body = evPickem(slug);
+  else if (EVX.tab === 'bingo') body = evBingo(slug);
   else if (EVX.tab === 'table') body = evTable(slug);
   else if (EVX.tab === 'tour') body = evTour(slug);
   else body = evTeams(slug);
@@ -449,6 +450,79 @@ function evTable(slug) {
 }
 
 // tournament: per stage a table (W-L) and the matches; knockouts as a bracket by day
+// ── Bingo ─────────────────────────────────────────────────────────────────
+// The minigame: a 5x5 card per manager per stage. Squares tick themselves as
+// the games land - nothing to submit, nothing for the admin to answer. Each
+// manager's card is drawn from their id + the stage, so it is personal but
+// stable, and the same card shows on every device.
+function evBingo(slug) {
+  const d = evD(slug);
+  if (!d) return card('Bingo', '<div class="empty">lädt …</div>');
+  const stages = S.eventStages(d);
+  if (!stages.length) return card('Bingo', '<div class="empty">Noch kein Spielplan — Bingo startet mit der ersten Partie.</div>');
+
+  // which stage are we showing? default: the one that is running, else the last
+  const running = stages.find(st => st.lock && st.lock <= Date.now() && !st.done);
+  const cur = EVX.bingoStage != null ? stages.find(st => st.i === EVX.bingoStage) : null;
+  const st = cur || running || stages.find(x => !x.done) || stages[stages.length - 1];
+
+  const rows = S.bingoStageRows(d, st.i);
+  const games = new Set(rows.map(r => r.game)).size;
+  const hits = S.bingoHits(rows);
+  const cfg = (L().bingo || {});
+  const mgrs = (L().managers || []);
+  const myId = me() || (mgrs[0] && mgrs[0].id) || 'gast';
+
+  const picker = stages.length > 1 ? `<div class="chips" style="margin:0 0 14px">${stages.map(x =>
+    `<button class="chip ${x.i === st.i ? 'on' : ''}" data-bgstage="${x.i}">${esc(x.name)}${x.done ? ' ✓' : ''}</button>`).join('')}</div>` : '';
+
+  if (!games) {
+    return picker + card('Bingo · ' + esc(st.name),
+      `<div class="empty">Noch keine Spiele in dieser Phase. Sobald gespielt wird, haken sich die Felder von selbst ab.</div>`);
+  }
+
+  // my card
+  const card5 = S.bingoCard(myId + '|' + slug + '|' + st.i);
+  const sc = S.bingoScore(card5, hits, cfg);
+  const inLine = new Set();
+  for (const l of sc.lineCells) for (const i of l) inLine.add(i);
+
+  const grid = `<div class="bingo">${card5.cells.map((key, i) => {
+    const sq = S.BINGO[key] || {}, h = hits[key] || {};
+    const cls = 'bg-cell' + (h.hit ? ' on' : '') + (inLine.has(i) ? ' line' : '');
+    const when = h.at ? new Date(h.at).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit' }) : '';
+    return `<div class="${cls}" title="${esc(sq.hint || '')}">
+      <div class="bg-l">${esc(sq.label || key)}</div>
+      ${h.hit ? `<div class="bg-w">✓ ${esc(when)}</div>` : `<div class="bg-r">${sq.rate ? Math.round(sq.rate * 100) + '%' : ''}</div>`}</div>`;
+  }).join('')}</div>`;
+
+  const mine = card('Bingo · ' + esc(st.name),
+    `<div class="card-b row" style="gap:16px;flex-wrap:wrap;align-items:baseline">
+       <span><b style="font-size:22px">${sc.points}</b> <span class="dim">Punkte</span></span>
+       <span><b>${sc.squares}</b><span class="dim">/25 Felder</span></span>
+       <span><b>${sc.lines}</b> <span class="dim">${sc.lines === 1 ? 'Linie' : 'Linien'}</span></span>
+       ${sc.full ? '<span class="pill live">VOLLE KARTE</span>' : ''}
+       <span class="dim" style="font-size:12px;flex:1;text-align:right">${games} Spiele gewertet</span>
+     </div>${grid}
+     <div class="card-b dim" style="font-size:12px;border-top:1px solid var(--line)">
+       Die Felder haken sich selbst ab, sobald ein Spiel sie erfüllt. Prozent = wie oft das
+       Feld in echten Spielen vorkam. Jede Phase hat eine neue Karte.
+     </div>`, `${cfg.line || 12} pro Linie`);
+
+  // everyone else, so there is something to compare
+  const table = mgrs.length > 1 ? card('Alle Karten', `<table class="tight"><thead><tr><th>Manager</th>
+      <th class="num">Felder</th><th class="num">Linien</th><th class="num">Punkte</th></tr></thead><tbody>${
+      mgrs.map(m => {
+        const c = S.bingoCard(m.id + '|' + slug + '|' + st.i);
+        return { m, s: S.bingoScore(c, hits, cfg) };
+      }).sort((a, b) => b.s.points - a.s.points).map(({ m, s: x }) =>
+        `<tr${m.id === myId ? ' style="background:var(--gold-soft)"' : ''}><td class="fill">${esc(m.name)}</td>
+         <td class="num">${x.squares}/25</td><td class="num">${x.lines}</td>
+         <td class="num pts">${x.points}${x.full ? ' 🏆' : ''}</td></tr>`).join('')}</tbody></table>`) : '';
+
+  return picker + mine + table;
+}
+
 function evTour(slug) {
   const d = evD(slug), stages = S.eventStages(d);
   if (!stages.length) return card('Turnier', '<div class="empty">Spielplan kommt noch.</div>');
@@ -550,6 +624,7 @@ function bindEvent() {
   if (!m) return;
   const slug = m[1];
   document.querySelectorAll('[data-evtab]').forEach(b => b.onclick = () => { EVX.tab = b.dataset.evtab; render(); });
+  document.querySelectorAll('[data-bgstage]').forEach(b => b.onclick = () => { EVX.bingoStage = +b.dataset.bgstage; render(); });
   document.querySelectorAll('[data-evrole]').forEach(b => b.onclick = e => { if (e.target.closest('button[data-evcap],button[data-evdrop]')) return; EVX.role = b.dataset.evrole; render(); });
   document.querySelectorAll('[data-evpick]').forEach(b => b.onclick = () => { const pl = evP(slug, b.dataset.evpick), f = EVX.form[slug]; f.players[pl.role] = pl.id; if (!f.captain || !Object.values(f.players).includes(f.captain)) f.captain = pl.id; const nxt = EV_ROLES.find(r => !f.players[r]); if (nxt) EVX.role = nxt; render(); });
   document.querySelectorAll('[data-evdrop]').forEach(b => b.onclick = () => { const f = EVX.form[slug]; if (f.captain === f.players[b.dataset.evdrop]) f.captain = ''; delete f.players[b.dataset.evdrop]; EVX.role = b.dataset.evdrop; render(); });

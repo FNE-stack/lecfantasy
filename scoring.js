@@ -1321,7 +1321,7 @@
     const rounds = [ev.pickem, ev.pickemKo].filter(x => x && x.revealed);
     const truth = rounds.length && eventDone(evData) ? eventTruth(evData, sc) : null;
     const rows = (league.managers || []).map(m => {
-      const r = { manager: m.id, name: m.name, players: 0, pickem: 0, total: 0, byStage: {}, perPlayer: {}, correct: [] };
+      const r = { manager: m.id, name: m.name, players: 0, pickem: 0, bingo: 0, total: 0, byStage: {}, perPlayer: {}, correct: [] };
       for (const g of (evData && evData.games) || []) {
         const st = stageOf.get(g.match);
         if (st === undefined || st === null) continue;
@@ -1337,7 +1337,19 @@
         r.pickem += t.pts; r.correct = r.correct.concat(t.correct.map(q => (pe === ev.pickemKo ? 'ko:' : '') + q));
         Object.entries(t.hits).forEach(([q, h]) => { (r.hits = r.hits || {})[(pe === ev.pickemKo ? 'ko:' : '') + q] = h; });
       }
-      r.players = r2(r.players); r.total = r2(r.players + r.pickem);
+      // Bingo: one card per manager per stage, scored from the games of that
+      // stage. Opt-in via league.bingo.enabled so an event can run without it.
+      const bcfg = (league.bingo || {});
+      if (bcfg.enabled !== false && evData) {
+        for (const st of eventStages(evData)) {
+          const rows = bingoStageRows(evData, st.i);
+          if (!rows.length) continue;
+          const sc = bingoScore(bingoCard(m.id + '|' + (evData.slug || ev.slug || '') + '|' + st.i), bingoHits(rows), bcfg);
+          r.bingo += sc.points;
+        }
+        r.bingo = r2(r.bingo);
+      }
+      r.players = r2(r.players); r.total = r2(r.players + r.pickem + r.bingo);
       return r;
     });
     return rows.sort((a, b) => b.total - a.total);

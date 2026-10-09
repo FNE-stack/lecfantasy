@@ -477,3 +477,32 @@ body.pv-on .topbar{top:38px}
 .pvbar .btn{padding:3px 10px;font-size:11px}
 body.pv-on .tabbar{bottom:0}
 @media(max-width:620px){ .pvbar .pv-hint{display:none} }
+
+/* ── Bingo-Karte ───────────────────────────────────────────────────────────
+   5x5, quadratische Felder. Getroffene Felder leuchten, Felder die Teil einer
+   fertigen Linie sind zusaetzlich mit Goldrahmen - man soll auf einen Blick
+   sehen, wo eine Linie steht und wo noch eins fehlt. */
+.bingo{display:grid;grid-template-columns:repeat(5,1fr);gap:6px;padding:14px 16px}
+.bg-cell{position:relative;aspect-ratio:1;border:1px solid var(--line-2);border-radius:6px;
+  background:var(--surface-2);display:flex;flex-direction:column;justify-content:space-between;
+  padding:7px 8px;overflow:hidden;transition:background .25s,border-color .25s,transform .12s}
+.bg-cell:hover{transform:translateY(-1px)}
+.bg-l{font-size:11px;line-height:1.25;font-weight:600;overflow:hidden;
+  display:-webkit-box;-webkit-line-clamp:4;-webkit-box-orient:vertical}
+.bg-r{font-size:10px;color:var(--muted);font-variant-numeric:tabular-nums;align-self:flex-end}
+.bg-w{font-size:10px;font-weight:700;color:#0b1f10;background:var(--teal,#3fb950);
+  border-radius:3px;padding:1px 5px;align-self:flex-start}
+.bg-cell.on{background:linear-gradient(160deg,rgba(63,185,80,.22),rgba(63,185,80,.07));
+  border-color:rgba(63,185,80,.55)}
+.bg-cell.on .bg-l{color:var(--text)}
+.bg-cell.line{border-color:var(--gold,#e3b341);box-shadow:0 0 0 1px var(--gold,#e3b341) inset}
+.bg-cell.line::after{content:"";position:absolute;inset:0;
+  background:radial-gradient(circle at 50% 0%,rgba(227,179,65,.18),transparent 70%);pointer-events:none}
+
+@media(max-width:640px){
+  .bingo{gap:4px;padding:10px}
+  .bg-cell{padding:5px 6px;border-radius:5px}
+  .bg-l{font-size:9.5px;-webkit-line-clamp:5}
+  .bg-r,.bg-w{font-size:9px}
+}
+@media(max-width:380px){ .bg-l{font-size:9px} }
