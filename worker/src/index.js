@@ -141,7 +141,7 @@ async function route(request, env, ctx) {
         const slug = String(body.slug || '');
         const raw = await publicData(env, `events/${slug}.json`, 120);
         if (!raw || !(raw.schedule || []).length || !(raw.games || []).length) throw new HttpError(404, 'Für dieses Event gibt es keine fertigen Daten zum Wiederholen.');
-        const plan = S.eventReplayPlan(raw, Math.max(10, Math.min(120, Number(body.minutes) || 30)), Math.max(2, Math.min(30, Number(body.lead) || 10)));
+        const plan = S.eventReplayPlan(raw, Math.max(10, Math.min(120, Number(body.minutes) || 30)), Math.max(0, Math.min(30, body.lead === undefined || body.lead === null || body.lead === '' ? 10 : Number(body.lead) || 0)));
         const { data } = await readLeague(env);
         if (!(data.events || {})[slug]) await ea(env, { action: 'create', slug, name: `${raw.name || slug} ${raw.year || ''} (Wiederholung)`, video: body.video || '' });
         const { writeLeague } = await import('./store.js');

@@ -396,7 +396,8 @@ function viewTest() {
           <div class="row" style="flex-wrap:wrap;gap:8px;margin-top:8px"><label style="margin:0;display:flex;gap:6px;align-items:center">Sperre in <select id="tmMin">${[2, 5, 10, 30].map(n => `<option ${n === 5 ? 'selected' : ''}>${n}</option>`).join('')}</select> Min</label>${btn("Test-Pick'em öffnen", 'tmPickem', {}, 'gold')}</div>`)
       + step(Object.values(L.events || {}).some(e => e.replay), '3b. Special Event testen', `Spielt ein fertiges Event (z. B. MSI 2026) im Zeitraffer noch einmal ab: erst ${'10'} Minuten Team bauen &amp; tippen, dann laufen die echten Spiele im Schnelldurchlauf, mit Punkten, Phasenwechsel, Auflösung und Ruhmeshalle.
           <div class="row" style="flex-wrap:wrap;gap:8px;margin-top:8px"><select id="tmEv">${(((ctx.D.eventsIndex || {}).events) || []).filter(e => e.done).map(e => `<option value="${esc(e.slug)}">${esc(e.name)} ${esc(String(e.start).slice(0, 4))}</option>`).join('')}</select>
-          <label style="margin:0;display:flex;gap:6px;align-items:center">Dauer <select id="tmEvMin">${[20, 30, 45].map(n => `<option ${n === 30 ? 'selected' : ''}>${n}</option>`).join('')}</select> Min</label>${btn('Event-Wiederholung starten', 'tmReplay', {}, 'gold')}</div>`)
+          <label style="margin:0;display:flex;gap:6px;align-items:center">Dauer <select id="tmEvMin">${[20, 30, 45].map(n => `<option ${n === 30 ? 'selected' : ''}>${n}</option>`).join('')}</select> Min</label>
+          <label style="margin:0;display:flex;gap:6px;align-items:center" title="Zeit zum Team bauen und Tippen, bevor das erste Spiel laeuft. 0 = sofort loslegen.">Vorlauf <select id="tmEvLead">${[['0', 'sofort'], ['2', '2 Min'], ['5', '5 Min'], ['10', '10 Min']].map(([v, l]) => `<option value="${v}"${v === '0' ? ' selected' : ''}>${l}</option>`).join('')}</select></label>${btn('Event-Wiederholung starten', 'tmReplay', {}, 'gold')}</div>`)
       + step(false, '4. Rumprobieren', `Aufstellung setzen, Trades mit den Bots (faire Angebote nehmen sie an), Chat, Rückblick, LEC-Tab.
           <div class="row" style="flex-wrap:wrap;gap:8px;margin-top:8px">${opBtn('Waiver jetzt laufen lassen', { op: 'runWaivers' })}${btn('Ruhmeshalle füllen', 'tmHall')}</div>`)
       + step(false, '5. Fertig?', `Alles zurück auf den Stand vor dem Test.<div style="margin-top:8px">${btn('Testmodus beenden', 'tmEnd', {}, 'gold')}</div>`));
@@ -680,7 +681,7 @@ async function act(a, d, el) {
     }
     case 'tmReplay':
       busy = true; draw();
-      try { const r = await api('/api/admin/test', { method: 'POST', body: { action: 'replay', slug: val('tmEv'), minutes: +val('tmEvMin') || 30 } }); flash = { ok: true, text: r.message }; } catch (e) { flash = { ok: false, text: e.message }; }
+      try { const r = await api('/api/admin/test', { method: 'POST', body: { action: 'replay', slug: val('tmEv'), minutes: +val('tmEvMin') || 30, lead: val('tmEvLead') === '' ? 10 : +val('tmEvLead') } }); flash = { ok: true, text: r.message }; } catch (e) { flash = { ok: false, text: e.message }; }
       busy = false; return load();
     case 'tmStart': case 'tmEnd': case 'tmPickem': case 'tmHall': {
       if (a === 'tmEnd' && !window.confirm('Testmodus beenden? Liga, Chat und Tipps gehen auf den Stand vor dem Test zurück.')) return;
