@@ -456,67 +456,41 @@ function evTable(slug) {
 // manager's card is drawn from their id + the stage, so it is personal but
 // stable, and the same card shows on every device.
 function evBingo(slug) {
-  const d = evD(slug);
+  const d = evD(slug), ev = L().events[slug];
   if (!d) return card('Bingo', '<div class="empty">lädt …</div>');
-  const stages = S.eventStages(d);
-  if (!stages.length) return card('Bingo', '<div class="empty">Noch kein Spielplan — Bingo startet mit der ersten Partie.</div>');
-
-  // which stage are we showing? default: the one that is running, else the last
-  const running = stages.find(st => st.lock && st.lock <= Date.now() && !st.done);
-  const cur = EVX.bingoStage != null ? stages.find(st => st.i === EVX.bingoStage) : null;
-  const st = cur || running || stages.find(x => !x.done) || stages[stages.length - 1];
-
-  const rows = S.bingoStageRows(d, st.i);
-  const games = new Set(rows.map(r => r.game)).size;
-  const hits = S.bingoHits(rows);
-  const cfg = (L().bingo || {});
-  const mgrs = (L().managers || []);
-  const myId = me() || (mgrs[0] && mgrs[0].id) || 'gast';
-
-  const picker = stages.length > 1 ? `<div class="chips" style="margin:0 0 14px">${stages.map(x =>
-    `<button class="chip ${x.i === st.i ? 'on' : ''}" data-bgstage="${x.i}">${esc(x.name)}${x.done ? ' ✓' : ''}</button>`).join('')}</div>` : '';
-
-  // my card
-  const card5 = S.bingoCard(myId + '|' + slug + '|' + st.i);
-  const sc = S.bingoScore(card5, hits, cfg);
-  const inLine = new Set();
-  for (const l of sc.lineCells) for (const i of l) inLine.add(i);
-
-  const grid = `<div class="bingo">${card5.cells.map((key, i) => {
-    const sq = S.BINGO[key] || {}, h = hits[key] || {};
-    const rare = (card5.rare || []).includes(i);
+  const b = S.eventBingo(L(), ev, d), sc = b.score, hits = b.hits;
+  const inLine = new Set(sc.lineCells.flat());
+  const games = new Set((d.games || []).map(g => g.game)).size;
+  const grid = `<div class="bingo">${b.card.cells.map((key, i) => {
+    const sq = S.BINGO[key] || {}, h = hits[key] || {}, rare = (b.card.rare || []).includes(i);
     const cls = 'bg-cell' + (h.hit ? ' on' : '') + (inLine.has(i) ? ' line' : '') + (rare ? ' rare' : '');
-    const when = h.at ? new Date(h.at).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit' }) : '';
-    return `<div class="${cls}" title="${esc((sq.hint || sq.label || key) + (when ? ' · ✓ ' + when : ''))}">
-      <div class="bg-l">${esc(sq.label || key)}</div>
+    return `<div class="${cls}" title="${esc(sq.hint || '')}"><div class="bg-l">${esc(sq.label || key)}</div>
       <div class="bg-f">${rare ? '<span class="bg-star">★</span>' : '<span></span>'}${h.hit ? '<span class="bg-w">✓</span>' : `<span class="bg-r">${sq.rate ? Math.max(1, Math.round(sq.rate * 100)) + '%' : ''}</span>`}</div></div>`;
   }).join('')}</div>`;
-
-  const mine = card('Bingo · ' + esc(st.name),
-    `<div class="card-b row" style="gap:16px;flex-wrap:wrap;align-items:baseline">
-       <span><b style="font-size:22px">${sc.points}</b> <span class="dim">Punkte</span></span>
+  // the moments: which game ticked which square, newest first
+  const byGame = new Map();
+  for (const r of d.games || []) { if (!byGame.has(r.game)) byGame.set(r.game, []); byGame.get(r.game).push(r); }
+  const champ = id => ((app.D.champs || {}).names || {})[id] || id;
+  const moments = b.card.cells.filter(k => (hits[k] || {}).hit).map(k => ({ k, h: hits[k] }))
+    .sort((x, y) => String(y.h.at).localeCompare(String(x.h.at))).map(({ k, h }) => {
+      const sq = S.BINGO[k] || {}, g = byGame.get(h.game) || [];
+      const teams = [...new Set(g.map(x => x.team))], min = g[0] && g[0].dur ? Math.round(g[0].dur / 60) : null;
+      const w = g.find(x => x.win);
+      let who = '';
+      try { const x = sq.who && sq.who(g); if (x) who = `<b>${esc(x.ign || (evP(slug, x.player) || {}).name || '')}</b> (${esc(champ(x.champ))}) ${x.k}/${x.d}/${x.a}${x.cs >= 400 ? ' · ' + x.cs + ' CS' : ''} · `; } catch (e) { /* no detail */ }
+      return `<div class="row" style="gap:10px;padding:9px 16px;border-top:1px solid var(--line);align-items:flex-start">
+        <span style="font-size:16px">${(b.card.rare || []).includes(b.card.cells.indexOf(k)) ? '★' : '✓'}</span>
+        <div style="flex:1;min-width:0"><b>${esc(sq.label || k)}</b><div class="dim" style="font-size:12px">${who}${teams.map(c => evLogo(slug, c, 14) + ' ' + esc(c)).join(' vs ')}${min ? ' · ' + min + ' Min' : ''}${w ? ' · Sieg ' + esc(w.team) : ''}${h.at ? ' · ' + esc(new Date(h.at).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit' })) : ''}</div></div></div>`;
+    }).join('');
+  const reshuffle = adminOnly() && !sc.squares ? ` <button class="btn sm" id="bgShuffle">🎲 Neue Karte</button>` : '';
+  return card('Event-Bingo', `<div class="card-b row" style="gap:14px;flex-wrap:wrap;align-items:baseline">
+       <span><b style="font-size:20px">${sc.lines}</b> <span class="dim">${sc.lines === 1 ? 'Linie' : 'Linien'}</span></span>
        <span><b>${sc.squares}</b><span class="dim">/25 Felder</span></span>
-       <span><b>${sc.lines}</b> <span class="dim">${sc.lines === 1 ? 'Linie' : 'Linien'}</span></span>
-       ${sc.full ? '<span class="pill live">VOLLE KARTE</span>' : ''}
-       <span class="dim" style="font-size:12px;flex:1;text-align:right">${games ? games + ' Spiele gewertet' : 'noch kein Spiel — die Felder haken sich selbst ab'}</span>
-     </div>${grid}
-     <div class="card-b dim" style="font-size:12px;border-top:1px solid var(--line)">
-       Felder haken sich selbst ab, sobald ein Spiel sie erfüllt. Prozent = wie oft das Feld in echten
-       Spielen vorkam. ★ = seltenes Feld — jede Reihe und Spalte hat genau eins. Jede Phase neue Karte.
-     </div>`, `${cfg.line || 12} pro Linie`);
-
-  // everyone else, so there is something to compare
-  const table = mgrs.length > 1 ? card('Alle Karten', `<table class="tight"><thead><tr><th>Manager</th>
-      <th class="num">Felder</th><th class="num">Linien</th><th class="num">Punkte</th></tr></thead><tbody>${
-      mgrs.map(m => {
-        const c = S.bingoCard(m.id + '|' + slug + '|' + st.i);
-        return { m, s: S.bingoScore(c, hits, cfg) };
-      }).sort((a, b) => b.s.points - a.s.points).map(({ m, s: x }) =>
-        `<tr${m.id === myId ? ' style="background:var(--gold-soft)"' : ''}><td class="fill">${esc(m.name)}</td>
-         <td class="num">${x.squares}/25</td><td class="num">${x.lines}</td>
-         <td class="num pts">${x.points}${x.full ? ' 🏆' : ''}</td></tr>`).join('')}</tbody></table>`) : '';
-
-  return picker + mine + table;
+       <span>für alle: <b class="pts">+${sc.points}</b></span>${sc.full ? '<span class="pill live">VOLLE KARTE</span>' : ''}
+       <span class="dim" style="font-size:12px;flex:1;text-align:right">${games ? games + ' Spiele' : 'noch kein Spiel'}${reshuffle}</span></div>${grid}
+     <div class="card-b dim" style="font-size:12px;border-top:1px solid var(--line)">Eine Karte für alle. Felder haken sich selbst ab, sobald ein Spiel sie erfüllt.
+       Jede volle Linie (Reihe, Spalte, Diagonale): <b>+${b.cfg.line} Punkte für jeden</b>, volle Karte +${b.cfg.full}. ★ = selten — jede Reihe hat eins.</div>`, `+${b.cfg.line} pro Linie`)
+    + card('Momente', moments || '<div class="empty">Noch nichts passiert. Hier steht, welches Spiel welches Feld abgehakt hat.</div>');
 }
 
 function evTour(slug) {
@@ -625,7 +599,9 @@ function bindEvent() {
     try { const r = await app.adminApi('POST', '/api/admin/test', { action: 'jump', slug, to: b.dataset.evjump }); toast(esc(r.message)); await app.refresh(); }
     catch (e) { toast(`<span style="color:#ffb1b3">${esc(e.message)}</span>`); b.disabled = false; }
   });
-  document.querySelectorAll('[data-bgstage]').forEach(b => b.onclick = () => { EVX.bingoStage = +b.dataset.bgstage; render(); });
+  const bs = $('bgShuffle'); if (bs) bs.onclick = async () => {
+    try { await app.adminApi('POST', '/api/admin/event', { action: 'update', slug, reshuffle: true }); toast('Neue Bingo-Karte'); await app.refresh(); } catch (e) { toast(esc(e.message)); }
+  };
   document.querySelectorAll('[data-evrole]').forEach(b => b.onclick = e => { if (e.target.closest('button[data-evcap],button[data-evdrop]')) return; EVX.role = b.dataset.evrole; render(); });
   document.querySelectorAll('[data-evpick]').forEach(b => b.onclick = () => { const pl = evP(slug, b.dataset.evpick), f = EVX.form[slug]; f.players[pl.role] = pl.id; if (!f.captain || !Object.values(f.players).includes(f.captain)) f.captain = pl.id; const nxt = EV_ROLES.find(r => !f.players[r]); if (nxt) EVX.role = nxt; render(); });
   document.querySelectorAll('[data-evdrop]').forEach(b => b.onclick = () => { const f = EVX.form[slug]; if (f.captain === f.players[b.dataset.evdrop]) f.captain = ''; delete f.players[b.dataset.evdrop]; EVX.role = b.dataset.evdrop; render(); });

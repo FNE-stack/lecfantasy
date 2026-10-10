@@ -1154,7 +1154,49 @@
     team30Kills: { label: 'Team mit 30+ Kills',          hint: 'Massaker', rate: .060,
                    test: (g) => { const t = {}; for (const x of g) t[x.team] = (t[x.team] || 0) + x.k;
                      return Object.values(t).some(k => k >= 30); } },
+
+    // ── the crazy ones (one shared card per event, 2026-10-11) ───────────
+    // Rates measured on 498 real games (LEC 2026 season + MSI + First Stand).
+    perfectGame: { label: 'Team ohne einen Tod',         hint: 'Perfect Game', rate: .004,
+                   test: (g) => { const t = {}; for (const x of g) t[x.team] = (t[x.team] || 0) + x.d; return Object.values(t).some(v => v === 0); } },
+    teamNoKills: { label: 'Team mit 0 Kills',            hint: 'komplett ausgelöscht', rate: .004,
+                   test: (g) => { const t = {}; for (const x of g) t[x.team] = (t[x.team] || 0) + x.k; return Object.values(t).some(v => v === 0); } },
+    kills60game: { label: '60+ Kills im Spiel',          hint: 'pures Chaos', rate: .004,
+                   test: (g) => g.reduce((t, x) => t + x.k, 0) >= 60 },
+    over55:      { label: 'Spiel über 55 Min',           hint: 'endlos', rate: .006,
+                   test: (g) => !!g[0].dur && g[0].dur > 55 * 60 },
+    supTopKiller:{ label: 'Support ist Top-Killer',      hint: 'mehr Kills als alle anderen', rate: .006,
+                   test: (g) => { const m = Math.max(...g.map(x => x.k)); return m > 0 && g.some(x => x.role === 'SUP' && x.k === m); },
+                   who: (g) => { const m = Math.max(...g.map(x => x.k)); return g.find(x => x.role === 'SUP' && x.k === m); } },
+    kills18:     { label: 'Spieler mit 18+ Kills',       hint: 'legendär', rate: .002,
+                   test: (g) => g.some(x => x.k >= 18), who: (g) => g.find(x => x.k >= 18) },
+    allDie3:     { label: 'Alle 10 Spieler 3+ Tode',     hint: 'niemand bleibt sauber', rate: .014,
+                   test: (g) => g.length >= 10 && g.every(x => x.d >= 3) },
+    cs500:       { label: '500+ CS',                     hint: 'Farm-Legende', rate: .024,
+                   test: (g) => g.some(x => x.cs >= 500), who: (g) => g.find(x => x.cs >= 500) },
+    teamDeaths1: { label: 'Team mit max. 1 Tod',         hint: 'fast perfekt', rate: .026,
+                   test: (g) => { const t = {}; for (const x of g) t[x.team] = (t[x.team] || 0) + x.d; return Object.values(t).some(v => v <= 1); } },
+    adcZeroWin:  { label: 'ADC ohne Kill gewinnt',       hint: 'Team hat ihn getragen', rate: .04,
+                   test: (g) => g.some(x => x.role === 'BOT' && x.k === 0 && x.win), who: (g) => g.find(x => x.role === 'BOT' && x.k === 0 && x.win) },
+    halfKillsWin:{ label: 'Sieger mit halb so vielen Kills', hint: 'Objectives > alles', rate: .072,
+                   test: (g) => { const t = {}; for (const x of g) t[x.team] = (t[x.team] || 0) + x.k; const v = Object.keys(t);
+                     return v.length === 2 && g.some(x => x.win && t[x.team] * 2 <= t[v.find(k => k !== x.team)]); } },
   };
+  // who did it (for the moments feed) - squares about one player
+  for (const [k, f] of Object.entries({ kills12: x => x.k >= 12, kills15: x => x.k >= 15, cs400: x => x.cs >= 400, cs450: x => x.cs >= 450,
+    deaths10: x => x.d >= 10, zeroKA: x => x.k === 0 && x.a === 0, supCarry: x => x.role === 'SUP' && x.k >= 6, supAssists20: x => x.role === 'SUP' && x.a >= 20,
+    kda20: x => x.d === 0 && x.k + x.a >= 20, perfect18: x => x.d === 0 && x.k + x.a >= 18, botDeaths6: x => x.role === 'BOT' && x.d >= 6, jglNoKills: x => x.role === 'JNG' && x.k === 0 })) {
+    if (BINGO[k] && !BINGO[k].who) BINGO[k].who = g => g.find(f);
+  }
+  // One card per event, the same for everyone: a fun extra, not a contest.
+  // Every finished line gives EVERY manager `line` points, a full card `full`.
+  function eventBingo(league, ev, evData) {
+    const cfg = Object.assign({ line: 5, full: 25 }, (ev && ev.bingo) || {});
+    const card = bingoCard('event|' + ((ev && ev.slug) || (evData && evData.slug) || '') + '|' + ((ev && ev.bingoSeed) || ''));
+    const hits = bingoHits((evData && evData.games) || []);
+    const sc = bingoScore(card, hits, { square: 0, line: cfg.line, full: cfg.full });
+    return { card, hits, cfg, score: sc };
+  }
 
   // Which squares are already ticked, given the games of an event (or season).
   // Returns { key: {hit, at, game} } - `at` is the kickoff of the game that did it.
@@ -1345,6 +1387,7 @@
     const stageOf = new Map(((evData && evData.schedule) || []).map(e => [e.match, e.stage]));
     const rounds = [ev.pickem, ev.pickemKo].filter(x => x && x.revealed);
     const truth = rounds.length && eventDone(evData) ? eventTruth(evData, sc) : null;
+    const shared = evData && !((ev && ev.bingo) || {}).off ? eventBingo(league, ev, evData) : null;
     const rows = (league.managers || []).map(m => {
       const r = { manager: m.id, name: m.name, players: 0, pickem: 0, bingo: 0, total: 0, byStage: {}, perPlayer: {}, correct: [] };
       for (const g of (evData && evData.games) || []) {
@@ -1364,16 +1407,7 @@
       }
       // Bingo: one card per manager per stage, scored from the games of that
       // stage. Opt-in via league.bingo.enabled so an event can run without it.
-      const bcfg = (league.bingo || {});
-      if (bcfg.enabled !== false && evData) {
-        for (const st of eventStages(evData)) {
-          const rows = bingoStageRows(evData, st.i);
-          if (!rows.length) continue;
-          const sc = bingoScore(bingoCard(m.id + '|' + (evData.slug || ev.slug || '') + '|' + st.i), bingoHits(rows), bcfg);
-          r.bingo += sc.points;
-        }
-        r.bingo = r2(r.bingo);
-      }
+      if (shared) r.bingo = shared.score.points;
       r.players = r2(r.players); r.total = r2(r.players + r.pickem + r.bingo);
       return r;
     });
@@ -1391,7 +1425,7 @@
     suggestedCapacity, calendar, blockKey, lineupConfig, lineupFor, lineupPreview, scoreBook, autoWindows, faabLeft,
     PICKEM_TYPES, pickemTruth, pickemPoints, pickemLock, splitDone,
     weekRecap, hallEntry, hallDue, statTruth, scoreTips,
-    BINGO, bingoHits, bingoCard, bingoScore, bingoStageRows,
+    BINGO, bingoHits, bingoCard, bingoScore, bingoStageRows, eventBingo,
     EVENT_TYPES, eventConfig, eventTeamPrice, eventPrice, eventPlayer, eventStages, eventOpenStage, eventDone, eventTeamError, eventLineup, eventTruth, eventStandings, eventReplay, eventReplayPlan, eventLevels, eventTeamLevel, eventFinalScores
   };
 // `this` is undefined in an ES module, so a Cloudflare Worker importing this

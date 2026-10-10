@@ -8,6 +8,7 @@
 // the stage (or the pick'em) has started. Rules: scoring.js (event*).
 // ═══════════════════════════════════════════════════════════════════════════
 import { S, HttpError, readLeague, readLeagueFresh, writeLeague, publicData, writeSiteFile } from './store.js';
+import { notify } from './push.js';
 
 // ev given: a test replay (ev.replay) is applied, so every check sees replay time
 export async function eventData(env, slug, ev) {
@@ -115,6 +116,7 @@ export async function eventCron(env, league) {
     if (S.eventDone(d) && !(league.hall || {})['event_' + slug] && Object.keys(ev.lineups || {}).length) p.hall = { d };
     if (Object.keys(p.stages).length || p.tips || p.hall) patch[slug] = p;
   }
+  await bingoNotices(env, league).catch(() => null);
   if (!Object.keys(patch).length) return null;
   const res = await writeLeague(env, l => {
     for (const [slug, p] of Object.entries(patch)) {
@@ -140,6 +142,27 @@ export async function eventCron(env, league) {
     return l;
   }, `events: ${Object.keys(patch).join(', ')} aufgedeckt/aktualisiert`);
   return res.changed ? Object.keys(patch) : null;
+}
+
+// a new bingo line: push to everyone (once per line, KV bingo:<slug> = lines seen)
+async function bingoNotices(env, league) {
+  const ids = (league.managers || []).map(m => m.id);
+  for (const [slug, ev] of Object.entries(league.events || {})) {
+    const raw = await publicData(env, `events/${slug}.json`, 120);
+    if (!raw) continue;
+    const d = ev.replay ? S.eventReplay(raw, ev.replay) : raw;
+    const b = S.eventBingo(league, ev, d), lines = b.score.lines;
+    const key = `bingo:${slug}:${ev.bingoSeed || ''}`, seen = Number(await env.LEAGUE.get(key)) || 0;
+    if (lines <= seen) { if (lines < seen) await env.LEAGUE.put(key, String(lines)); continue; }
+    await env.LEAGUE.put(key, String(lines));
+    // the square that finished it: the newest hit inside a finished line
+    const inLine = new Set(b.score.lineCells.flat());
+    const last = b.card.cells.filter((k, i) => inLine.has(i) && b.hits[k].hit).sort((x, y) => String(b.hits[y].at).localeCompare(String(b.hits[x].at)))[0];
+    const sq = S.BINGO[last] || {};
+    await notify(env, ids, { title: b.score.full ? '🎉 VOLLE BINGO-KARTE!' : '🎉 BINGO!',
+      body: `${ev.name}: ${lines === 1 ? 'erste Linie' : lines + '. Linie'} — alle bekommen +${b.score.full ? b.cfg.full : b.cfg.line} Punkte.${sq.label ? ' Letztes Feld: ' + sq.label + '.' : ''}`,
+      url: `./#/event/${slug}`, tag: 'bingo-' + slug }).catch(() => null);
+  }
 }
 
 const youtubeId = v => {
@@ -183,6 +206,7 @@ export async function eventAdmin(env, body) {
       if (body.captain !== undefined) { const c = Number(body.captain); if (!(c >= 1 && c <= 3)) throw new HttpError(400, 'Kapitän ×1–3'); ev.captain = c; }
       if (body.video !== undefined) ev.video = youtubeId(body.video);
       if (body.videoStart !== undefined) ev.videoStart = Math.max(0, Math.floor(Number(body.videoStart) || 0));
+      if (body.reshuffle) ev.bingoSeed = Math.random().toString(36).slice(2, 8);
       if (body.prices) {
         ev.prices = {};
         for (const [k, v] of Object.entries(body.prices)) { const n = Number(v); if (/^[\w.]{1,8}$/.test(k) && n >= 1 && n <= 100) ev.prices[k] = n; }
