@@ -31,29 +31,11 @@
       "id": "m02595135",
       "name": "Fabi",
       "joined": "2026-10-03T19:20:16.447Z"
-    },
-    {
-      "id": "ma299d4cb",
-      "name": "Bot Anna",
-      "joined": "2026-10-10T23:14:59.603Z"
-    },
-    {
-      "id": "m36a5ff7c",
-      "name": "Bot Ben",
-      "joined": "2026-10-10T23:14:59.603Z"
-    },
-    {
-      "id": "m51919de6",
-      "name": "Bot Chris",
-      "joined": "2026-10-10T23:14:59.603Z"
     }
   ],
   "draft": {
     "order": [
-      "m02595135",
-      "ma299d4cb",
-      "m36a5ff7c",
-      "m51919de6"
+      "m02595135"
     ],
     "snake": true,
     "picks": [],
@@ -88,7 +70,7 @@
     "rosterRules": true,
     "teamLimit": true,
     "autoWindows": true,
-    "mode": "always",
+    "mode": "windows",
     "windows": []
   },
   "announcement": null,
@@ -164,170 +146,6 @@
       "lineups": {},
       "revealed": [],
       "videoStart": 0
-    },
-    "first_stand_2026": {
-      "slug": "first_stand_2026",
-      "name": "First Stand 2026 (Wiederholung)",
-      "budget": 100,
-      "maxPerTeam": 2,
-      "captain": 1.5,
-      "prices": {},
-      "video": "",
-      "createdAt": "2026-10-10T23:15:29.859Z",
-      "lineups": {
-        "0": {},
-        "1": {
-          "ma299d4cb": {
-            "players": [
-              "110434225307697321",
-              "101389713966873995",
-              "113684241495506037",
-              "98767975906852059",
-              "101388913291808185"
-            ],
-            "captain": "113684241495506037"
-          },
-          "m36a5ff7c": {
-            "players": [
-              "99566404532924465",
-              "101389713966873995",
-              "101388912814667094",
-              "105501851965646715",
-              "111734539087870444"
-            ],
-            "captain": "101389713966873995"
-          },
-          "m51919de6": {
-            "players": [
-              "110434225307697321",
-              "116287401640559707",
-              "105501715923396261",
-              "105388936922706146",
-              "112518918607721192"
-            ],
-            "captain": "112518918607721192"
-          }
-        }
-      },
-      "revealed": [
-        0,
-        1
-      ],
-      "replay": {
-        "from": 1791674129432,
-        "first": 1773666000000,
-        "speed": 296
-      },
-      "pickem": {
-        "revealed": true,
-        "lockAt": null,
-        "questions": [
-          {
-            "id": "q1",
-            "type": "champion",
-            "points": 10
-          },
-          {
-            "id": "q2",
-            "type": "advance8",
-            "points": 2
-          },
-          {
-            "id": "q3",
-            "type": "winnerRegion",
-            "points": 5
-          },
-          {
-            "id": "q4",
-            "type": "bestLec",
-            "points": 5
-          },
-          {
-            "id": "q5",
-            "type": "mostKills",
-            "points": 5
-          },
-          {
-            "id": "q6",
-            "type": "mostDeaths",
-            "points": 5
-          },
-          {
-            "id": "q7",
-            "type": "mostPicked",
-            "points": 5
-          },
-          {
-            "id": "q8",
-            "type": "shortestGame",
-            "points": 5
-          },
-          {
-            "id": "q9",
-            "type": "totalGames",
-            "points": 5
-          }
-        ],
-        "picks": {},
-        "revealedAt": "2026-10-10T23:15:43.343Z"
-      },
-      "pickemKo": {
-        "revealed": true,
-        "lockAt": null,
-        "questions": [
-          {
-            "id": "q1",
-            "type": "koSemis",
-            "points": 5
-          },
-          {
-            "id": "q2",
-            "type": "koFinal",
-            "points": 10
-          },
-          {
-            "id": "q3",
-            "type": "champion",
-            "points": 20
-          },
-          {
-            "id": "q4",
-            "type": "finalScore",
-            "points": 10
-          }
-        ],
-        "picks": {
-          "ma299d4cb": {
-            "q1": "BFX,JDG,LOUD,TSW",
-            "q2": "LOUD,BLG",
-            "q3": "TSW",
-            "q4": "3:0"
-          },
-          "m36a5ff7c": {
-            "q1": "BFX,BLG,LYON,TSW",
-            "q2": "LOUD,BFX",
-            "q3": "BFX",
-            "q4": "3:1"
-          },
-          "m51919de6": {
-            "q1": "TSW,BFX,LYON,BLG",
-            "q2": "TSW,BFX",
-            "q3": "BLG",
-            "q4": "3:0"
-          }
-        },
-        "revealedAt": "2026-10-10T23:40:40.232Z"
-      }
     }
-  },
-  "testMode": {
-    "on": true,
-    "startedAt": "2026-10-10T23:14:59.603Z",
-    "backupId": "2026-10-11",
-    "bots": [
-      "ma299d4cb",
-      "m36a5ff7c",
-      "m51919de6"
-    ]
   }
 }
