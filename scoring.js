@@ -1203,6 +1203,7 @@
   // A player's card: size x size keys, drawn deterministically from their id
   // so everyone gets a different card but the same card every time they look.
   // Seed with manager + stage so each stage is a genuinely new card.
+  const BINGO_RARE = 0.03;   // a square hit in at most 3% of games counts as rare
   function bingoCard(seed, size) {
     size = size || 5;   // 5x5 is the classic bingo card
     const keys = Object.keys(BINGO);
@@ -1211,11 +1212,27 @@
     const str = String(seed);
     for (let i = 0; i < str.length; i++) { h ^= str.charCodeAt(i); h = Math.imul(h, 16777619); }
     const rnd = () => { h ^= h << 13; h ^= h >>> 17; h ^= h << 5; return ((h >>> 0) % 100000) / 100000; };
-    const pool = keys.slice();
-    for (let i = pool.length - 1; i > 0; i--) { const j = Math.floor(rnd() * (i + 1)); const t = pool[i]; pool[i] = pool[j]; pool[j] = t; }
-    const cells = [];
-    for (let i = 0; i < need; i++) cells.push(pool[i % pool.length]);
-    return { size, cells };
+    const shuffle = a => { for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(rnd() * (i + 1)); const t = a[i]; a[i] = a[j]; a[j] = t; } return a; };
+    // Every row and column gets exactly one RARE square (hit rate <= 3%), and
+    // each diagonal at least one - so no line is finished on common squares
+    // alone. Rare squares sit on a random permutation; the rest is common.
+    const rare = shuffle(keys.filter(k => BINGO[k].rate <= BINGO_RARE));
+    const common = shuffle(keys.filter(k => BINGO[k].rate > BINGO_RARE));
+    if (rare.length < size || rare.length + common.length < need) {
+      const pool = shuffle(keys.slice()), cells = [];
+      for (let i = 0; i < need; i++) cells.push(pool[i % pool.length]);
+      return { size, cells, rare: [] };
+    }
+    let perm;
+    for (let t = 0; t < 200; t++) {
+      perm = shuffle([...Array(size).keys()]);                       // row r -> column perm[r]
+      if (perm.some((c, r) => c === r) && perm.some((c, r) => c === size - 1 - r)) break;
+    }
+    const cells = new Array(need), rarePos = [];
+    perm.forEach((c, r) => { cells[r * size + c] = rare[r]; rarePos.push(r * size + c); });
+    let k = 0;
+    for (let i = 0; i < need; i++) if (!cells[i]) cells[i] = common[k++ % common.length];
+    return { size, cells, rare: rarePos };
   }
 
   // Score a card: points per square, per completed line, plus a full-house bonus.

@@ -476,11 +476,6 @@ function evBingo(slug) {
   const picker = stages.length > 1 ? `<div class="chips" style="margin:0 0 14px">${stages.map(x =>
     `<button class="chip ${x.i === st.i ? 'on' : ''}" data-bgstage="${x.i}">${esc(x.name)}${x.done ? ' ✓' : ''}</button>`).join('')}</div>` : '';
 
-  if (!games) {
-    return picker + card('Bingo · ' + esc(st.name),
-      `<div class="empty">Noch keine Spiele in dieser Phase. Sobald gespielt wird, haken sich die Felder von selbst ab.</div>`);
-  }
-
   // my card
   const card5 = S.bingoCard(myId + '|' + slug + '|' + st.i);
   const sc = S.bingoScore(card5, hits, cfg);
@@ -489,11 +484,12 @@ function evBingo(slug) {
 
   const grid = `<div class="bingo">${card5.cells.map((key, i) => {
     const sq = S.BINGO[key] || {}, h = hits[key] || {};
-    const cls = 'bg-cell' + (h.hit ? ' on' : '') + (inLine.has(i) ? ' line' : '');
+    const rare = (card5.rare || []).includes(i);
+    const cls = 'bg-cell' + (h.hit ? ' on' : '') + (inLine.has(i) ? ' line' : '') + (rare ? ' rare' : '');
     const when = h.at ? new Date(h.at).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit' }) : '';
-    return `<div class="${cls}" title="${esc(sq.hint || '')}">
+    return `<div class="${cls}" title="${esc((sq.hint || sq.label || key) + (when ? ' · ✓ ' + when : ''))}">
       <div class="bg-l">${esc(sq.label || key)}</div>
-      ${h.hit ? `<div class="bg-w">✓ ${esc(when)}</div>` : `<div class="bg-r">${sq.rate ? Math.round(sq.rate * 100) + '%' : ''}</div>`}</div>`;
+      <div class="bg-f">${rare ? '<span class="bg-star">★</span>' : '<span></span>'}${h.hit ? '<span class="bg-w">✓</span>' : `<span class="bg-r">${sq.rate ? Math.max(1, Math.round(sq.rate * 100)) + '%' : ''}</span>`}</div></div>`;
   }).join('')}</div>`;
 
   const mine = card('Bingo · ' + esc(st.name),
@@ -502,11 +498,11 @@ function evBingo(slug) {
        <span><b>${sc.squares}</b><span class="dim">/25 Felder</span></span>
        <span><b>${sc.lines}</b> <span class="dim">${sc.lines === 1 ? 'Linie' : 'Linien'}</span></span>
        ${sc.full ? '<span class="pill live">VOLLE KARTE</span>' : ''}
-       <span class="dim" style="font-size:12px;flex:1;text-align:right">${games} Spiele gewertet</span>
+       <span class="dim" style="font-size:12px;flex:1;text-align:right">${games ? games + ' Spiele gewertet' : 'noch kein Spiel — die Felder haken sich selbst ab'}</span>
      </div>${grid}
      <div class="card-b dim" style="font-size:12px;border-top:1px solid var(--line)">
-       Die Felder haken sich selbst ab, sobald ein Spiel sie erfüllt. Prozent = wie oft das
-       Feld in echten Spielen vorkam. Jede Phase hat eine neue Karte.
+       Felder haken sich selbst ab, sobald ein Spiel sie erfüllt. Prozent = wie oft das Feld in echten
+       Spielen vorkam. ★ = seltenes Feld — jede Reihe und Spalte hat genau eins. Jede Phase neue Karte.
      </div>`, `${cfg.line || 12} pro Linie`);
 
   // everyone else, so there is something to compare
