@@ -298,7 +298,7 @@ function viewEvent(slug) {
   else if (EVX.tab === 'table') body = evTable(slug);
   else if (EVX.tab === 'tour') body = evTour(slug);
   else body = evTeams(slug);
-  const replay = ev.replay ? `<div class="note" style="border-color:var(--gold)">🧪 <b>Wiederholung im Testmodus</b> — das echte ${esc(info.name || '')} spielt sich im Zeitraffer noch einmal ab. Punkte kommen Spiel für Spiel.</div>` : '';
+  const replay = ev.replay ? `<div class="note" style="border-color:var(--gold)">🧪 <b>Wiederholung (Test)</b> — das echte ${esc(info.name || '')} spielt sich im Zeitraffer noch einmal ab. Punkte kommen Spiel für Spiel.${adminOnly() ? `<div class="row" style="gap:6px;flex-wrap:wrap;margin-top:8px"><button class="btn sm gold" data-evjump="phase">⏭ Phase fertig</button><button class="btn sm" data-evjump="end">⏭⏭ Event fertig</button><button class="btn sm" data-evjump="restart">↺ Neustart</button></div>` : ''}</div>` : '';
   return hero + replay + chips + body;
 }
 
@@ -624,6 +624,11 @@ function bindEvent() {
   if (!m) return;
   const slug = m[1];
   document.querySelectorAll('[data-evtab]').forEach(b => b.onclick = () => { EVX.tab = b.dataset.evtab; render(); });
+  document.querySelectorAll('[data-evjump]').forEach(b => b.onclick = async () => {
+    b.disabled = true;
+    try { const r = await app.adminApi('POST', '/api/admin/test', { action: 'jump', slug, to: b.dataset.evjump }); toast(esc(r.message)); await app.refresh(); }
+    catch (e) { toast(`<span style="color:#ffb1b3">${esc(e.message)}</span>`); b.disabled = false; }
+  });
   document.querySelectorAll('[data-bgstage]').forEach(b => b.onclick = () => { EVX.bingoStage = +b.dataset.bgstage; render(); });
   document.querySelectorAll('[data-evrole]').forEach(b => b.onclick = e => { if (e.target.closest('button[data-evcap],button[data-evdrop]')) return; EVX.role = b.dataset.evrole; render(); });
   document.querySelectorAll('[data-evpick]').forEach(b => b.onclick = () => { const pl = evP(slug, b.dataset.evpick), f = EVX.form[slug]; f.players[pl.role] = pl.id; if (!f.captain || !Object.values(f.players).includes(f.captain)) f.captain = pl.id; const nxt = EV_ROLES.find(r => !f.players[r]); if (nxt) EVX.role = nxt; render(); });

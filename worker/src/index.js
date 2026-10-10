@@ -136,6 +136,36 @@ async function route(request, env, ctx) {
         await botPickems(env, r.league).catch(() => 0);
         return { message: `Test-Pick'em für ${split} offen — Sperre in ${min} Min. Die Bots haben schon getippt.` };
       }
+      if (body.action === 'jump') {
+        // move the replay clock: 'phase' = to the end of the phase that is on
+        // (or the next one), 'end' = the whole event over, 'restart' = from the start
+        const slug = String(body.slug || '');
+        const { data } = await readLeague(env);
+        const ev0 = (data.events || {})[slug];
+        if (!ev0 || !ev0.replay) throw new HttpError(404, 'Für dieses Event läuft keine Wiederholung.');
+        const raw = await publicData(env, `events/${slug}.json`, 120);
+        if (!raw) throw new HttpError(404, 'Event-Daten fehlen');
+        const rp = ev0.replay, now = Date.now();
+        const orig = rp.first + (now - rp.from) * rp.speed;               // the event's own clock right now
+        const stages = S.eventStages(raw), last = Math.max(...stages.map(s => s.end || 0));
+        let target;
+        if (body.to === 'restart') target = rp.first - 60e3;
+        else if (body.to === 'end') target = last + 6 * 3600e3;
+        else {
+          const cur = stages.find(s => s.lock !== null && s.end !== null && orig < s.end + 4 * 3600e3);
+          target = cur ? cur.end + 4 * 3600e3 : last + 6 * 3600e3;          // + 4 h: its last games are over
+        }
+        const from = Math.round(now - (target - rp.first) / rp.speed);
+        const { writeLeague } = await import('./store.js');
+        await writeLeague(env, l => { if (l.events && l.events[slug] && l.events[slug].replay) l.events[slug].replay = Object.assign({}, l.events[slug].replay, { from }); return l; },
+          `test: ${slug} Zeitsprung (${body.to || 'phase'})`);
+        const after = S.eventReplay(raw, Object.assign({}, rp, { from }), now);
+        const done = after.schedule.filter(e => e.state === 'completed').length;
+        // reveal what the jump unlocked right away (normally the minute cron does it)
+        const { eventCron } = await import('./events.js');
+        await eventCron(env, (await readLeague(env)).data).catch(() => null);
+        return { message: `Zeitsprung: ${done}/${after.schedule.length} Spiele gespielt${body.to === 'restart' ? ' — von vorn' : ''}.` };
+      }
       if (body.action === 'replay') {
         const { eventAdmin: ea } = await import('./events.js');
         const slug = String(body.slug || '');

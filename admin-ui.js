@@ -368,6 +368,32 @@ function viewPreview() {
     </div>`);
 }
 
+// Special-event replay: works with or without test mode and whatever the
+// draft status is. Running replays get a time jump, so bingo / pick'em /
+// table can be checked in seconds instead of waiting for the games.
+function replayCard() {
+  const S = window.LECScoring, evs = Object.values(A.league.events || {}).filter(e => e.replay);
+  const done = (((ctx.D.eventsIndex || {}).events) || []).filter(e => e.done);
+  const running = evs.map(ev => {
+    const d = EVA.data[ev.slug] === undefined ? evaData(ev.slug) : EVA.data[ev.slug];
+    let line = 'lädt …';
+    if (d && d.schedule) {
+      const r = S.eventReplay(d, ev.replay), st = S.eventStages(r), now = Date.now();
+      const played = r.schedule.filter(e => e.state === 'completed').length;
+      const cur = st.filter(s => s.lock !== null && s.lock <= now).pop();
+      line = ev.replay.from > now ? `startet in ${Math.ceil((ev.replay.from - now) / 60000)} Min` : `${cur ? esc(cur.name) + ' · ' : ''}${played}/${r.schedule.length} Spiele gespielt${S.eventDone(r) ? ' · vorbei' : ''}`;
+    }
+    return `<div style="padding:12px 16px;border-top:1px solid var(--line)"><div class="row" style="justify-content:space-between;gap:8px;flex-wrap:wrap"><b>${esc(ev.name)}</b><span class="dim" style="font-size:12px">${line}</span></div>
+      <div class="row" style="gap:6px;flex-wrap:wrap;margin-top:8px">${btn('⏭ Phase fertig', 'tmJump', { slug: ev.slug, to: 'phase' }, 'gold')}${btn('⏭⏭ Event fertig', 'tmJump', { slug: ev.slug, to: 'end' })}${btn('↺ Neustart', 'tmJump', { slug: ev.slug, to: 'restart' })}<a class="btn sm" href="#/event/${esc(ev.slug)}">Event-Seite →</a>${btn('Wiederholung löschen', 'evDelete', { slug: ev.slug })}</div></div>`;
+  }).join('');
+  return card('Special Event testen', `<div class="card-b muted" style="font-size:13px;line-height:1.6">Spielt ein fertiges Event mit den echten Spielen im Zeitraffer noch einmal ab — Team, Pick'em, Bingo, Tabelle, Ruhmeshalle.
+      Geht <b style="color:var(--text)">immer</b>, auch ohne Testmodus und egal ob ein Draft läuft. Mit dem Zeitsprung musst du nicht warten.</div>
+    <div class="card-b row" style="flex-wrap:wrap;gap:8px;border-top:1px solid var(--line)"><select id="tmEv">${done.map(e => `<option value="${esc(e.slug)}">${esc(e.name)} ${esc(String(e.start).slice(0, 4))}</option>`).join('')}</select>
+      <label style="margin:0;display:flex;gap:6px;align-items:center">Dauer <select id="tmEvMin">${[20, 30, 45].map(n => `<option ${n === 30 ? 'selected' : ''}>${n}</option>`).join('')}</select> Min</label>
+      <label style="margin:0;display:flex;gap:6px;align-items:center" title="Zeit zum Team bauen und Tippen, bevor das erste Spiel läuft. 0 = sofort.">Vorlauf <select id="tmEvLead">${[['0', 'sofort'], ['2', '2 Min'], ['5', '5 Min'], ['10', '10 Min']].map(([v, l]) => `<option value="${v}"${v === '0' ? ' selected' : ''}>${l}</option>`).join('')}</select></label>${btn('Wiederholung starten', 'tmReplay', {}, 'gold')}</div>`
+    + (running || ''), evs.length ? `${evs.length} läuft` : '');
+}
+
 function viewTest() {
   const L = A.league, tm = L.testMode, st = window.LECScoring.draftStatus(L);
   if (!tm || !tm.on) {
@@ -380,7 +406,7 @@ function viewTest() {
         <li><b style="color:var(--text)">Testmodus beenden</b> spielt das Backup zurück — danach ist alles wie vorher. Wer während des Tests beigetreten ist (z. B. du), bleibt mit Name und Passwort dabei; nur Bots und Testdaten verschwinden.</li></ol>
       ${st !== 'lobby' ? '<div class="msg err">Geht nur vor dem Draft (Status Anmeldung). Erst unter Draft zurücksetzen.</div>' : `<div class="row" style="flex-wrap:wrap;gap:10px">
         <label style="margin:0;display:flex;gap:8px;align-items:center">Bots <select id="tmBots">${[1, 2, 3, 4, 5].map(n => `<option ${n === 3 ? 'selected' : ''}>${n}</option>`).join('')}</select></label>
-        ${btn('Testmodus starten', 'tmStart', {}, 'gold')}</div>`}</div>`);
+        ${btn('Testmodus starten', 'tmStart', {}, 'gold')}</div>`}</div>`) + replayCard();
   }
   const inv = A.invite;
   const link = inv ? `${location.origin}${location.pathname}#/join/${inv.code}` : '';
@@ -394,13 +420,9 @@ function viewTest() {
       + step(st !== 'lobby', '2. Draft starten', st === 'lobby' ? `<div class="row" style="flex-wrap:wrap;gap:8px;margin-top:6px">${opBtn('Reihenfolge mischen', { op: 'shuffleOrder' })}${opBtn('Draft jetzt starten', { op: 'setStatus', status: 'live' }, 'Draft starten?', 'gold')}</div>` : st === 'live' ? 'läuft — die Bots picken sofort, wenn sie dran sind' : 'fertig')
       + step(Object.keys(L.pickems || {}).length > 0, "3. Pick'em testen", `Öffnet einen Pick'em mit Sperre in ein paar Minuten. Die Bots tippen sofort; nach der Sperre deckt das System auf und wertet direkt aus (die Saison ist ja gespielt).
           <div class="row" style="flex-wrap:wrap;gap:8px;margin-top:8px"><label style="margin:0;display:flex;gap:6px;align-items:center">Sperre in <select id="tmMin">${[2, 5, 10, 30].map(n => `<option ${n === 5 ? 'selected' : ''}>${n}</option>`).join('')}</select> Min</label>${btn("Test-Pick'em öffnen", 'tmPickem', {}, 'gold')}</div>`)
-      + step(Object.values(L.events || {}).some(e => e.replay), '3b. Special Event testen', `Spielt ein fertiges Event (z. B. MSI 2026) im Zeitraffer noch einmal ab: erst ${'10'} Minuten Team bauen &amp; tippen, dann laufen die echten Spiele im Schnelldurchlauf, mit Punkten, Phasenwechsel, Auflösung und Ruhmeshalle.
-          <div class="row" style="flex-wrap:wrap;gap:8px;margin-top:8px"><select id="tmEv">${(((ctx.D.eventsIndex || {}).events) || []).filter(e => e.done).map(e => `<option value="${esc(e.slug)}">${esc(e.name)} ${esc(String(e.start).slice(0, 4))}</option>`).join('')}</select>
-          <label style="margin:0;display:flex;gap:6px;align-items:center">Dauer <select id="tmEvMin">${[20, 30, 45].map(n => `<option ${n === 30 ? 'selected' : ''}>${n}</option>`).join('')}</select> Min</label>
-          <label style="margin:0;display:flex;gap:6px;align-items:center" title="Zeit zum Team bauen und Tippen, bevor das erste Spiel laeuft. 0 = sofort loslegen.">Vorlauf <select id="tmEvLead">${[['0', 'sofort'], ['2', '2 Min'], ['5', '5 Min'], ['10', '10 Min']].map(([v, l]) => `<option value="${v}"${v === '0' ? ' selected' : ''}>${l}</option>`).join('')}</select></label>${btn('Event-Wiederholung starten', 'tmReplay', {}, 'gold')}</div>`)
       + step(false, '4. Rumprobieren', `Aufstellung setzen, Trades mit den Bots (faire Angebote nehmen sie an), Chat, Rückblick, LEC-Tab.
           <div class="row" style="flex-wrap:wrap;gap:8px;margin-top:8px">${opBtn('Waiver jetzt laufen lassen', { op: 'runWaivers' })}${btn('Ruhmeshalle füllen', 'tmHall')}</div>`)
-      + step(false, '5. Fertig?', `Alles zurück auf den Stand vor dem Test.<div style="margin-top:8px">${btn('Testmodus beenden', 'tmEnd', {}, 'gold')}</div>`));
+      + step(false, '5. Fertig?', `Alles zurück auf den Stand vor dem Test.<div style="margin-top:8px">${btn('Testmodus beenden', 'tmEnd', {}, 'gold')}</div>`)) + replayCard();
 }
 
 // ── special events ────────────────────────────────────────────────────────
@@ -412,6 +434,10 @@ const EV_PK_DEFAULT = { champion: 10, finalist: 5, swiss30: 5, swiss03: 5, winne
 const EV_PK_ON = { pre: ['champion', 'swiss30s', 'swissAdv6', 'swiss03s', 'bestLec', 'regionMostKo', 'mostKills', 'mostDeaths', 'mostPicked', 'shortestGame', 'totalGames'],
                    ko: ['koSemis', 'koFinal', 'champion', 'finalScore'] };
 const EV_KO_DEFAULT = { champion: 20 };
+function evaCfg() {
+  if (EVA.cfg === undefined) { EVA.cfg = null; ctx.U.getJson('data/config.json', true).then(c => { EVA.cfg = c || {}; draw(); }); }
+  return EVA.cfg;
+}
 function evaData(slug) {
   if (EVA.data[slug] === undefined) { EVA.data[slug] = null; ctx.U.getJson('data/events/' + slug + '.json', true).then(d => { EVA.data[slug] = d || {}; draw(); }); }
   return EVA.data[slug];
@@ -421,6 +447,7 @@ const EV_OPEN = new Set();
 const fold = (title, meta, body, id) => `<details class="evfold" data-fold="${esc(id || title)}" ${EV_OPEN.has(id || title) ? 'open' : ''}><summary><b>${title}</b><span class="dim" style="font-size:12px">${meta}</span></summary>${body}</details>`;
 function viewEventsAdmin() {
   const S = window.LECScoring, idx = ((ctx.D.eventsIndex || {}).events) || [], evs = A.league.events || {};
+  evaCfg();
   if (!idx.length) return card('Events', '<div class="empty">Noch keine Event-Daten — die kommen mit dem nächsten Stats-Update (Stats → Jetzt aktualisieren).</div>');
   return idx.map(info => {
     const ev = evs[info.slug];
@@ -464,6 +491,8 @@ function viewEventsAdmin() {
           <label style="margin:0">Kapitän ×<input id="evc_${info.slug}" type="number" step="0.1" value="${c.captain}" style="width:100%"></label>
           <label style="margin:0">YouTube-Link (Intro &amp; Musik)<input id="evv_${info.slug}" value="${ev.video ? 'https://youtu.be/' + esc(ev.video) : ''}" placeholder="leer = kein Video" style="width:100%"></label>
           <label style="margin:0">Video ab Sekunde<input id="evs_${info.slug}" type="number" min="0" value="${ev.videoStart || 0}" style="width:100%"></label></div>
+        <label style="margin-top:10px">Teilnehmer (Kürzel, falls Riot sie noch nicht im Spielplan hat)<input id="evt_${info.slug}" value="${esc(((EVA.cfg || {}).eventTeams || {})[info.slug] ? EVA.cfg.eventTeams[info.slug].join(', ') : '')}" placeholder="z. B. T1, GEN, G2" style="width:100%"></label>
+        <div class="row" style="gap:8px;margin-top:6px;flex-wrap:wrap">${btn('Teilnehmer speichern', 'evTeams', { slug: info.slug })}<span class="muted" style="font-size:12px">${d && d.teams ? d.teams.length + ' Teams in den Daten' : ''}</span></div>
         <div class="row" style="margin-top:12px;gap:8px;flex-wrap:wrap">${btn('Speichern', 'evSave', { slug: info.slug }, 'gold')}${btn('Event löschen', 'evDelete', { slug: info.slug })}</div></div>`, info.slug + '_set')
       + fold('Team-Preise', d && (d.teams || []).length ? d.teams.length + ' Teams' : 'Teams stehen noch nicht fest', prices, info.slug + '_price')
       + `<div class="card-b" style="border-top:1px solid var(--line)"><a class="btn sm" href="#/event/${esc(info.slug)}">Event-Seite öffnen →</a></div>`
@@ -679,6 +708,10 @@ async function act(a, d, el) {
       if (a === 'winDel') rules.windows = (cur.windows || []).filter((_, k) => k !== +d.i);
       return op({ op: 'setTradeRules', rules }, a === 'winDel' ? 'Fenster löschen?' : null);
     }
+    case 'tmJump':
+      busy = true; draw();
+      try { const r = await api('/api/admin/test', { method: 'POST', body: { action: 'jump', slug: d.slug, to: d.to } }); flash = { ok: true, text: r.message }; } catch (e) { flash = { ok: false, text: e.message }; }
+      busy = false; return load();
     case 'tmReplay':
       busy = true; draw();
       try { const r = await api('/api/admin/test', { method: 'POST', body: { action: 'replay', slug: val('tmEv'), minutes: +val('tmEvMin') || 30, lead: val('tmEvLead') === '' ? 10 : +val('tmEvLead') } }); flash = { ok: true, text: r.message }; } catch (e) { flash = { ok: false, text: e.message }; }
@@ -690,6 +723,9 @@ async function act(a, d, el) {
       try { const r = await api('/api/admin/test', { method: 'POST', body }); flash = { ok: true, text: r.message }; } catch (e) { flash = { ok: false, text: e.message }; }
       busy = false; return load();
     }
+    case 'evTeams':
+      try { const r = await api('/api/admin/event', { method: 'POST', body: { action: 'teams', slug: d.slug, teams: val('evt_' + d.slug) } }); flash = { ok: true, text: r.message }; EVA.cfg = undefined; } catch (e) { flash = { ok: false, text: e.message }; }
+      return draw();
     case 'evCreate': case 'evSave': case 'evPickem': case 'evAnswer': case 'evDelete': {
       const slug = d.slug, v = id => val(id + '_' + slug);
       let body;

@@ -850,6 +850,36 @@ tests.events = async () => {
   return 'create (needs data, video id), budget/prices, team rules on the server, secret until the stage lock, cron reveal, pickem lock, later stage, scores, hall of fame, delete';
 };
 
+tests.replay_time_jump = async () => {
+  const S = globalThis.LECScoring;
+  const R = ['TOP', 'JNG', 'MID', 'BOT', 'SUP'];
+  const teams = [['AAA', 'LCK'], ['BBB', 'LEC'], ['CCC', 'LCS']].map(([code, league]) => ({ code, league, name: code }));
+  const day = d => `2026-06-${String(d).padStart(2, '0')}T15:00:00Z`;
+  const m = (id, stage, d, a, b) => ({ match: id, stage, start: day(d), state: 'completed', bestOf: 1, teams: [{ code: a, outcome: 'win', wins: 1 }, { code: b, outcome: 'loss', wins: 0 }] });
+  EVENT = { slug: 'ev_2026', name: 'Worlds', year: 2026, logo: '', teams, players: teams.flatMap(t => R.map(r => ({ id: t.code + '_' + r, name: t.code + r, team: t.code, role: r }))),
+    stages: [{ name: 'Swiss' }, { name: 'Knockouts' }],
+    schedule: [m('m1', 0, 1, 'AAA', 'BBB'), m('m2', 0, 2, 'BBB', 'CCC'), m('m3', 1, 8, 'AAA', 'BBB')],
+    games: ['m1', 'm2', 'm3'].map(x => ({ game: x + 'g', match: x, player: 'AAA_MID', ts: day(1), k: 5, d: 0, a: 0, cs: 0, win: true, dur: 1800 })) };
+  const a = await admin();
+  // no test mode, draft not in the lobby: the replay still starts
+  const l = league(); l.draft.status = 'done';
+  await call('POST', '/api/admin/op', { token: a, body: { op: 'setRaw', league: l, force: true } });
+  let r = await call('POST', '/api/admin/test', { token: a, body: { action: 'replay', slug: 'ev_2026', minutes: 30, lead: 10 } });
+  assert(r.status === 200 && league().events.ev_2026.replay, 'replay starts without test mode: ' + JSON.stringify(r.body));
+  const played = () => S.eventReplay(EVENT, league().events.ev_2026.replay).schedule.filter(e => e.state === 'completed').length;
+  assert(played() === 0, 'nothing played before the lead time');
+  r = await call('POST', '/api/admin/test', { token: a, body: { action: 'jump', slug: 'ev_2026', to: 'phase' } });
+  assert(r.status === 200 && played() === 2, 'phase jump: the two Swiss games are done: ' + played() + ' ' + JSON.stringify(r.body));
+  assert(league().events.ev_2026.revealed.includes(0), 'the jump reveals the phase right away');
+  r = await call('POST', '/api/admin/test', { token: a, body: { action: 'jump', slug: 'ev_2026', to: 'end' } });
+  assert(played() === 3 && S.eventDone(S.eventReplay(EVENT, league().events.ev_2026.replay)), 'end jump: event over');
+  r = await call('POST', '/api/admin/test', { token: a, body: { action: 'jump', slug: 'ev_2026', to: 'restart' } });
+  assert(played() === 0, 'restart: back before the first game');
+  r = await call('POST', '/api/admin/test', { token: a, body: { action: 'jump', slug: 'nope', to: 'end' } });
+  assert(r.status === 404, 'jump needs a running replay');
+  return 'replay without test mode / draft done, jump to phase end (reveals at once), to event end, restart';
+};
+
 tests.faab = async () => {
   const S = globalThis.LECScoring, idx = new Map(PLAYERS.players.map(p => [p.id, p]));
   const { a, tok, ids } = await liveLeague(['Ann', 'Ben']);

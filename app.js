@@ -66,7 +66,8 @@ const logo = (code, size) => U.teamLogo(D, code, size || 20);
 let EVU;
 const EV = () => {
   if (EVU === undefined) EVU = window.LECEventsInit ? window.LECEventsInit({ get D() { return D; }, L, S, U, esc, fmt, card, loggedIn, adminOnly, me,
-    api: (p, o) => api(p, o), toast: (h, pid) => toast(h, pid), render: () => render(), store, path: () => path(), scoring: () => scoring() }) : null;
+    api: (p, o) => api(p, o), toast: (h, pid) => toast(h, pid), render: () => render(), store, path: () => path(), scoring: () => scoring(),
+    adminApi: (m, p, b) => adminApi(m, p, b), refresh: () => pollLive(true) }) : null;
   return EVU;
 };
 const pcell = (id, opts) => U.playerCell(D, id, Object.assign({ link: true }, opts || {}));

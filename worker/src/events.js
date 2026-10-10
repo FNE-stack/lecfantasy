@@ -7,7 +7,7 @@
 // `evp:<slug>:ko:<id>`). The cron moves them into league.json once
 // the stage (or the pick'em) has started. Rules: scoring.js (event*).
 // ═══════════════════════════════════════════════════════════════════════════
-import { S, HttpError, readLeague, readLeagueFresh, writeLeague, publicData } from './store.js';
+import { S, HttpError, readLeague, readLeagueFresh, writeLeague, publicData, writeSiteFile } from './store.js';
 
 // ev given: a test replay (ev.replay) is applied, so every check sees replay time
 export async function eventData(env, slug, ev) {
@@ -154,6 +154,17 @@ export async function eventAdmin(env, body) {
   const slug = String(body.slug || '');
   if (!/^[a-z0-9_]+$/.test(slug)) throw new HttpError(400, 'Event fehlt');
   const a = body.action;
+  if (a === 'teams') {
+    // participants Riot has not put into the schedule yet; the stats job picks them up
+    const codes = [...new Set(String(body.teams || '').toUpperCase().split(/[\s,;]+/).filter(c => /^[A-Z0-9]{1,6}$/.test(c)))];
+    await writeSiteFile(env, 'data/config.json', cur => {
+      const c = Object.assign({}, cur || {});
+      c.eventTeams = Object.assign({}, c.eventTeams || {});
+      if (codes.length) c.eventTeams[slug] = codes; else delete c.eventTeams[slug];
+      return c;
+    }, `config: Teilnehmer ${slug} (${codes.length})`);
+    return { message: `Teilnehmer gespeichert (${codes.length} Teams) — sie erscheinen mit dem nächsten Stats-Update (spätestens in 2 Stunden).` };
+  }
   let msg = '';
   if (a === 'create' || a === 'update' || a === 'pickem') await eventData(env, slug);     // data must exist
   const d = a === 'pickem' ? await eventData(env, slug) : null;
