@@ -95,7 +95,24 @@
     "budget": 100,
     "resetEachSplit": false
   },
-  "hall": {},
+  "hall": {
+    "event_first_stand_2026": {
+      "event": true,
+      "slug": "first_stand_2026",
+      "name": "First Stand 2026 (Wiederholung)",
+      "logo": "https://static.lolesports.com/leagues/1740042025201_RG_LOL_FIRST_STAND_LOGO_VOLT_ALPHA.png",
+      "at": "2026-10-10T23:08:24.021Z",
+      "table": [
+        {
+          "manager": "m02595135",
+          "name": "Fabi",
+          "pts": 63,
+          "players": 0,
+          "pickem": 0
+        }
+      ]
+    }
+  },
   "events": {
     "worlds_2026": {
       "slug": "worlds_2026",
