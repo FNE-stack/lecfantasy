@@ -270,10 +270,12 @@
       "video": "",
       "createdAt": "2026-10-10T22:59:00.260Z",
       "lineups": {
-        "0": {}
+        "0": {},
+        "1": {}
       },
       "revealed": [
-        0
+        0,
+        1
       ],
       "replay": {
         "from": 1791671867926,
@@ -334,7 +336,7 @@
         "revealedAt": "2026-10-10T22:59:06.605Z"
       },
       "pickemKo": {
-        "revealed": false,
+        "revealed": true,
         "lockAt": null,
         "questions": [
           {
@@ -357,7 +359,9 @@
             "type": "finalScore",
             "points": 10
           }
-        ]
+        ],
+        "picks": {},
+        "revealedAt": "2026-10-10T23:02:24.397Z"
       }
     }
   }
