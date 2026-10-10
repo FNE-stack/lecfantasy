@@ -120,11 +120,32 @@
       "budget": 100,
       "maxPerTeam": 2,
       "captain": 1.5,
-      "prices": {},
-      "video": "",
+      "prices": {
+        "AL": 25,
+        "BLG": 25,
+        "C9": 15,
+        "CFO": 15,
+        "DK": 25,
+        "FUR": 15,
+        "G2": 20,
+        "GEN": 25,
+        "HLE": 25,
+        "IG": 25,
+        "KC": 20,
+        "LOS": 15,
+        "LYON": 15,
+        "MKOI": 20,
+        "MVK": 15,
+        "T1": 25,
+        "TES": 25,
+        "TLAW": 15,
+        "TSW": 15
+      },
+      "video": "mlFxxNsExJc",
       "createdAt": "2026-10-10T23:14:12.628Z",
       "lineups": {},
-      "revealed": []
+      "revealed": [],
+      "videoStart": 0
     }
   }
 }
