@@ -30,8 +30,8 @@
    "start": "2026-10-15",
    "end": "2026-11-15",
    "logo": "https://static.lolesports.com/leagues/1592594612171_WorldsDarkBG.png",
-   "ready": false,
-   "teams": 0,
+   "ready": true,
+   "teams": 19,
    "done": false
   }
  ]

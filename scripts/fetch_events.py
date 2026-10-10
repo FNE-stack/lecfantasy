@@ -6,7 +6,8 @@ season year, for the special-event fantasy. Writes per event
                                table, bracket), one stats row per player/game
     data/events/index.json   - which events exist, with dates and logo
 
-Only teams that actually play the event are included (from its schedule).
+Teams: those in the event schedule, plus the codes listed in data/config.json
+"eventTeams" (announced participants Riot has not scheduled yet).
 Rosters come from getTeams, which lists every team of every league - several
 share a name or code (T1 / T1 Rookies, HLE / HLE Challengers), so the active
 main-league team wins. Players that show up in games but not in a roster
@@ -46,11 +47,56 @@ def pick_team(cands):
     """Several getTeams entries share a name: prefer the active main-league one."""
     def score(t):
         hl = (t.get("homeLeague") or {}).get("name") or ""
-        return (t.get("status") == "active", bool(hl), not any(x in hl for x in ("Challengers", "Academy")), len(t.get("players") or []))
+        side = any(x in hl or x in t.get("name", "") for x in ("Challengers", "Academy", "Rookies", "Youth"))
+        return (t.get("status") == "active", not side, bool(hl), len(t.get("players") or []))
     return max(cands, key=score) if cands else None
 
 
-def rosters(sched, all_teams):
+_LEAGUES, _SCHED = None, {}
+def starting_five(team):
+    """[(player id, IGN, role)] of the team's five in its latest home-league
+    game. getTeams lists whole organisations (T1: 14 players incl. trainees),
+    so the event roster is cut to who actually played last. None if unknown."""
+    global _LEAGUES
+    try:
+        if _LEAGUES is None:
+            _LEAGUES = {l["name"]: l["id"] for l in F.gw("getLeagues")["leagues"]}
+        lid = _LEAGUES.get((team.get("homeLeague") or {}).get("name"))
+        if not lid:
+            return None
+        if lid not in _SCHED:
+            s = F.gw("getSchedule", leagueId=lid)["schedule"]
+            evs = list(s["events"])
+            tok = (s.get("pages") or {}).get("older")
+            for _ in range(3):
+                if not tok:
+                    break
+                s = F.gw("getSchedule", leagueId=lid, pageToken=tok)["schedule"]
+                evs = s["events"] + evs
+                tok = (s.get("pages") or {}).get("older")
+            _SCHED[lid] = sorted((e for e in evs if e.get("state") == "completed" and e.get("type") == "match"), key=lambda e: e["startTime"])
+        for e in reversed(_SCHED[lid]):
+            if team["code"] not in [t.get("code") for t in e["match"]["teams"]]:
+                continue
+            det = F.gw("getEventDetails", id=e["match"]["id"])["event"]["match"]
+            games = [g for g in det.get("games") or [] if g.get("state") == "completed"]
+            if not games:
+                continue
+            w = F._get(F.FEED + f"window/{games[-1]['id']}")
+            meta = (w or {}).get("gameMetadata")
+            if not meta:
+                return None
+            for side in ("blueTeamMetadata", "redTeamMetadata"):
+                if meta[side]["esportsTeamId"] == team["id"]:
+                    return [(x["esportsPlayerId"], x.get("summonerName", ""), F.ROLE_MAP.get((x.get("role") or "").lower(), ""))
+                            for x in meta[side]["participantMetadata"]]
+            return None
+    except Exception as e:   # noqa: BLE001 - without a five the full roster stays
+        print(f"  ! five of {team.get('code')}: {e}", file=sys.stderr)
+    return None
+
+
+def rosters(sched, all_teams, extra=()):
     by_name, by_code = {}, {}
     for t in all_teams:
         by_name.setdefault(t["name"].lower(), []).append(t)
@@ -60,19 +106,33 @@ def rosters(sched, all_teams):
         for t in e["teams"]:
             if t["code"] and t["code"] != "TBD":
                 want[t["code"]] = t.get("name") or ""
+    # participants announced before Riot puts them into the schedule
+    # (data/config.json "eventTeams": {"worlds_2026": ["T1", ...]})
+    for code in extra:
+        want.setdefault(code, "")
     teams, players = [], []
     for code, name in sorted(want.items()):
-        t = pick_team(by_name.get(name.lower(), [])) or pick_team(by_code.get(code, []))
+        t = (pick_team(by_name.get(name.lower(), [])) if name else None) or pick_team(by_code.get(code, []))
         if not t:
             print(f"  ! no roster for {code} {name}", file=sys.stderr)
             continue
         hl = t.get("homeLeague") or {}
         teams.append({"code": code, "name": t["name"], "id": t["id"], "logo": F.https(t.get("image")),
                       "league": hl.get("name") or "", "region": hl.get("region") or ""})
-        for p in t.get("players") or []:
+        roster = {p["id"]: p for p in t.get("players") or []}
+        five = starting_five(t)
+        if five:
+            for pid, ign, role in five:
+                p = roster.get(pid) or {}
+                real = " ".join(x for x in (p.get("firstName"), p.get("lastName")) if x).strip()
+                players.append({"id": pid, "name": p.get("summonerName") or ign, "realName": real,
+                                "role": role or F.ROLE_MAP.get((p.get("role") or "").lower()) or "MID",
+                                "team": code, "photo": F.https(p.get("image"))})
+            continue
+        for p in roster.values():
             role = F.ROLE_MAP.get((p.get("role") or "").lower())
             if not role:
-                continue
+                continue   # coaches / staff come through as role "none"
             real = " ".join(x for x in (p.get("firstName"), p.get("lastName")) if x).strip()
             players.append({"id": p["id"], "name": p["summonerName"], "realName": real, "role": role,
                             "team": code, "photo": F.https(p.get("image"))})
@@ -143,7 +203,7 @@ def main():
                 tm["name"] = names.get(tm["code"], "")
         if all_teams is None:
             all_teams = F.gw("getTeams")["teams"]
-        teams, players = rosters(sched, all_teams)
+        teams, players = rosters(sched, all_teams, (cfg.get("eventTeams") or {}).get(slug, []))
         games, fresh, skipped = F.fetch_games(t["id"], known, slug) if any(e["state"] == "completed" for e in sched) else ([], 0, 0)
         # substitutes who played but are not on a roster
         ids = {p["id"] for p in players}
