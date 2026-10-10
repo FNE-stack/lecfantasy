@@ -1190,7 +1190,10 @@
     const rows = (evData && evData.games) || [];
     // match games to the stage by match id when we have it, else by date range
     const byMatch = rows.filter(r => ids.has(String(r.match)));
-    if (byMatch.length) return byMatch;
+    // rows that name their match never fall back to dates: a phase without
+    // games yet must stay empty (a replay squeezes all phases into minutes,
+    // so a date window would pull in the previous phase's games)
+    if (byMatch.length || rows.some(r => r.match)) return byMatch;
     const ts = sched.filter(e => e.stage === stageIndex).map(e => Date.parse(e.start)).filter(Boolean);
     if (!ts.length) return [];
     const lo = Math.min(...ts) - 6 * 3600e3, hi = Math.max(...ts) + 18 * 3600e3;
