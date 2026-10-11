@@ -111,6 +111,22 @@
           "pickem": 0
         }
       ]
+    },
+    "event_msi_2026": {
+      "event": true,
+      "slug": "msi_2026",
+      "name": "MSI 2026 (Wiederholung)",
+      "logo": "https://static.lolesports.com/leagues/1592594634248_MSIDarkBG.png",
+      "at": "2026-10-11T00:06:24.273Z",
+      "table": [
+        {
+          "manager": "m02595135",
+          "name": "Fabi",
+          "pts": 0,
+          "players": 0,
+          "pickem": 0
+        }
+      ]
     }
   },
   "events": {
