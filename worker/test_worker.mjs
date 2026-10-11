@@ -880,6 +880,30 @@ tests.replay_time_jump = async () => {
   return 'replay without test mode / draft done, jump to phase end (reveals at once), to event end, restart';
 };
 
+tests.monopoly_choices = async () => {
+  const R = ['TOP', 'JNG', 'MID', 'BOT', 'SUP'];
+  const teams = [['AAA', 'LCK'], ['BBB', 'LEC']].map(([code, league]) => ({ code, league, name: code }));
+  EVENT = { slug: 'ev_2026', name: 'Worlds', logo: '', teams, players: teams.flatMap(t => R.map(r => ({ id: t.code + '_' + r, name: t.code + r, team: t.code, role: r }))),
+    stages: [{ name: 'Swiss' }], games: [], schedule: [{ match: 'm1', stage: 0, start: new Date(Date.now() + 864e5).toISOString(), state: 'unstarted', teams: [{ code: 'AAA' }, { code: 'BBB' }] }] };
+  const { a, tok } = await liveLeague(['Ann']);
+  await call('POST', '/api/admin/event', { token: a, body: { action: 'create', slug: 'ev_2026', name: 'Worlds' } });
+  let r = await call('POST', '/api/event/mono', { token: tok.Ann, body: { slug: 'ev_2026', pilot: 'AAA_MID' } });
+  assert(r.status === 409, 'no monopoly while the minigame is bingo');
+  r = await call('POST', '/api/admin/event', { token: a, body: { action: 'update', slug: 'ev_2026', minigame: 'monopoly' } });
+  assert(r.status === 200 && league().events.ev_2026.minigame === 'monopoly', 'admin switches the minigame');
+  r = await call('POST', '/api/event/mono', { token: tok.Ann, body: { slug: 'ev_2026', pilot: 'AAA_MID' } });
+  assert(r.status === 200, 'pilot saved: ' + JSON.stringify(r.body));
+  r = await call('POST', '/api/event/mono', { token: tok.Ann, body: { slug: 'ev_2026', pilot: 'ZZZ_MID' } });
+  assert(r.status === 400, 'unknown pilot refused');
+  r = await call('POST', '/api/event/mono', { token: tok.Ann, body: { slug: 'ev_2026', rule: 'top' } });
+  assert(r.status === 200, 'buy rule saved');
+  const ch = Object.values(league().events.ev_2026.mono.choices)[0];
+  assert(ch.length === 2 && ch[0].pilot === 'AAA_MID' && ch[1].rule === 'top' && ch.every(c => c.at), 'choices kept with time');
+  r = await call('POST', '/api/admin/event', { token: a, body: { action: 'update', slug: 'ev_2026', minigame: 'chess' } });
+  assert(r.status === 400, 'unknown minigame refused');
+  return 'monopoly only when switched on, pilot / buy rule saved with time, unknown pilot / minigame refused';
+};
+
 tests.faab = async () => {
   const S = globalThis.LECScoring, idx = new Map(PLAYERS.players.map(p => [p.id, p]));
   const { a, tok, ids } = await liveLeague(['Ann', 'Ben']);

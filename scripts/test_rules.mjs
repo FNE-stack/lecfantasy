@@ -313,6 +313,28 @@ tests.events = () => {
   return 'stages + locks, prices (admin / region), budget, roles, team limit, captain, carry-over lineups, truth incl. Swiss 3-0/0-3 and region, pick\'em';
 };
 
+tests.monopoly = () => {
+  const d = eventFixture();
+  const L = { managers: [{ id: 'a', name: 'Ann' }, { id: 'b', name: 'Ben' }] };
+  const board = S.monoBoard(d);
+  assert([12, 16, 20, 24, 28, 32].includes(board.length) && board[0].kind === 'start' && board.filter(f => f.kind === 'team').length === 4, 'square ring board: ' + board.length);
+  // Ann's pilot AAA_MID: s1 10 kills -> 10 squares, k1 4 kills -> 4 more
+  const ev = { slug: 'w', minigame: 'monopoly', mono: { choices: { a: [{ at: '2026-10-01T00:00:00Z', pilot: 'AAA_MID' }], b: [{ at: '2026-10-16T00:00:00Z', pilot: 'AAA_MID' }] } } };
+  const m = S.eventMonopoly(L, ev, d);
+  const ann = m.table.find(r => r.manager === 'a'), ben = m.table.find(r => r.manager === 'b');
+  const annMoves = m.log.filter(l => l.manager === 'a' && /AAA_MID|AAAMID/.test(l.text) && / vor/.test(l.text)).length;
+  assert(annMoves === 2, 'Ann moves in both of her pilot\'s games: ' + JSON.stringify(m.log.filter(l => l.manager === 'a')));
+  assert(m.log.filter(l => l.manager === 'b' && / vor/.test(l.text) && /AAA/.test(l.text)).length === 1, 'Ben chose the pilot after s1: only k1 counts');
+  assert(ann.pos === (10 + 4) % board.length || m.log.some(l => l.manager === 'a' && /Rift-Karte|Grey|Teleport/.test(l.text)), 'Ann on field 14 (unless a card moved her): ' + ann.pos);
+  // deterministic: same input, same board
+  assert(JSON.stringify(S.eventMonopoly(L, ev, d).table) === JSON.stringify(m.table), 'deterministic');
+  assert(S.eventMinigame({}) === 'bingo' && S.eventMinigame({ minigame: 'monopoly' }) === 'monopoly', 'minigame default bingo');
+  // bingo points only when bingo is the minigame
+  const sL = Object.assign({ scoring: { kill: 3, death: 0, assist: 0, cs10: 0, win: 0 } }, L);
+  assert(S.eventStandings(sL, Object.assign({}, ev, { lineups: {} }), d).every(r => r.bingo === 0), 'no bingo points in a monopoly event');
+  return 'ring board, pilot stats move you, choices only count for later games, deterministic, minigame switch';
+};
+
 tests.pickem = () => {
   const L = league(2);
   const ev = (m, block, a, b, aw, start) => ({ match: m, start, state: 'completed', block, tournament: 'sp',

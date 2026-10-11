@@ -283,7 +283,7 @@ function viewEvent(slug) {
   if (!d) { loadEventData(slug); return card(esc(ev.name), '<div class="empty">lädt …</div>'); }
   if (EVX.mine[slug] === undefined) { EVX.mine[slug] = null; loadMine(slug); }
   const info = evInfo(slug) || {};
-  const tabs = [['team', adminOnly() ? 'Teams' : 'Mein Team'], ['pickem', 'Pick\'em'], ['bingo', 'Bingo'], ['table', 'Tabelle'], ['tour', 'Turnier'], ['teams', 'Teilnehmer']];
+  const tabs = [['team', adminOnly() ? 'Teams' : 'Mein Team'], ['pickem', 'Pick\'em'], ...(S.eventMinigame(ev) === 'bingo' ? [['bingo', 'Bingo']] : S.eventMinigame(ev) === 'monopoly' ? [['mono', 'Monopoly']] : []), ['table', 'Tabelle'], ['tour', 'Turnier'], ['teams', 'Teilnehmer']];
   const hero = `<section class="hero evhero">
       <div class="row" style="gap:18px;align-items:center;flex-wrap:wrap">${info.logo ? `<img src="${esc(info.logo)}" alt="" style="height:64px;max-width:160px;object-fit:contain">` : ''}
       <div style="min-width:0;flex:1"><div class="eyebrow">Special Event · ${esc(info.start ? new Date(info.start).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit' }) + ' – ' + new Date(info.end).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' }) : '')}</div>
@@ -291,10 +291,11 @@ function viewEvent(slug) {
       ${ev.video && videoOff(slug) ? `<button class="btn sm" id="evVid" style="margin-top:10px">▶ Video &amp; Musik an</button>` : ''}</div></div></section>`;
   const chips = `<div class="chips" style="margin:0 0 16px">${tabs.map(([k, l]) => `<button class="chip ${EVX.tab === k ? 'on' : ''}" data-evtab="${k}">${l}</button>`).join('')}</div>`;
   let body = '';
-  if (!d.teams.length && EVX.tab !== 'tour' && EVX.tab !== 'bingo') body = card(esc(ev.name), '<div class="empty">Die Teilnehmer stehen noch nicht fest. Sobald Riot sie einträgt (meist ein paar Tage vorher), kannst du hier dein Team bauen.</div>');
+  if (!d.teams.length && EVX.tab !== 'tour' && EVX.tab !== 'bingo' && EVX.tab !== 'mono') body = card(esc(ev.name), '<div class="empty">Die Teilnehmer stehen noch nicht fest. Sobald Riot sie einträgt (meist ein paar Tage vorher), kannst du hier dein Team bauen.</div>');
   else if (EVX.tab === 'team') body = adminOnly() ? evAllTeams(slug) : evBuilder(slug);
   else if (EVX.tab === 'pickem') body = evPickem(slug);
   else if (EVX.tab === 'bingo') body = evBingo(slug);
+  else if (EVX.tab === 'mono') body = evMono(slug);
   else if (EVX.tab === 'table') body = evTable(slug);
   else if (EVX.tab === 'tour') body = evTour(slug);
   else body = evTeams(slug);
@@ -493,6 +494,72 @@ function evBingo(slug) {
     + card('Momente', moments || '<div class="empty">Noch nichts passiert. Hier steht, welches Spiel welches Feld abgehakt hat.</div>');
 }
 
+// ── Rift-Monopoly ─────────────────────────────────────────────────────────
+// The board is replayed from the real games every time (scoring.js
+// eventMonopoly); the page only shows it and saves pilot / buy rule.
+const MONO_COLORS = ['#e8b04b', '#4fc3f7', '#ef5350', '#66bb6a', '#ab47bc', '#ff8a65', '#26c6da', '#d4e157', '#ec407a', '#8d6e63'];
+const MONO_ICON = { start: '⬢', baron: '🐛', elder: '🐉', jail: '⏸', tax: '♻', pot: '⛲', card: '🃏' };
+const MONO_RULES = [['all', 'Alles kaufen'], ['top', 'Nur LCK & LPL'], ['lec', 'Nur LEC'], ['none', 'Nichts kaufen']];
+function monoRing(n) {
+  // field i -> [row, col] on a k x k grid, clockwise from the bottom-right corner (Monopoly style)
+  const k = (n + 4) / 4, pos = [];
+  for (let i = 0; i < k; i++) pos.push([k, k - i]);              // bottom row, right -> left
+  for (let i = 1; i < k; i++) pos.push([k - i, 1]);              // left column, bottom -> top
+  for (let i = 1; i < k; i++) pos.push([1, 1 + i]);              // top row, left -> right
+  for (let i = 1; i < k - 1; i++) pos.push([1 + i, k]);          // right column, top -> bottom
+  return { k, pos };
+}
+function evMono(slug) {
+  const d = evD(slug), ev = L().events[slug];
+  if (!d) return card('Monopoly', '<div class="empty">lädt …</div>');
+  if (!d.teams.length) return card('Rift-Monopoly', '<div class="empty">Das Brett entsteht, sobald die Teilnehmer feststehen.</div>');
+  const m = S.eventMonopoly(L(), ev, d), mgrs = (L().managers || []).map(x => x.id).sort();
+  const color = id => MONO_COLORS[mgrs.indexOf(id) % MONO_COLORS.length];
+  const initial = id => esc(String(mgrName(id) || '?').trim().slice(0, 1).toUpperCase());
+  const { k, pos } = monoRing(m.board.length);
+  const at = {};
+  for (const r of m.table) (at[r.pos] = at[r.pos] || []).push(r.manager);
+  const cells = m.board.map((f, i) => {
+    const [row, col] = pos[i], o = f.kind === 'team' ? m.owner[f.code] : null;
+    const tokens = (at[i] || []).map(id => `<span class="mono-tok" style="background:${color(id)}" title="${esc(mgrName(id))}">${initial(id)}</span>`).join('');
+    const inner = f.kind === 'team'
+      ? `${evLogo(slug, f.code, 22)}<span class="mono-c">${esc(f.code)}</span><span class="mono-p">${f.price}</span>`
+      : `<span class="mono-i">${MONO_ICON[f.kind] || '•'}</span><span class="mono-c">${esc(f.name)}</span>`;
+    return `<div class="mono-cell ${f.kind}" style="grid-row:${row};grid-column:${col};${o ? `border-top:4px solid ${color(o)}` : ''}" title="${esc(f.name + (o ? ' · ' + mgrName(o) : ''))}">${inner}<div class="mono-toks">${tokens}</div></div>`;
+  }).join('');
+  const info = evInfo(slug) || {};
+  const center = `<div class="mono-center" style="grid-row:2 / ${k};grid-column:2 / ${k}">${info.logo ? `<img src="${esc(info.logo)}" alt="">` : ''}
+    <div class="mono-title">Rift-Monopoly</div><div class="dim" style="font-size:11px">Fountain: ${m.pot}</div></div>`;
+  const board = `<div class="mono-board" style="grid-template-columns:repeat(${k},minmax(0,1fr));grid-template-rows:repeat(${k},minmax(0,1fr))">${cells}${center}</div>`;
+  // me
+  let mine = '';
+  if (!adminOnly()) {
+    const r = m.table.find(x => x.manager === me()) || {};
+    const choices = ((ev.mono || {}).choices || {})[me()] || [];
+    const rule = (choices.filter(c => c.rule).pop() || {}).rule || 'all';
+    const pilotP = evP(slug, r.pilot) || {};
+    const opts = d.teams.map(t => `<optgroup label="${esc(t.code)}">${d.players.filter(p => p.team === t.code).map(p => `<option value="${esc(p.id)}" ${p.id === r.pilot ? 'selected' : ''}>${esc(p.name)} · ${p.role}</option>`).join('')}</optgroup>`).join('');
+    mine = card('Du', `<div class="card-b row" style="gap:16px;flex-wrap:wrap;align-items:baseline">
+        <span><b style="font-size:20px">${r.cash ?? 0}</b> <span class="dim">Gold</span></span><span><b>${r.worth ?? 0}</b> <span class="dim">Wert</span></span>
+        <span class="dim">Feld: <b style="color:var(--text)">${esc((m.board[r.pos || 0] || {}).name || (m.board[r.pos || 0] || {}).code || '')}</b></span>
+        <span>${(r.props || []).map(c => evLogo(slug, c, 18)).join(' ') || '<span class="dim">noch kein Team</span>'}</span></div>
+      <div class="card-b" style="border-top:1px solid var(--line)"><label style="margin-top:0">Dein Pilot — seine Spiele sind deine Würfel (Kills + halbe Assists, 6+ Tode = 3 zurück)</label>
+        <div class="row" style="gap:8px;flex-wrap:wrap">${pilotP.photo ? `<img class="ph" src="${esc(pilotP.photo)}" alt="">` : ''}<select id="monoPilot" style="flex:1;min-width:160px">${opts}</select><button class="btn sm gold" id="monoPilotSave">Pilot setzen</button></div>
+        <div class="dim" style="font-size:12px;margin-top:6px">Gilt ab dem nächsten Spiel. Spielt sein Team nicht, stehst du.</div>
+        <label>Kaufen, wenn du auf ein freies Team kommst</label>
+        <div class="chips">${MONO_RULES.map(([v, l]) => `<button class="chip ${rule === v ? 'on' : ''}" data-monorule="${v}">${l}</button>`).join('')}</div></div>`);
+  }
+  const table = card('Stand', `<table><tbody>${m.table.map((r, i) => `<tr class="${r.manager === me() ? 'me' : ''}"><td class="rank">${i + 1}</td>
+      <td class="fill"><span class="mono-tok" style="background:${color(r.manager)}">${initial(r.manager)}</span> <b>${esc(r.name)}</b>
+        <div class="dim" style="font-size:11px">Pilot: ${esc((evP(slug, r.pilot) || {}).name || '—')} · ${r.props.length} Teams${r.jail ? ' · ⏸ Grey Screen' : ''}</div></td>
+      <td class="num">${r.cash}</td><td class="num pts">${r.worth}</td></tr>`).join('')}</tbody></table>`, 'Gold · Wert');
+  const feed = card('Züge', m.log.length ? m.log.slice(0, 40).map(l => `<div class="row" style="gap:8px;padding:7px 16px;border-top:1px solid var(--line);align-items:flex-start;font-size:13px">
+      <span class="mono-tok" style="background:${color(l.manager)}">${initial(l.manager)}</span><div style="flex:1;min-width:0">${esc(l.text)}</div></div>`).join('')
+    : '<div class="empty">Noch kein Zug — sobald die Piloten spielen, laufen die Figuren.</div>');
+  return `<div class="grid g-main"><div class="stack">${card('Brett', board, 'kein Punktewert — Test')}${feed}</div><div class="stack">${mine}${table}
+    ${card('Rift-Karten', `<div class="card-b dim" style="font-size:12px;line-height:1.7">${m.cards.map(c => '🃏 ' + esc(c.text)).join('<br>')}</div>`)}</div></div>`;
+}
+
 function evTour(slug) {
   const d = evD(slug), stages = S.eventStages(d);
   if (!stages.length) return card('Turnier', '<div class="empty">Spielplan kommt noch.</div>');
@@ -598,6 +665,12 @@ function bindEvent() {
     b.disabled = true;
     try { const r = await app.adminApi('POST', '/api/admin/test', { action: 'jump', slug, to: b.dataset.evjump }); toast(esc(r.message)); await app.refresh(); }
     catch (e) { toast(`<span style="color:#ffb1b3">${esc(e.message)}</span>`); b.disabled = false; }
+  });
+  const mp = $('monoPilotSave'); if (mp) mp.onclick = async () => {
+    try { await api('/api/event/mono', { method: 'POST', body: { slug, pilot: $('monoPilot').value } }); toast('Pilot gesetzt — gilt ab dem nächsten Spiel.'); await app.refresh(); } catch (e) { toast(`<span style="color:#ffb1b3">${esc(e.message)}</span>`); }
+  };
+  document.querySelectorAll('[data-monorule]').forEach(b => b.onclick = async () => {
+    try { await api('/api/event/mono', { method: 'POST', body: { slug, rule: b.dataset.monorule } }); toast('Kauf-Regel gespeichert.'); await app.refresh(); } catch (e) { toast(`<span style="color:#ffb1b3">${esc(e.message)}</span>`); }
   });
   const bs = $('bgShuffle'); if (bs) bs.onclick = async () => {
     try { await app.adminApi('POST', '/api/admin/event', { action: 'update', slug, reshuffle: true }); toast('Neue Bingo-Karte'); await app.refresh(); } catch (e) { toast(esc(e.message)); }

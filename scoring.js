@@ -1387,7 +1387,7 @@
     const stageOf = new Map(((evData && evData.schedule) || []).map(e => [e.match, e.stage]));
     const rounds = [ev.pickem, ev.pickemKo].filter(x => x && x.revealed);
     const truth = rounds.length && eventDone(evData) ? eventTruth(evData, sc) : null;
-    const shared = evData && !((ev && ev.bingo) || {}).off ? eventBingo(league, ev, evData) : null;
+    const shared = evData && eventMinigame(ev) === 'bingo' ? eventBingo(league, ev, evData) : null;
     const rows = (league.managers || []).map(m => {
       const r = { manager: m.id, name: m.name, players: 0, pickem: 0, bingo: 0, total: 0, byStage: {}, perPlayer: {}, correct: [] };
       for (const g of (evData && evData.games) || []) {
@@ -1414,6 +1414,157 @@
     return rows.sort((a, b) => b.total - a.total);
   }
 
+  // ── Rift-Monopoly (event minigame, ev.minigame === 'monopoly') ───────────
+  // Nothing is stored but the managers' choices (ev.mono.choices[id] =
+  // [{at, pilot?, rule?}]); the whole board is replayed from the real games
+  // every time, so it can never drift and a stat correction fixes it too.
+  // Every game an manager's PILOT plays moves them K + A/2 squares (1-12);
+  // 6+ deaths = 3 back. Landing on a free team buys it (buy rule), on someone
+  // else's team pays rent that grows with the team's wins in the event.
+  const MONO_PRICE = { LCK: 300, LPL: 300, LEC: 240, LCS: 180, LTA: 180, LCP: 180, CBLOL: 150 };
+  const MONO_REGIONS = ['LCK', 'LPL', 'LEC', 'LCS', 'LTA', 'LCP', 'CBLOL'];
+  const MONO_START = 1500, MONO_PASS = 200, MONO_RESERVE = 100;
+  const MONO_CARDS = [
+    { id: 'penta',   text: 'Pentakill-Party im Chat',             fx: { cash: 100 } },
+    { id: 'steal',   text: 'Baron gestohlen! Der Reichste zahlt dir 100', fx: { fromRichest: 100 } },
+    { id: 'dc',      text: 'Disconnect — technische Pause',       fx: { jail: true } },
+    { id: 'tp',      text: 'Teleport zum Nexus',                  fx: { toStart: true } },
+    { id: 'nerf',    text: 'Patch-Nerf: 40 pro eigenem Team',     fx: { perTeam: -40 } },
+    { id: 'stomp',   text: 'Stomp-Bonus: Spiel unter 30 Min = +150, sonst +40', fx: { stomp: true } },
+    { id: 'merch',   text: 'Fan-Merch verkauft: jeder zahlt dir 25', fx: { fromEach: 25 } },
+    { id: 'timeout', text: 'Coach-Timeout: 3 Felder zurück',       fx: { move: -3 } },
+    { id: 'tilt',    text: 'Tilt — 10% deines Geldes weg',         fx: { tilt: 0.1 } },
+    { id: 'shield',  text: 'Faker-Schild: die nächste Miete zahlst du nicht', fx: { shield: true } },
+    { id: 'skins',   text: 'Weltmeister-Skins: +60 pro eigenem Team', fx: { perTeam: 60 } },
+    { id: 'remake',  text: 'Remake! Noch einmal so weit vor',     fx: { again: true } },
+  ];
+  const monoHash = s => { let h = 2166136261; s = String(s); for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 16777619); } return h >>> 0; };
+  // the board: teams grouped by region (sets), special squares between them
+  function monoBoard(evData) {
+    const teams = ((evData && evData.teams) || []).slice().sort((a, b) =>
+      (MONO_REGIONS.indexOf(a.league) + 1 || 99) - (MONO_REGIONS.indexOf(b.league) + 1 || 99) || a.code.localeCompare(b.code));
+    const specials = [['baron', 'Baron'], ['card', 'Rift-Karte'], ['jail', 'Grey Screen'], ['elder', 'Elder Drake'], ['card', 'Rift-Karte'], ['tax', 'Remake-Steuer'], ['pot', 'Fountain'], ['card', 'Rift-Karte']];
+    const fields = [{ kind: 'start', name: 'Nexus' }];
+    let si = 0, prev = null;
+    for (const t of teams) {
+      if (prev && prev !== t.league && si < specials.length) { const [k, n] = specials[si++]; fields.push({ kind: k, name: n }); }
+      fields.push({ kind: 'team', code: t.code, name: t.name, region: t.league || '?', price: MONO_PRICE[t.league] || 150 });
+      prev = t.league;
+    }
+    while (si < specials.length) { const [k, n] = specials[si++]; fields.push({ kind: k, name: n }); }
+    let k = 3; while (4 * k - 4 < fields.length) k++;
+    const extra = [['card', 'Rift-Karte'], ['baron', 'Baron'], ['elder', 'Elder Drake']];
+    for (let i = 0; fields.length < 4 * k - 4; i++) { const [kk, n] = extra[i % extra.length]; fields.push({ kind: kk, name: n }); }
+    return fields;
+  }
+  function monoPilotAt(ev, evData, managerId, t) {
+    const ch = ((ev.mono || {}).choices || {})[managerId] || [];
+    let pilot = null;
+    for (const c of ch) if (c.pilot && Date.parse(c.at) < t) pilot = c.pilot;
+    if (pilot) return pilot;
+    // never chose one: a fixed random pro, so nobody stands still forever
+    const ps = ((evData && evData.players) || []).slice().sort((a, b) => a.id.localeCompare(b.id));
+    return ps.length ? ps[monoHash(managerId + '|' + (ev.slug || '')) % ps.length].id : null;
+  }
+  function monoRuleAt(ev, managerId, t) {
+    let rule = 'all';
+    for (const c of ((ev.mono || {}).choices || {})[managerId] || []) if (c.rule && Date.parse(c.at) < t) rule = c.rule;
+    return rule;
+  }
+  // which side game an event runs: 'bingo' (default), 'monopoly' or 'none'
+  const eventMinigame = ev => (ev && ['bingo', 'monopoly', 'none'].includes(ev.minigame) ? ev.minigame : 'bingo');
+  function eventMonopoly(league, ev, evData) {
+    const board = monoBoard(evData), N = board.length;
+    const mgrs = (league.managers || []).map(m => m.id).sort();
+    const name = id => ((league.managers || []).find(m => m.id === id) || {}).name || id;
+    const st = {};
+    for (const id of mgrs) st[id] = { pos: 0, cash: MONO_START, jail: false, shield: false, laps: 0, moves: 0 };
+    const owner = {}, wins = {}, log = [];
+    let pot = 0;
+    const startOf = new Map(((evData && evData.schedule) || []).map(e => [e.match, Date.parse(e.start)]));
+    const byGame = new Map();
+    for (const r of (evData && evData.games) || []) { if (!byGame.has(r.game)) byGame.set(r.game, []); byGame.get(r.game).push(r); }
+    const games = [...byGame.entries()].map(([gid, rows]) => ({ gid, rows, t: startOf.get(rows[0].match) || Date.parse(rows[0].ts) || 0 }))
+      .sort((a, b) => a.t - b.t || String(a.gid).localeCompare(String(b.gid)));
+    const owned = id => board.filter(f => f.kind === 'team' && owner[f.code] === id);
+    const rent = f => {
+      const setAll = board.filter(x => x.kind === 'team' && x.region === f.region).every(x => owner[x.code] === owner[f.code]);
+      return Math.round(f.price / 10 * (1 + (wins[f.code] || 0) / 3) * (setAll ? 1.5 : 1));
+    };
+    const pay = (from, to, amt, at, game, why) => {
+      const a = Math.min(amt, Math.max(0, st[from].cash));
+      st[from].cash -= a; if (to) st[to].cash += a; else pot += a;
+      return a;
+    };
+    const say = (at, game, id, text, kind) => log.push({ at, game, manager: id, name: id ? name(id) : '', text, kind: kind || 'move' });
+    for (const g of games) {
+      const at = g.t, rows = g.rows;
+      const teamsHere = [...new Set(rows.map(r => r.team))];
+      for (const id of mgrs) {
+        const s = st[id], pilot = monoPilotAt(ev, evData, id, at);
+        const r = rows.find(x => x.player === pilot);
+        if (!r) continue;                                   // my pilot did not play this game
+        if (s.jail) { s.jail = false; say(at, g.gid, id, 'sitzt im Grey Screen — kein Zug', 'jail'); continue; }
+        let depth = 0;
+        let steps = r.d >= 6 ? -3 : Math.max(1, Math.min(12, r.k + Math.floor(r.a / 2)));
+        const who = `${r.ign || pilot} ${r.k}/${r.d}/${r.a}`;
+        const move = (n, why) => {
+          const from = s.pos;
+          s.pos = ((s.pos + n) % N + N) % N;
+          s.moves++;
+          if (n > 0 && s.pos < from) { s.cash += MONO_PASS; s.laps++; say(at, g.gid, id, `über den Nexus: +${MONO_PASS}`, 'pass'); }
+          land(why);
+        };
+        const land = why => {
+          const f = board[s.pos];
+          if (f.kind === 'team') {
+            const o = owner[f.code];
+            if (!o) {
+              const rule = monoRuleAt(ev, id, at);
+              const want = rule === 'all' || (rule === 'top' && (f.region === 'LCK' || f.region === 'LPL')) || (rule === 'lec' && f.region === 'LEC');
+              if (want && s.cash - f.price >= MONO_RESERVE) { s.cash -= f.price; owner[f.code] = id; say(at, g.gid, id, `${why} → kauft ${f.code} für ${f.price}`, 'buy'); }
+              else say(at, g.gid, id, `${why} → ${f.code} (frei)`, 'move');
+            } else if (o !== id) {
+              if (s.shield) { s.shield = false; say(at, g.gid, id, `${why} → ${f.code} von ${name(o)} — Faker-Schild, keine Miete`, 'card'); }
+              else { const p = pay(id, o, rent(f)); say(at, g.gid, id, `${why} → ${f.code} von ${name(o)}: zahlt ${p}`, 'rent'); }
+            } else say(at, g.gid, id, `${why} → eigenes Team ${f.code}`, 'move');
+          } else if (f.kind === 'baron') { s.cash += 150; say(at, g.gid, id, `${why} → Baron: +150`, 'bonus'); }
+          else if (f.kind === 'elder') { let t = 0; for (const o of mgrs) if (o !== id) t += pay(o, id, 50); say(at, g.gid, id, `${why} → Elder Drake: kassiert ${t} von allen`, 'bonus'); }
+          else if (f.kind === 'tax') { const p = pay(id, null, 100); say(at, g.gid, id, `${why} → Remake-Steuer: −${p} in die Fountain`, 'tax'); }
+          else if (f.kind === 'pot') { s.cash += pot; say(at, g.gid, id, `${why} → Fountain: +${pot}`, 'bonus'); pot = 0; }
+          else if (f.kind === 'jail') { s.jail = true; say(at, g.gid, id, `${why} → Grey Screen! Nächstes Spiel kein Zug`, 'jail'); }
+          else if (f.kind === 'card') {
+            const c = MONO_CARDS[monoHash(g.gid + '|' + id + '|' + s.moves) % MONO_CARDS.length], fx = c.fx;
+            say(at, g.gid, id, `${why} → Rift-Karte: ${c.text}`, 'card');
+            if (fx.cash) s.cash += fx.cash;
+            if (fx.fromRichest) { const rich = mgrs.filter(o => o !== id).sort((a, b) => st[b].cash - st[a].cash)[0]; if (rich) pay(rich, id, fx.fromRichest); }
+            if (fx.fromEach) for (const o of mgrs) if (o !== id) pay(o, id, fx.fromEach);
+            if (fx.perTeam) { const n = owned(id).length; if (fx.perTeam < 0) pay(id, null, -fx.perTeam * n); else s.cash += fx.perTeam * n; }
+            if (fx.stomp) s.cash += (rows[0].dur && rows[0].dur < 30 * 60) ? 150 : 40;
+            if (fx.tilt) pay(id, null, Math.floor(s.cash * fx.tilt));
+            if (fx.shield) s.shield = true;
+            if (fx.jail) s.jail = true;
+            if (fx.toStart) { s.pos = 0; s.cash += MONO_PASS; }
+            if (fx.move && depth++ < 2) { s.pos = ((s.pos + fx.move) % N + N) % N; land('Coach-Timeout'); }
+            if (fx.again && depth++ < 2) move(Math.max(1, steps), 'Remake');
+          }
+        };
+        move(steps, `${who}: ${steps > 0 ? steps + ' vor' : '3 zurück (6+ Tode)'}`);
+      }
+      // the game's winner earns: rent of its square goes up
+      const w = rows.find(x => x.win);
+      if (w) wins[w.team] = (wins[w.team] || 0) + 1;
+      void teamsHere;
+    }
+    const table = mgrs.map(id => {
+      const props = owned(id);
+      return { manager: id, name: name(id), cash: st[id].cash, pos: st[id].pos, props: props.map(f => f.code),
+               worth: st[id].cash + props.reduce((t, f) => t + f.price, 0), laps: st[id].laps, jail: st[id].jail,
+               pilot: monoPilotAt(ev, evData, id, Date.now() + 1) };
+    }).sort((a, b) => b.worth - a.worth);
+    return { board, owner, wins, pot, table, log: log.reverse(), cards: MONO_CARDS };
+  }
+
   global.LECScoring = {
     gamePoints, byPlayer, playerTotal, applyOverrides,
     draftStatus, rosterSize, capacity,
@@ -1425,7 +1576,7 @@
     suggestedCapacity, calendar, blockKey, lineupConfig, lineupFor, lineupPreview, scoreBook, autoWindows, faabLeft,
     PICKEM_TYPES, pickemTruth, pickemPoints, pickemLock, splitDone,
     weekRecap, hallEntry, hallDue, statTruth, scoreTips,
-    BINGO, bingoHits, bingoCard, bingoScore, bingoStageRows, eventBingo,
+    BINGO, bingoHits, bingoCard, bingoScore, bingoStageRows, eventBingo, eventMonopoly, monoBoard, MONO_CARDS, eventMinigame,
     EVENT_TYPES, eventConfig, eventTeamPrice, eventPrice, eventPlayer, eventStages, eventOpenStage, eventDone, eventTeamError, eventLineup, eventTruth, eventStandings, eventReplay, eventReplayPlan, eventLevels, eventTeamLevel, eventFinalScores
   };
 // `this` is undefined in an ES module, so a Cloudflare Worker importing this

@@ -88,6 +88,25 @@ export async function eventSavePickem(env, me, body) {
   return { picks, round };
 }
 
+// Monopoly: a manager's pilot / buy rule. Stored with the time; a choice only
+// counts for games that start after it, so nothing can be picked in hindsight.
+export async function eventSaveMono(env, me, body) {
+  const slug = String(body.slug || '');
+  const { data: league } = await readLeagueFresh(env);
+  const ev = eventOf(league, slug), d = await eventData(env, slug, ev);
+  if (S.eventMinigame(ev) !== 'monopoly') throw new HttpError(409, 'Bei diesem Event läuft kein Monopoly.');
+  const c = { at: new Date().toISOString() };
+  if (body.pilot !== undefined) { if (!S.eventPlayer(d, String(body.pilot))) throw new HttpError(400, 'Spieler spielt bei diesem Event nicht.'); c.pilot = String(body.pilot); }
+  if (body.rule !== undefined) { if (!['all', 'top', 'lec', 'none'].includes(body.rule)) throw new HttpError(400, 'Unbekannte Kauf-Regel'); c.rule = body.rule; }
+  if (!c.pilot && !c.rule) throw new HttpError(400, 'Nichts zu speichern');
+  await writeLeague(env, l => {
+    const e = l.events[slug]; e.mono = e.mono || {}; e.mono.choices = e.mono.choices || {};
+    e.mono.choices[me] = (e.mono.choices[me] || []).concat(c).slice(-200);
+    return l;
+  }, `monopoly: ${slug} ${c.pilot ? 'Pilot' : 'Kauf-Regel'}`);
+  return { ok: true, choice: c };
+}
+
 // cron: move teams/tips of everything that has started into league.json;
 // freeze a finished event in the hall of fame
 export async function eventCron(env, league) {
@@ -153,6 +172,7 @@ async function bingoNotices(env, league) {
     const d = ev.replay ? S.eventReplay(raw, ev.replay) : raw;
     const b = S.eventBingo(league, ev, d), lines = b.score.lines;
     const key = `bingo:${slug}:${ev.bingoSeed || ''}`, seen = Number(await env.LEAGUE.get(key)) || 0;
+    if (S.eventMinigame(ev) !== 'bingo') continue;
     if (lines <= seen) { if (lines < seen) await env.LEAGUE.put(key, String(lines)); continue; }
     await env.LEAGUE.put(key, String(lines));
     // the square that finished it: the newest hit inside a finished line
@@ -207,6 +227,7 @@ export async function eventAdmin(env, body) {
       if (body.video !== undefined) ev.video = youtubeId(body.video);
       if (body.videoStart !== undefined) ev.videoStart = Math.max(0, Math.floor(Number(body.videoStart) || 0));
       if (body.reshuffle) ev.bingoSeed = Math.random().toString(36).slice(2, 8);
+      if (body.minigame !== undefined) { if (!['bingo', 'monopoly', 'none'].includes(body.minigame)) throw new HttpError(400, 'Minispiel: bingo, monopoly oder none'); ev.minigame = body.minigame; }
       if (body.prices) {
         ev.prices = {};
         for (const [k, v] of Object.entries(body.prices)) { const n = Number(v); if (/^[\w.]{1,8}$/.test(k) && n >= 1 && n <= 100) ev.prices[k] = n; }

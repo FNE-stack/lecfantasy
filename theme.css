@@ -522,3 +522,22 @@ table.lineup a:hover{text-decoration:underline!important}
   table.lineup td,table.lineup th{padding:7px 5px;font-size:13px}
   table.lineup .lurole{width:32px;font-size:9px}
 }
+
+/* Rift-Monopoly board */
+.mono-board{display:grid;gap:3px;padding:10px;aspect-ratio:1;max-width:620px;margin:0 auto;box-sizing:border-box}
+.mono-cell{position:relative;min-width:0;min-height:0;overflow:hidden;border:1px solid var(--line-2);border-radius:5px;background:var(--surface-2);
+  display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;padding:2px;text-align:center}
+.mono-cell.start{background:var(--gold-soft);border-color:var(--gold)}
+.mono-cell.card{background:color-mix(in srgb,var(--teal) 10%,var(--surface-2))}
+.mono-c{font-size:9px;font-weight:700;line-height:1.05;overflow:hidden;max-width:100%;text-overflow:ellipsis;white-space:nowrap}
+.mono-p{font-size:8px;color:var(--muted)}
+.mono-i{font-size:16px;line-height:1}
+.mono-toks{position:absolute;left:1px;bottom:1px;right:1px;display:flex;flex-wrap:wrap;gap:1px}
+.mono-tok{display:inline-flex;align-items:center;justify-content:center;width:15px;height:15px;border-radius:50%;font:800 9px var(--font);color:#111;
+  box-shadow:0 0 0 1.5px rgba(0,0,0,.6);vertical-align:middle}
+.mono-center{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;border-radius:8px;
+  background:radial-gradient(circle,var(--gold-soft),transparent 70%)}
+.mono-center img{width:38%;max-width:140px;object-fit:contain;opacity:.9}
+.mono-title{font-family:var(--display);font-size:clamp(14px,3.5vw,24px);color:var(--gold-hi);letter-spacing:.05em}
+@media(max-width:640px){.mono-board{gap:2px;padding:6px}.mono-cell img.tlogo{width:16px;height:16px}.mono-c{font-size:7.5px}.mono-p{display:none}
+  .mono-i{font-size:12px}.mono-tok{width:12px;height:12px;font-size:7px}}
