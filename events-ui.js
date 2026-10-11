@@ -497,6 +497,7 @@ function evBingo(slug) {
 // ── Rift-Monopoly ─────────────────────────────────────────────────────────
 // The board is replayed from the real games every time (scoring.js
 // eventMonopoly); the page only shows it and saves pilot / buy rule.
+const mgrName = id => (((L() && L().managers) || []).find(m => m.id === id) || {}).name || id;
 const MONO_COLORS = ['#e8b04b', '#4fc3f7', '#ef5350', '#66bb6a', '#ab47bc', '#ff8a65', '#26c6da', '#d4e157', '#ec407a', '#8d6e63'];
 const MONO_ICON = { start: '⬢', baron: '🐛', elder: '🐉', jail: '⏸', tax: '♻', pot: '⛲', card: '🃏' };
 const MONO_RULES = [['all', 'Alles kaufen'], ['top', 'Nur LCK & LPL'], ['lec', 'Nur LEC'], ['none', 'Nichts kaufen']];

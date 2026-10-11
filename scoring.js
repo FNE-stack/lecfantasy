@@ -1461,10 +1461,7 @@
     const ch = ((ev.mono || {}).choices || {})[managerId] || [];
     let pilot = null;
     for (const c of ch) if (c.pilot && Date.parse(c.at) < t) pilot = c.pilot;
-    if (pilot) return pilot;
-    // never chose one: a fixed random pro, so nobody stands still forever
-    const ps = ((evData && evData.players) || []).slice().sort((a, b) => a.id.localeCompare(b.id));
-    return ps.length ? ps[monoHash(managerId + '|' + (ev.slug || '')) % ps.length].id : null;
+    return pilot;          // null = never chose one: a random pro of each game (see below)
   }
   function monoRuleAt(ev, managerId, t) {
     let rule = 'all';
@@ -1502,12 +1499,16 @@
       const teamsHere = [...new Set(rows.map(r => r.team))];
       for (const id of mgrs) {
         const s = st[id], pilot = monoPilotAt(ev, evData, id, at);
-        const r = rows.find(x => x.player === pilot);
+        // no pilot chosen yet: a random player of this game rolls for you,
+        // so nobody stands still and two "auto" managers still move apart
+        const auto = !pilot;
+        const r = auto ? rows.slice().sort((x, y) => String(x.player).localeCompare(String(y.player)))[monoHash(id + '|' + g.gid) % rows.length]
+                       : rows.find(x => x.player === pilot);
         if (!r) continue;                                   // my pilot did not play this game
         if (s.jail) { s.jail = false; say(at, g.gid, id, 'sitzt im Grey Screen — kein Zug', 'jail'); continue; }
         let depth = 0;
         let steps = r.d >= 6 ? -3 : Math.max(1, Math.min(12, r.k + Math.floor(r.a / 2)));
-        const who = `${r.ign || pilot} ${r.k}/${r.d}/${r.a}`;
+        const who = `${auto ? 'Zufall: ' : ''}${r.ign || pilot} ${r.k}/${r.d}/${r.a}`;
         const move = (n, why) => {
           const from = s.pos;
           s.pos = ((s.pos + n) % N + N) % N;
