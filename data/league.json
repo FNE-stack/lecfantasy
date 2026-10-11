@@ -111,6 +111,22 @@
           "pickem": 0
         }
       ]
+    },
+    "event_msi_2026": {
+      "event": true,
+      "slug": "msi_2026",
+      "name": "MSI 2026 (Wiederholung)",
+      "logo": "https://static.lolesports.com/leagues/1592594634248_MSIDarkBG.png",
+      "at": "2026-10-11T00:06:24.273Z",
+      "table": [
+        {
+          "manager": "m02595135",
+          "name": "Fabi",
+          "pts": 0,
+          "players": 0,
+          "pickem": 0
+        }
+      ]
     }
   },
   "events": {
@@ -146,6 +162,111 @@
       "lineups": {},
       "revealed": [],
       "videoStart": 0
+    },
+    "msi_2026": {
+      "slug": "msi_2026",
+      "name": "MSI 2026 (Wiederholung)",
+      "budget": 100,
+      "maxPerTeam": 2,
+      "captain": 1.5,
+      "prices": {},
+      "video": "",
+      "createdAt": "2026-10-11T00:05:57.159Z",
+      "lineups": {
+        "0": {},
+        "1": {}
+      },
+      "revealed": [
+        0,
+        1
+      ],
+      "replay": {
+        "from": 1791675953588,
+        "first": 1782615600000,
+        "speed": 1029
+      },
+      "pickem": {
+        "revealed": true,
+        "lockAt": null,
+        "questions": [
+          {
+            "id": "q1",
+            "type": "champion",
+            "points": 10
+          },
+          {
+            "id": "q2",
+            "type": "advance8",
+            "points": 2
+          },
+          {
+            "id": "q3",
+            "type": "winnerRegion",
+            "points": 5
+          },
+          {
+            "id": "q4",
+            "type": "bestLec",
+            "points": 5
+          },
+          {
+            "id": "q5",
+            "type": "mostKills",
+            "points": 5
+          },
+          {
+            "id": "q6",
+            "type": "mostDeaths",
+            "points": 5
+          },
+          {
+            "id": "q7",
+            "type": "mostPicked",
+            "points": 5
+          },
+          {
+            "id": "q8",
+            "type": "shortestGame",
+            "points": 5
+          },
+          {
+            "id": "q9",
+            "type": "totalGames",
+            "points": 5
+          }
+        ],
+        "picks": {},
+        "revealedAt": "2026-10-11T00:06:02.524Z"
+      },
+      "pickemKo": {
+        "revealed": true,
+        "lockAt": null,
+        "questions": [
+          {
+            "id": "q1",
+            "type": "koSemis",
+            "points": 5
+          },
+          {
+            "id": "q2",
+            "type": "koFinal",
+            "points": 10
+          },
+          {
+            "id": "q3",
+            "type": "champion",
+            "points": 20
+          },
+          {
+            "id": "q4",
+            "type": "finalScore",
+            "points": 10
+          }
+        ],
+        "picks": {},
+        "revealedAt": "2026-10-11T00:06:02.524Z"
+      },
+      "minigame": "monopoly"
     }
   }
 }
