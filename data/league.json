@@ -213,15 +213,19 @@
       },
       "video": "",
       "createdAt": "2026-10-11T01:17:24.465Z",
-      "lineups": {},
-      "revealed": [],
+      "lineups": {
+        "0": {}
+      },
+      "revealed": [
+        0
+      ],
       "replay": {
         "from": 1791681444067,
         "first": 1773666000000,
         "speed": 296
       },
       "pickem": {
-        "revealed": false,
+        "revealed": true,
         "lockAt": null,
         "questions": [
           {
@@ -269,7 +273,9 @@
             "type": "totalGames",
             "points": 5
           }
-        ]
+        ],
+        "picks": {},
+        "revealedAt": "2026-10-11T01:18:24.662Z"
       },
       "pickemKo": {
         "revealed": false,
