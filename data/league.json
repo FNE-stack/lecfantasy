@@ -187,7 +187,30 @@
       "budget": 100,
       "maxPerTeam": 2,
       "captain": 1.5,
-      "prices": {},
+      "prices": {
+        "BFX": 25,
+        "BLG": 25,
+        "G2": 20,
+        "GEN": 25,
+        "JDG": 25,
+        "LOUD": 15,
+        "LYON": 15,
+        "TSW": 15,
+        "AL": 25,
+        "C9": 15,
+        "CFO": 15,
+        "DK": 25,
+        "FUR": 15,
+        "HLE": 25,
+        "IG": 25,
+        "KC": 20,
+        "LOS": 15,
+        "MKOI": 20,
+        "MVK": 15,
+        "T1": 25,
+        "TES": 25,
+        "TLAW": 15
+      },
       "video": "",
       "createdAt": "2026-10-11T01:17:24.465Z",
       "lineups": {},
@@ -273,7 +296,9 @@
             "points": 10
           }
         ]
-      }
+      },
+      "videoStart": 0,
+      "minigame": "monopoly"
     }
   },
   "testMode": {
