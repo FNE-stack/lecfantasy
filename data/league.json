@@ -239,7 +239,8 @@
             "points": 10
           }
         ]
-      }
+      },
+      "minigame": "monopoly"
     }
   }
 }
