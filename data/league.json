@@ -156,15 +156,21 @@
       "prices": {},
       "video": "",
       "createdAt": "2026-10-11T00:05:57.159Z",
-      "lineups": {},
-      "revealed": [],
+      "lineups": {
+        "0": {},
+        "1": {}
+      },
+      "revealed": [
+        0,
+        1
+      ],
       "replay": {
         "from": 1791675953588,
         "first": 1782615600000,
         "speed": 1029
       },
       "pickem": {
-        "revealed": false,
+        "revealed": true,
         "lockAt": null,
         "questions": [
           {
@@ -212,10 +218,12 @@
             "type": "totalGames",
             "points": 5
           }
-        ]
+        ],
+        "picks": {},
+        "revealedAt": "2026-10-11T00:06:02.524Z"
       },
       "pickemKo": {
-        "revealed": false,
+        "revealed": true,
         "lockAt": null,
         "questions": [
           {
@@ -238,7 +246,9 @@
             "type": "finalScore",
             "points": 10
           }
-        ]
+        ],
+        "picks": {},
+        "revealedAt": "2026-10-11T00:06:02.524Z"
       },
       "minigame": "monopoly"
     }
