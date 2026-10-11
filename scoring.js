@@ -1457,15 +1457,18 @@
     for (let i = 0; fields.length < 4 * k - 4; i++) { const [kk, n] = extra[i % extra.length]; fields.push({ kind: kk, name: n }); }
     return fields;
   }
+  // When a choice counts. In a test replay the choice also carries the event's
+  // own clock (orig), so it moves along when the admin jumps the replay.
+  const monoChoiceT = (ev, c) => (c.orig !== undefined && ev.replay) ? ev.replay.from + (c.orig - ev.replay.first) / ev.replay.speed : Date.parse(c.at);
   function monoPilotAt(ev, evData, managerId, t) {
     const ch = ((ev.mono || {}).choices || {})[managerId] || [];
     let pilot = null;
-    for (const c of ch) if (c.pilot && Date.parse(c.at) < t) pilot = c.pilot;
+    for (const c of ch) if (c.pilot && monoChoiceT(ev, c) < t) pilot = c.pilot;
     return pilot;          // null = never chose one: a random pro of each game (see below)
   }
   function monoRuleAt(ev, managerId, t) {
     let rule = 'all';
-    for (const c of ((ev.mono || {}).choices || {})[managerId] || []) if (c.rule && Date.parse(c.at) < t) rule = c.rule;
+    for (const c of ((ev.mono || {}).choices || {})[managerId] || []) if (c.rule && monoChoiceT(ev, c) < t) rule = c.rule;
     return rule;
   }
   // which side game an event runs: 'bingo' (default), 'monopoly' or 'none'

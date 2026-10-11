@@ -96,6 +96,7 @@ export async function eventSaveMono(env, me, body) {
   const ev = eventOf(league, slug), d = await eventData(env, slug, ev);
   if (S.eventMinigame(ev) !== 'monopoly') throw new HttpError(409, 'Bei diesem Event läuft kein Monopoly.');
   const c = { at: new Date().toISOString() };
+  if (ev.replay) c.orig = Math.round(ev.replay.first + (Date.now() - ev.replay.from) * ev.replay.speed);
   if (body.pilot !== undefined) { if (!S.eventPlayer(d, String(body.pilot))) throw new HttpError(400, 'Spieler spielt bei diesem Event nicht.'); c.pilot = String(body.pilot); }
   if (body.rule !== undefined) { if (!['all', 'top', 'lec', 'none'].includes(body.rule)) throw new HttpError(400, 'Unbekannte Kauf-Regel'); c.rule = body.rule; }
   if (!c.pilot && !c.rule) throw new HttpError(400, 'Nichts zu speichern');
