@@ -31,29 +31,11 @@
       "id": "m02595135",
       "name": "Fabi",
       "joined": "2026-10-03T19:20:16.447Z"
-    },
-    {
-      "id": "m0f525c66",
-      "name": "Bot Anna",
-      "joined": "2026-10-11T01:15:20.779Z"
-    },
-    {
-      "id": "m55422ba6",
-      "name": "Bot Ben",
-      "joined": "2026-10-11T01:15:20.779Z"
-    },
-    {
-      "id": "m4710c30d",
-      "name": "Bot Chris",
-      "joined": "2026-10-11T01:15:20.779Z"
     }
   ],
   "draft": {
     "order": [
-      "m02595135",
-      "m0f525c66",
-      "m55422ba6",
-      "m4710c30d"
+      "m02595135"
     ],
     "snake": true,
     "picks": [],
@@ -88,7 +70,7 @@
     "rosterRules": true,
     "teamLimit": true,
     "autoWindows": true,
-    "mode": "always",
+    "mode": "windows",
     "windows": []
   },
   "announcement": null,
@@ -180,195 +162,6 @@
       "lineups": {},
       "revealed": [],
       "videoStart": 0
-    },
-    "first_stand_2026": {
-      "slug": "first_stand_2026",
-      "name": "First Stand 2026 (Wiederholung)",
-      "budget": 100,
-      "maxPerTeam": 2,
-      "captain": 1.5,
-      "prices": {
-        "BFX": 25,
-        "BLG": 25,
-        "G2": 20,
-        "GEN": 25,
-        "JDG": 25,
-        "LOUD": 15,
-        "LYON": 15,
-        "TSW": 15,
-        "AL": 25,
-        "C9": 15,
-        "CFO": 15,
-        "DK": 25,
-        "FUR": 15,
-        "HLE": 25,
-        "IG": 25,
-        "KC": 20,
-        "LOS": 15,
-        "MKOI": 20,
-        "MVK": 15,
-        "T1": 25,
-        "TES": 25,
-        "TLAW": 15
-      },
-      "video": "",
-      "createdAt": "2026-10-11T01:17:24.465Z",
-      "lineups": {
-        "0": {},
-        "1": {
-          "m0f525c66": {
-            "players": [
-              "107251636998679351",
-              "116287401640559707",
-              "101388912814667094",
-              "107251694749147163",
-              "101388913291808185"
-            ],
-            "captain": "107251694749147163"
-          },
-          "m55422ba6": {
-            "players": [
-              "103478281356330346",
-              "112489761307532435",
-              "109656280616610105",
-              "98767975961872793",
-              "98767975947296513"
-            ],
-            "captain": "98767975961872793"
-          },
-          "m4710c30d": {
-            "players": [
-              "107251636998679351",
-              "104266797862156067",
-              "99566407784212776",
-              "105388936922706146",
-              "102787200059605684"
-            ],
-            "captain": "105388936922706146"
-          }
-        }
-      },
-      "revealed": [
-        0,
-        1
-      ],
-      "replay": {
-        "from": 1791786814741,
-        "first": 1773666000000,
-        "speed": 296
-      },
-      "pickem": {
-        "revealed": true,
-        "lockAt": null,
-        "questions": [
-          {
-            "id": "q1",
-            "type": "champion",
-            "points": 10
-          },
-          {
-            "id": "q2",
-            "type": "advance8",
-            "points": 2
-          },
-          {
-            "id": "q3",
-            "type": "winnerRegion",
-            "points": 5
-          },
-          {
-            "id": "q4",
-            "type": "bestLec",
-            "points": 5
-          },
-          {
-            "id": "q5",
-            "type": "mostKills",
-            "points": 5
-          },
-          {
-            "id": "q6",
-            "type": "mostDeaths",
-            "points": 5
-          },
-          {
-            "id": "q7",
-            "type": "mostPicked",
-            "points": 5
-          },
-          {
-            "id": "q8",
-            "type": "shortestGame",
-            "points": 5
-          },
-          {
-            "id": "q9",
-            "type": "totalGames",
-            "points": 5
-          }
-        ],
-        "picks": {},
-        "revealedAt": "2026-10-11T01:18:24.662Z"
-      },
-      "pickemKo": {
-        "revealed": true,
-        "lockAt": null,
-        "questions": [
-          {
-            "id": "q1",
-            "type": "koSemis",
-            "points": 5
-          },
-          {
-            "id": "q2",
-            "type": "koFinal",
-            "points": 10
-          },
-          {
-            "id": "q3",
-            "type": "champion",
-            "points": 20
-          },
-          {
-            "id": "q4",
-            "type": "finalScore",
-            "points": 10
-          }
-        ],
-        "picks": {
-          "m0f525c66": {
-            "q1": "BLG,LYON,LOUD,JDG",
-            "q2": "LOUD,BLG",
-            "q3": "LOUD",
-            "q4": "3:2"
-          },
-          "m55422ba6": {
-            "q1": "BFX,TSW,JDG,LOUD",
-            "q2": "TSW,BFX",
-            "q3": "BLG",
-            "q4": "3:1"
-          },
-          "m4710c30d": {
-            "q1": "BFX,G2,LOUD,JDG",
-            "q2": "LYON,BLG",
-            "q3": "LYON",
-            "q4": "3:2"
-          }
-        },
-        "revealedAt": "2026-10-11T01:42:24.514Z"
-      },
-      "videoStart": 0,
-      "minigame": "monopoly"
     }
-  },
-  "testMode": {
-    "on": true,
-    "startedAt": "2026-10-11T01:15:20.779Z",
-    "backupId": "2026-10-11-3",
-    "bots": [
-      "m0f525c66",
-      "m55422ba6",
-      "m4710c30d"
-    ]
   }
 }
