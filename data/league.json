@@ -31,17 +31,11 @@
       "id": "m02595135",
       "name": "Fabi",
       "joined": "2026-10-03T19:20:16.447Z"
-    },
-    {
-      "id": "m139e6af2",
-      "name": "QA Team",
-      "joined": "2026-10-12T07:13:04.513Z"
     }
   ],
   "draft": {
     "order": [
-      "m02595135",
-      "m139e6af2"
+      "m02595135"
     ],
     "snake": true,
     "picks": [],
