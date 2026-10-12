@@ -142,7 +142,7 @@ export async function botEvents(env, league) {
     const stage = S.eventOpenStage(d);
     const roles = ['TOP', 'JNG', 'MID', 'BOT', 'SUP'];
     for (const bot of league.testMode.bots || []) {
-      if (stage !== null && !(await env.LEAGUE.get(`evt:${slug}:${stage}:${bot}`))) {
+      if (S.eventSquadOn(ev) && stage !== null && !(await env.LEAGUE.get(`evt:${slug}:${stage}:${bot}`))) {
         for (let tries = 0; tries < 200; tries++) {
           const sel = { players: roles.map(r => pickOne(d.players.filter(p => p.role === r)).id) };
           sel.captain = pickOne(sel.players);

@@ -491,11 +491,12 @@ function viewEventsAdmin() {
           <label style="margin:0">Kapitän ×<input id="evc_${info.slug}" type="number" step="0.1" value="${c.captain}" style="width:100%"></label>
           <label style="margin:0">YouTube-Link (Intro &amp; Musik)<input id="evv_${info.slug}" value="${ev.video ? 'https://youtu.be/' + esc(ev.video) : ''}" placeholder="leer = kein Video" style="width:100%"></label>
           <label style="margin:0">Video ab Sekunde<input id="evs_${info.slug}" type="number" min="0" value="${ev.videoStart || 0}" style="width:100%"></label>
+          <label style="margin:0;display:flex;gap:8px;align-items:center"><input type="checkbox" id="evq_${info.slug}" ${S.eventSquadOn(ev) ? 'checked' : ''} style="width:auto"> Budget-Team (5 Spieler, Punkte pro Spiel)</label>
           <label style="margin:0">Minispiel<select id="evg_${info.slug}" style="width:100%">${[['bingo', 'Bingo (Linien = Punkte für alle)'], ['monopoly', 'Rift-Monopoly (Test, ohne Punkte)'], ['none', 'keins']].map(([v, l]) => `<option value="${v}" ${S.eventMinigame(ev) === v ? 'selected' : ''}>${l}</option>`).join('')}</select></label></div>
         <label style="margin-top:10px">Teilnehmer (Kürzel, falls Riot sie noch nicht im Spielplan hat)<input id="evt_${info.slug}" value="${esc(((EVA.cfg || {}).eventTeams || {})[info.slug] ? EVA.cfg.eventTeams[info.slug].join(', ') : '')}" placeholder="z. B. T1, GEN, G2" style="width:100%"></label>
         <div class="row" style="gap:8px;margin-top:6px;flex-wrap:wrap">${btn('Teilnehmer speichern', 'evTeams', { slug: info.slug })}<span class="muted" style="font-size:12px">${d && d.teams ? d.teams.length + ' Teams in den Daten' : ''}</span></div>
         <div class="row" style="margin-top:12px;gap:8px;flex-wrap:wrap">${btn('Speichern', 'evSave', { slug: info.slug }, 'gold')}${btn('Event löschen', 'evDelete', { slug: info.slug })}</div></div>`, info.slug + '_set')
-      + fold('Team-Preise', d && (d.teams || []).length ? d.teams.length + ' Teams' : 'Teams stehen noch nicht fest', prices, info.slug + '_price')
+      + (S.eventSquadOn(ev) ? fold('Team-Preise', d && (d.teams || []).length ? d.teams.length + ' Teams' : 'Teams stehen noch nicht fest', prices, info.slug + '_price') : '')
       + `<div class="card-b" style="border-top:1px solid var(--line)"><a class="btn sm" href="#/event/${esc(info.slug)}">Event-Seite öffnen →</a></div>`
       + pk);
   }).join('');
@@ -734,7 +735,7 @@ async function act(a, d, el) {
       if (a === 'evSave') {
         const prices = {};
         root.querySelectorAll('[data-evprice]').forEach(el => { prices[el.dataset.evprice] = +el.value; });
-        body = { action: 'update', slug, name: v('evn'), budget: +v('evb'), maxPerTeam: +v('evm'), captain: +v('evc'), video: v('evv'), videoStart: +v('evs') || 0, minigame: v('evg') || undefined };
+        body = { action: 'update', slug, name: v('evn'), budget: +v('evb'), maxPerTeam: +v('evm'), captain: +v('evc'), video: v('evv'), videoStart: +v('evs') || 0, minigame: v('evg') || undefined, squad: !!(document.getElementById('evq_' + slug) || {}).checked };
         if (Object.keys(prices).length) body.prices = prices;
       }
       if (a === 'evPickem') {

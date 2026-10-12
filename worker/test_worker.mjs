@@ -797,7 +797,10 @@ tests.events = async () => {
   assert(r.status === 404, 'no data -> no event');
   r = await call('POST', '/api/admin/event', { token: a, body: { action: 'create', slug: 'ev_2026', name: 'Worlds 2026', video: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ' } });
   assert(r.status === 200 && league().events.ev_2026.video === 'dQw4w9WgXcQ', 'created with video id: ' + JSON.stringify(r.body));
-  r = await call('POST', '/api/admin/event', { token: a, body: { action: 'update', slug: 'ev_2026', budget: 110, prices: { AAA: 30 } } });
+  const team0 = ['AAA_TOP', 'BBB_JNG', 'AAA_MID', 'CCC_BOT', 'CCC_SUP'];
+  r = await call('POST', '/api/event/team', { token: tok.Ann, body: { slug: 'ev_2026', players: team0, captain: 'AAA_MID' } });
+  assert(r.status === 409, 'no team while the event has no squad (default)');
+  r = await call('POST', '/api/admin/event', { token: a, body: { action: 'update', slug: 'ev_2026', budget: 110, prices: { AAA: 30 }, squad: true } });
   assert(r.status === 200 && league().events.ev_2026.budget === 110, 'budget + prices');
   const team = ['AAA_TOP', 'BBB_JNG', 'AAA_MID', 'CCC_BOT', 'CCC_SUP'];          // 30+20+30+15+15 = 110
   r = await call('POST', '/api/event/team', { token: tok.Ann, body: { slug: 'ev_2026', players: team, captain: 'AAA_MID' } });
@@ -870,7 +873,7 @@ tests.replay_time_jump = async () => {
   assert(played() === 0, 'nothing played before the lead time');
   r = await call('POST', '/api/admin/test', { token: a, body: { action: 'jump', slug: 'ev_2026', to: 'phase' } });
   assert(r.status === 200 && played() === 2, 'phase jump: the two Swiss games are done: ' + played() + ' ' + JSON.stringify(r.body));
-  assert(league().events.ev_2026.revealed.includes(0), 'the jump reveals the phase right away');
+  assert(league().events.ev_2026.pickem.revealed, 'the jump reveals what it unlocked right away (pick-em)');
   r = await call('POST', '/api/admin/test', { token: a, body: { action: 'jump', slug: 'ev_2026', to: 'end' } });
   assert(played() === 3 && S.eventDone(S.eventReplay(EVENT, league().events.ev_2026.replay)), 'end jump: event over');
   r = await call('POST', '/api/admin/test', { token: a, body: { action: 'jump', slug: 'ev_2026', to: 'restart' } });

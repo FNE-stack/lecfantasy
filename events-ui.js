@@ -13,7 +13,7 @@ window.LECEventsInit = function (app) {
 'use strict';
 const { L, S, U, esc, fmt, card, loggedIn, adminOnly, me, api, toast, render, store, path, scoring } = app;
 const $ = id => document.getElementById(id);
-const EVX = { data: {}, loading: {}, mine: {}, form: {}, tips: {}, tab: 'team', role: 'TOP', q: '', team: '', open: null, player: null, playerSlug: null, entered: {}, ytReady: null, bingoStage: null };
+const EVX = { data: {}, loading: {}, mine: {}, form: {}, tips: {}, tab: 'pickem', role: 'TOP', q: '', team: '', open: null, player: null, playerSlug: null, entered: {}, ytReady: null, bingoStage: null };
 const EV_ROLES = ['TOP', 'JNG', 'MID', 'BOT', 'SUP'];
 // Colors per event (the font is the same on the whole site, theme.css).
 // Worlds: Riot's League/Worlds Hextech palette - gold on deep blue, teal.
@@ -283,7 +283,10 @@ function viewEvent(slug) {
   if (!d) { loadEventData(slug); return card(esc(ev.name), '<div class="empty">lädt …</div>'); }
   if (EVX.mine[slug] === undefined) { EVX.mine[slug] = null; loadMine(slug); }
   const info = evInfo(slug) || {};
-  const tabs = [['team', adminOnly() ? 'Teams' : 'Mein Team'], ['pickem', 'Pick\'em'], ...(S.eventMinigame(ev) === 'bingo' ? [['bingo', 'Bingo']] : S.eventMinigame(ev) === 'monopoly' ? [['mono', 'Monopoly']] : []), ['table', 'Tabelle'], ['tour', 'Turnier'], ['teams', 'Teilnehmer']];
+  // no squad unless the event switches it on (ev.squad)
+  const squadOn = S.eventSquadOn(ev);
+  if (!squadOn && EVX.tab === 'team') EVX.tab = 'pickem';
+  const tabs = [...(squadOn ? [['team', adminOnly() ? 'Teams' : 'Mein Team']] : []), ['pickem', 'Pick\'em'], ...(S.eventMinigame(ev) === 'bingo' ? [['bingo', 'Bingo']] : S.eventMinigame(ev) === 'monopoly' ? [['mono', 'Monopoly']] : []), ['table', 'Tabelle'], ['tour', 'Turnier'], ['teams', 'Teilnehmer']];
   const hero = `<section class="hero evhero">
       <div class="row" style="gap:18px;align-items:center;flex-wrap:wrap">${info.logo ? `<img src="${esc(info.logo)}" alt="" style="height:64px;max-width:160px;object-fit:contain">` : ''}
       <div style="min-width:0;flex:1"><div class="eyebrow">Special Event · ${esc(info.start ? new Date(info.start).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit' }) + ' – ' + new Date(info.end).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' }) : '')}</div>
@@ -291,7 +294,7 @@ function viewEvent(slug) {
       ${ev.video && videoOff(slug) ? `<button class="btn sm" id="evVid" style="margin-top:10px">▶ Video &amp; Musik an</button>` : ''}</div></div></section>`;
   const chips = `<div class="chips" style="margin:0 0 16px">${tabs.map(([k, l]) => `<button class="chip ${EVX.tab === k ? 'on' : ''}" data-evtab="${k}">${l}</button>`).join('')}</div>`;
   let body = '';
-  if (!d.teams.length && EVX.tab !== 'tour' && EVX.tab !== 'bingo' && EVX.tab !== 'mono') body = card(esc(ev.name), '<div class="empty">Die Teilnehmer stehen noch nicht fest. Sobald Riot sie einträgt (meist ein paar Tage vorher), kannst du hier dein Team bauen.</div>');
+  if (!d.teams.length && (EVX.tab === 'team' || EVX.tab === 'teams')) body = card(esc(ev.name), '<div class="empty">Die Teilnehmer stehen noch nicht fest. Sobald Riot sie einträgt (meist ein paar Tage vorher), kannst du hier dein Team bauen.</div>');
   else if (EVX.tab === 'team') body = adminOnly() ? evAllTeams(slug) : evBuilder(slug);
   else if (EVX.tab === 'pickem') body = evPickem(slug);
   else if (EVX.tab === 'bingo') body = evBingo(slug);
@@ -440,6 +443,13 @@ function evPickem(slug) {
 function evTable(slug) {
   const ev = L().events[slug], d = evD(slug);
   const st = S.eventStages(d), rows = S.eventStandings(L(), ev, d);
+  if (!S.eventSquadOn(ev)) {
+    const bingo = S.eventMinigame(ev) === 'bingo';
+    return card('Event-Tabelle', `<table><thead><tr><th>#</th><th>Manager</th><th class="num">Pick'em</th>${bingo ? '<th class="num">Bingo</th>' : ''}<th class="num">Punkte</th></tr></thead><tbody>`
+      + rows.map((r, i) => `<tr class="${r.manager === me() ? 'me' : ''}"><td class="rank r${i + 1}">${i + 1}</td><td class="fill"><b>${esc(r.name)}</b>${r.manager === me() ? ' <span class="pill gold">Du</span>' : ''}</td>
+        <td class="num">${fmt(r.pickem)}</td>${bingo ? `<td class="num">${fmt(r.bingo)}</td>` : ''}<td class="num pts" style="font-size:16px">${fmt(r.total)}</td></tr>`).join('')
+      + '</tbody></table>', 'Pick\'em zählt nach dem Event');
+  }
   if (!(ev.revealed || []).length) return card('Tabelle', '<div class="empty">Die Teams werden beim ersten Spiel aufgedeckt — ab dann zählen die Punkte.</div>');
   const table = `<table><thead><tr><th>#</th><th>Manager</th>${st.map(s => `<th class="num hide-s">${esc(s.name)}</th>`).join('')}<th class="num hide-s">Pick'em</th><th class="num">Punkte</th></tr></thead><tbody>`
     + rows.map((r, i) => `<tr class="click ${r.manager === me() ? 'me' : ''}" data-evopen="${esc(r.manager)}"><td class="rank r${i + 1}">${i + 1}</td><td class="fill"><b>${esc(r.name)}</b>${r.manager === me() ? ' <span class="pill gold">Du</span>' : ''}</td>

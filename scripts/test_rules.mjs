@@ -285,11 +285,12 @@ tests.events = () => {
   assert(/pro Team/.test(S.eventTeamError(Object.assign({}, ev, { budget: 999 }), d, team(['AAA_TOP', 'AAA_JNG', 'AAA_MID', 'CCC_BOT', 'DDD_SUP'], 'AAA_TOP'))), 'max 2 per team');
   assert(/Kapitän/.test(S.eventTeamError(Object.assign({}, ev, { budget: 999 }), d, team(fine.players, 'DDD_MID'))), 'captain must be own');
   // lineups: stage 0 set, stage 1 carried; captain x1.5
-  const lev = Object.assign({}, ev, { budget: 999, lineups: { 0: { a: fine, b: team(['DDD_TOP', 'BBB_JNG', 'BBB_MID', 'CCC_BOT', 'CCC_SUP'], 'BBB_MID') }, 1: { b: team(['DDD_TOP', 'BBB_JNG', 'DDD_MID', 'CCC_BOT', 'CCC_SUP'], 'DDD_MID') } } });
+  const lev = Object.assign({}, ev, { squad: true, budget: 999, lineups: { 0: { a: fine, b: team(['DDD_TOP', 'BBB_JNG', 'BBB_MID', 'CCC_BOT', 'CCC_SUP'], 'BBB_MID') }, 1: { b: team(['DDD_TOP', 'BBB_JNG', 'DDD_MID', 'CCC_BOT', 'CCC_SUP'], 'DDD_MID') } } });
   const L = { managers: [{ id: 'a', name: 'Ann' }, { id: 'b', name: 'Ben' }], scoring: sc };
   const rows = S.eventStandings(L, lev, d);
   const A = rows.find(r => r.manager === 'a'), B = rows.find(r => r.manager === 'b');
   assert(A.players === 30 * 1.5 + 12 * 1.5 && A.byStage[1] === 18, 'Ann: captain both stages, stage 1 carried: ' + JSON.stringify(A));
+  assert(S.eventStandings(L, Object.assign({}, lev, { squad: false }), d).every(r => r.players === 0), 'no squad (the default): no player points');
   assert(B.players === 6 * 1.5 + 24 * 1.5, 'Ben: stage-1 lineup counts in stage 1: ' + JSON.stringify(B));
   // truth: champion DDD (LPL), finalists, swiss 3-0 AAA, 0-3 CCC
   const t = S.eventTruth(d, sc);

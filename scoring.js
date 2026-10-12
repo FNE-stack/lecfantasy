@@ -1382,15 +1382,18 @@
     return { from: (now === undefined ? Date.now() : now) + leadMinutes * 60000, first, speed: (last - first) / (minutes * 60000) };
   }
   // [{manager, name, players, pickem, total, byStage:{i:pts}, perPlayer:{id:pts}, correct:[qid]}] best first
+  // Events are prediction contests (Fabian, 2026-10-12): Pick'em + the side
+  // game, no five-man squad. An event can switch the squad back on (ev.squad).
+  const eventSquadOn = ev => !!(ev && ev.squad);
   function eventStandings(league, ev, evData) {
-    const c = eventConfig(ev), sc = league.scoring;
+    const c = eventConfig(ev), sc = league.scoring, squadOn = eventSquadOn(ev);
     const stageOf = new Map(((evData && evData.schedule) || []).map(e => [e.match, e.stage]));
     const rounds = [ev.pickem, ev.pickemKo].filter(x => x && x.revealed);
     const truth = rounds.length && eventDone(evData) ? eventTruth(evData, sc) : null;
     const shared = evData && eventMinigame(ev) === 'bingo' ? eventBingo(league, ev, evData) : null;
     const rows = (league.managers || []).map(m => {
       const r = { manager: m.id, name: m.name, players: 0, pickem: 0, bingo: 0, total: 0, byStage: {}, perPlayer: {}, correct: [] };
-      for (const g of (evData && evData.games) || []) {
+      for (const g of (squadOn && evData && evData.games) || []) {
         const st = stageOf.get(g.match);
         if (st === undefined || st === null) continue;
         const lu = eventLineup(ev, m.id, st);
@@ -1580,7 +1583,7 @@
     suggestedCapacity, calendar, blockKey, lineupConfig, lineupFor, lineupPreview, scoreBook, autoWindows, faabLeft,
     PICKEM_TYPES, pickemTruth, pickemPoints, pickemLock, splitDone,
     weekRecap, hallEntry, hallDue, statTruth, scoreTips,
-    BINGO, bingoHits, bingoCard, bingoScore, bingoStageRows, eventBingo, eventMonopoly, monoBoard, MONO_CARDS, eventMinigame,
+    BINGO, bingoHits, bingoCard, bingoScore, bingoStageRows, eventBingo, eventMonopoly, monoBoard, MONO_CARDS, eventMinigame, eventSquadOn,
     EVENT_TYPES, eventConfig, eventTeamPrice, eventPrice, eventPlayer, eventStages, eventOpenStage, eventDone, eventTeamError, eventLineup, eventTruth, eventStandings, eventReplay, eventReplayPlan, eventLevels, eventTeamLevel, eventFinalScores
   };
 // `this` is undefined in an ES module, so a Cloudflare Worker importing this

@@ -58,6 +58,7 @@ export async function eventSaveTeam(env, me, body) {
   const slug = String(body.slug || '');
   const { data: league } = await readLeagueFresh(env);
   const ev = eventOf(league, slug), d = await eventData(env, slug, ev);
+  if (!S.eventSquadOn(ev)) throw new HttpError(409, 'Bei diesem Event gibt es kein Team — nur Pick\'em und Minispiel.');
   const stage = S.eventOpenStage(d);
   if (stage === null) throw new HttpError(409, 'Das Event ist vorbei — keine Änderungen mehr.');
   const sel = { players: (body.players || []).map(String), captain: String(body.captain || '') };
@@ -120,7 +121,7 @@ export async function eventCron(env, league) {
     if (!raw) continue;
     const d = ev.replay ? S.eventReplay(raw, ev.replay) : raw;
     const now = Date.now(), p = { stages: {}, tips: null, hall: null };
-    for (const st of S.eventStages(d)) {
+    for (const st of S.eventSquadOn(ev) ? S.eventStages(d) : []) {
       if (st.lock === null || st.lock > now || (ev.revealed || []).includes(st.i)) continue;
       p.stages[st.i] = {};
       for (const id of ids) { const t = await env.LEAGUE.get(`evt:${slug}:${st.i}:${id}`, 'json'); if (t) p.stages[st.i][id] = t; }
@@ -133,7 +134,9 @@ export async function eventCron(env, league) {
         (p.tips = p.tips || {})[key] = tips;
       }
     }
-    if (S.eventDone(d) && !(league.hall || {})['event_' + slug] && Object.keys(ev.lineups || {}).length) p.hall = { d };
+    // hall of fame once it is over - and only if anybody actually played it
+    const played = Object.keys(ev.lineups || {}).length || (ev.pickem && ev.pickem.revealed && Object.keys(ev.pickem.picks || {}).length) || S.eventMinigame(ev) === 'bingo';
+    if (S.eventDone(d) && !(league.hall || {})['event_' + slug] && played && (league.managers || []).length) p.hall = { d };
     if (Object.keys(p.stages).length || p.tips || p.hall) patch[slug] = p;
   }
   await bingoNotices(env, league).catch(() => null);
@@ -228,6 +231,7 @@ export async function eventAdmin(env, body) {
       if (body.video !== undefined) ev.video = youtubeId(body.video);
       if (body.videoStart !== undefined) ev.videoStart = Math.max(0, Math.floor(Number(body.videoStart) || 0));
       if (body.reshuffle) ev.bingoSeed = Math.random().toString(36).slice(2, 8);
+      if (body.squad !== undefined) ev.squad = !!body.squad;
       if (body.minigame !== undefined) { if (!['bingo', 'monopoly', 'none'].includes(body.minigame)) throw new HttpError(400, 'Minispiel: bingo, monopoly oder none'); ev.minigame = body.minigame; }
       if (body.prices) {
         ev.prices = {};
