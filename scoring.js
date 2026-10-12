@@ -956,6 +956,8 @@
   // lineup locks at its first match; without a new one, the last carries on.
   const EVENT_TYPES = {
     champion:    { kind: 'team',   label: 'Turniersieger' },
+    playInOut:   { kind: 'team',   label: 'Ein Team, das die Play-Ins übersteht' },
+    firstTop:    { kind: 'team',   label: 'Bestes Team der ersten Phase (meiste Siege)' },
     advance8:    { kind: 'team',   count: 8, label: 'Die 8 Teams in der K.-o.-Phase (Punkte pro richtigem Team)' },
     swiss30s:    { kind: 'team',   count: 2, label: 'Swiss: die zwei 3-0-Teams (pro Treffer)' },
     swissAdv6:   { kind: 'team',   count: 6, label: 'Swiss: 6 Teams, die mit 3-1 oder 3-2 weiterkommen (pro Treffer)' },
@@ -1339,6 +1341,24 @@
       const lv = eventLevels(evData), lec = ((evData && evData.teams) || []).filter(t => t.league === 'LEC').map(t => t.code);
       if (lec.length) out.bestLec = new Set([lv[Math.max(...lec.map(c => eventTeamLevel(evData, c)))]]);
     }
+    // Play-Ins: their teams that turn up in the next phase made it through
+    const pi = ((evData && evData.stages) || []).findIndex(st => /play.?in/i.test(st.name));
+    if (pi >= 0 && stages[pi] && stages[pi].done && stages[pi + 1]) {
+      const inPi = new Set(sched.filter(e => e.stage === pi).flatMap(e => e.teams.map(t => t.code)));
+      const next = new Set(sched.filter(e => e.stage === pi + 1).flatMap(e => e.teams.map(t => t.code)).filter(c => c && c !== 'TBD'));
+      const out2 = [...inPi].filter(c => next.has(c));
+      if (out2.length) out.playInOut = new Set(out2);
+    }
+    // best record of the first phase
+    if (stages[0] && stages[0].done) {
+      const rec = {};
+      for (const e of sched.filter(x => x.stage === 0)) for (const t of e.teams) {
+        const r = rec[t.code] || (rec[t.code] = { w: 0, l: 0 });
+        if (t.outcome === 'win') r.w++; else if (t.outcome === 'loss') r.l++;
+      }
+      const best = Math.max(0, ...Object.values(rec).map(r => r.w - r.l));
+      out.firstTop = new Set(Object.keys(rec).filter(k => rec[k].w - rec[k].l === best));
+    }
     const si = ((evData && evData.stages) || []).findIndex(st => /swiss/i.test(st.name));
     if (si >= 0 && stages[si] && stages[si].done) {
       const rec = {};
@@ -1380,6 +1400,18 @@
     const ts = (raw.schedule || []).map(e => Date.parse(e.start)).filter(Boolean);
     const first = Math.min(...ts), last = Math.max(...ts) + 4 * 3600e3;
     return { from: (now === undefined ? Date.now() : now) + leadMinutes * 60000, first, speed: (last - first) / (minutes * 60000) };
+  }
+  // Which questions belong to which round, for this event's format. Round 1
+  // (before the event) is about the phases before the knockouts and the whole
+  // event's stats; round 2 (before the knockouts) about the bracket. No type
+  // sits in both rounds, and each thing is asked once (the old single-pick
+  // variants like 'finalist' / 'swiss30' / 'advance8' stay readable only).
+  function eventPickemCatalog(evData, round) {
+    const names = ((evData && evData.stages) || []).map(s => s.name);
+    const hasPlayIn = names.some(n => /play.?in/i.test(n)), hasSwiss = names.some(n => /swiss/i.test(n));
+    if (round === 'ko') return ['koSemis', 'koFinal', 'champion', 'finalScore', 'winnerRegion'];
+    return [].concat(hasPlayIn ? ['playInOut'] : [], hasSwiss ? ['swiss30s', 'swissAdv6', 'swiss03s'] : hasPlayIn ? [] : ['firstTop'],
+      ['bestLec', 'regionMostKo', 'mostKills', 'mostDeaths', 'mostAssists', 'mostPicked', 'champMostWins', 'shortestGame', 'longestGame', 'totalGames', 'distinctChamps', 'teamKillsGame', 'bloodiest']);
   }
   // [{manager, name, players, pickem, total, byStage:{i:pts}, perPlayer:{id:pts}, correct:[qid]}] best first
   // Events are prediction contests (Fabian, 2026-10-12): Pick'em + the side
@@ -1583,7 +1615,7 @@
     suggestedCapacity, calendar, blockKey, lineupConfig, lineupFor, lineupPreview, scoreBook, autoWindows, faabLeft,
     PICKEM_TYPES, pickemTruth, pickemPoints, pickemLock, splitDone,
     weekRecap, hallEntry, hallDue, statTruth, scoreTips,
-    BINGO, bingoHits, bingoCard, bingoScore, bingoStageRows, eventBingo, eventMonopoly, monoBoard, MONO_CARDS, eventMinigame, eventSquadOn,
+    BINGO, bingoHits, bingoCard, bingoScore, bingoStageRows, eventBingo, eventMonopoly, monoBoard, MONO_CARDS, eventMinigame, eventSquadOn, eventPickemCatalog,
     EVENT_TYPES, eventConfig, eventTeamPrice, eventPrice, eventPlayer, eventStages, eventOpenStage, eventDone, eventTeamError, eventLineup, eventTruth, eventStandings, eventReplay, eventReplayPlan, eventLevels, eventTeamLevel, eventFinalScores
   };
 // `this` is undefined in an ES module, so a Cloudflare Worker importing this

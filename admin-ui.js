@@ -428,12 +428,13 @@ function viewTest() {
 // ── special events ────────────────────────────────────────────────────────
 const EVA = { data: {} };
 // points per question (multi picks: per correct team); what is ticked by default per round
-const EV_PK_DEFAULT = { champion: 10, finalist: 5, swiss30: 5, swiss03: 5, winnerRegion: 5, mostKills: 5, mostPoints: 5, bestKda: 5, mostChamps: 3, maxKillsGame: 3, mostPicked: 5, longestGame: 5, bloodiest: 5,
-  advance8: 2, swiss30s: 5, swissAdv6: 2, swiss03s: 5, koSemis: 5, koFinal: 10, finalScore: 10, bestLec: 5, regionMostKo: 5, shortestGame: 5, mostDeaths: 5, mostAssists: 5,
-  champMostWins: 5, distinctChamps: 5, totalGames: 5, teamKillsGame: 5 };
-const EV_PK_ON = { pre: ['champion', 'swiss30s', 'swissAdv6', 'swiss03s', 'bestLec', 'regionMostKo', 'mostKills', 'mostDeaths', 'mostPicked', 'shortestGame', 'totalGames'],
-                   ko: ['koSemis', 'koFinal', 'champion', 'finalScore'] };
-const EV_KO_DEFAULT = { champion: 20 };
+// points per question (team lists: per correct team) and what is ticked by default
+const EV_PK_DEFAULT = { playInOut: 5, firstTop: 5, swiss30s: 5, swissAdv6: 2, swiss03s: 5, bestLec: 5, regionMostKo: 5,
+  mostKills: 5, mostDeaths: 5, mostAssists: 5, mostPicked: 5, champMostWins: 5, shortestGame: 5, longestGame: 5, totalGames: 5,
+  distinctChamps: 5, teamKillsGame: 5, bloodiest: 5, koSemis: 5, koFinal: 10, champion: 20, finalScore: 10, winnerRegion: 5 };
+const EV_PK_ON = { pre: ['playInOut', 'firstTop', 'swiss30s', 'swissAdv6', 'swiss03s', 'bestLec', 'regionMostKo', 'mostKills', 'mostDeaths', 'mostPicked', 'shortestGame', 'totalGames'],
+                   ko: ['koSemis', 'koFinal', 'champion', 'finalScore', 'winnerRegion'] };
+const EV_KO_DEFAULT = {};
 function evaCfg() {
   if (EVA.cfg === undefined) { EVA.cfg = null; ctx.U.getJson('data/config.json', true).then(c => { EVA.cfg = c || {}; draw(); }); }
   return EVA.cfg;
@@ -472,7 +473,7 @@ function viewEventsAdmin() {
       const key = round === 'ko' ? 'pickemKo' : 'pickem', pe = ev[key] || {}, id = info.slug + '_' + round;
       const on = new Set((pe.questions || []).map(q => q.type)), pts = Object.fromEntries((pe.questions || []).map(q => [q.type, q.points]));
       const lockStage = round === 'ko' ? st[st.length - 1] : st.find(x => x.lock !== null);
-      const types = Object.entries(S.EVENT_TYPES).filter(([, t]) => !t.manual);
+      const types = (d ? S.eventPickemCatalog(d, round) : []).map(k => [k, S.EVENT_TYPES[k]]);
       const body = pe.revealed
         ? `<div class="card-b muted" style="font-size:13px">Aufgedeckt — ${Object.keys(pe.picks || {}).length} Manager haben getippt.</div>` + (pe.questions || []).filter(q => S.EVENT_TYPES[q.type].manual).map(q => `<div class="card-b row" style="gap:8px;flex-wrap:wrap"><b style="flex:1">${esc(q.label || q.type)}</b><input id="eva_${id}_${q.id}" value="${esc(q.answer || '')}" placeholder="Antwort (Kürzel / Name)">${btn('Antwort', 'evAnswer', { slug: info.slug, round, qid: q.id })}</div>`).join('')
         : `<div class="card-b"><p class="muted" style="font-size:12px;margin-top:0">${hint}</p>${types.map(([k, t]) => `<label class="row" style="gap:8px;margin:0 0 6px;color:var(--text)"><input type="checkbox" data-evpk="${id}" value="${k}" ${(pe.questions ? on.has(k) : EV_PK_ON[round].includes(k)) ? 'checked' : ''} style="width:auto"><span style="flex:1">${esc(t.label)}</span><input type="number" min="0" data-evpkp="${id}" data-t="${k}" value="${pts[k] ?? (round === 'ko' ? EV_KO_DEFAULT[k] : null) ?? EV_PK_DEFAULT[k] ?? 5}" style="width:60px"> Pkt</label>`).join('')}

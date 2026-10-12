@@ -214,7 +214,7 @@ export async function eventAdmin(env, body) {
   }
   let msg = '';
   if (a === 'create' || a === 'update' || a === 'pickem') await eventData(env, slug);     // data must exist
-  const d = a === 'pickem' ? await eventData(env, slug) : null;
+  const d = a === 'pickem' ? await eventData(env, slug) : null;   // the round catalog needs the format
   const res = await writeLeague(env, l => {
     l.events = l.events || {};
     const ev = l.events[slug];
@@ -243,6 +243,7 @@ export async function eventAdmin(env, body) {
       if (ev[key] && ev[key].revealed) throw new HttpError(409, 'Pick\'em ist schon aufgedeckt.');
       const qs = (body.questions || []).map((q, i) => {
         if (!S.EVENT_TYPES[q.type]) throw new HttpError(400, 'Unbekannter Fragetyp: ' + q.type);
+        if (!S.EVENT_TYPES[q.type].manual && !S.eventPickemCatalog(d, body.round === 'ko' ? 'ko' : 'pre').includes(q.type)) throw new HttpError(400, `„${S.EVENT_TYPES[q.type].label}" gehört nicht in diese Runde.`);
         return { id: 'q' + (i + 1), type: q.type, points: Math.max(0, Number(q.points) || 0), label: String(q.label || '').slice(0, 80) || undefined };
       });
       if (!qs.length) throw new HttpError(400, 'Mindestens eine Frage');

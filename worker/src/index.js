@@ -176,8 +176,8 @@ async function route(request, env, ctx) {
         if (!(data.events || {})[slug]) await ea(env, { action: 'create', slug, name: `${raw.name || slug} ${raw.year || ''} (Wiederholung)`, video: body.video || '' });
         const { writeLeague } = await import('./store.js');
         const r = await writeLeague(env, l => { const ev = l.events[slug]; ev.replay = plan; ev.lineups = {}; ev.revealed = []; ev.pickem = { revealed: false, lockAt: null,
-          questions: ['champion', 'advance8', 'winnerRegion', 'bestLec', 'mostKills', 'mostDeaths', 'mostPicked', 'shortestGame', 'totalGames'].map((type, i) => ({ id: 'q' + (i + 1), type, points: type === 'champion' ? 10 : type === 'advance8' ? 2 : 5 })) };
-          ev.pickemKo = { revealed: false, lockAt: null, questions: ['koSemis', 'koFinal', 'champion', 'finalScore'].map((type, i) => ({ id: 'q' + (i + 1), type, points: type === 'koSemis' ? 5 : type === 'koFinal' ? 10 : type === 'champion' ? 20 : 10 })) }; return l; }, `test: ${slug} als Wiederholung`);
+          questions: S.eventPickemCatalog(raw, 'pre').filter(t => !['mostAssists', 'champMostWins', 'longestGame', 'distinctChamps', 'teamKillsGame', 'bloodiest'].includes(t)).map((type, i) => ({ id: 'q' + (i + 1), type, points: /^swiss(30s|03s)$/.test(type) ? 5 : type === 'swissAdv6' ? 2 : 5 })) };
+          ev.pickemKo = { revealed: false, lockAt: null, questions: S.eventPickemCatalog(raw, 'ko').map((type, i) => ({ id: 'q' + (i + 1), type, points: { koSemis: 5, koFinal: 10, champion: 20, finalScore: 10, winnerRegion: 5 }[type] || 5 })) }; return l; }, `test: ${slug} als Wiederholung`);
         await botEvents(env, r.league).catch(() => 0);
         return { message: `${raw.name} läuft als Wiederholung: Teams & Tipps bis ${new Date(plan.from).toLocaleTimeString('de-DE', { timeZone: 'Europe/Berlin', hour: '2-digit', minute: '2-digit' })} Uhr, danach spielt sich das Event in ~${Math.round((Number(body.minutes) || 30) * 1.4)} Min ab. Die Bots haben schon gebaut & getippt.` };
       }

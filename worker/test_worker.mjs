@@ -813,10 +813,12 @@ tests.events = async () => {
   assert(!JSON.stringify(league()).includes('CCC_BOT'), 'teams secret before the lock');
   r = await call('POST', '/api/admin/event', { token: a, body: { action: 'pickem', slug: 'ev_2026', questions: [{ type: 'champion', points: 10 }, { type: 'nonsense', points: 1 }] } });
   assert(r.status === 400, 'unknown question type refused');
-  r = await call('POST', '/api/admin/event', { token: a, body: { action: 'pickem', slug: 'ev_2026', questions: [{ type: 'champion', points: 10 }, { type: 'winnerRegion', points: 5 }] } });
+  r = await call('POST', '/api/admin/event', { token: a, body: { action: 'pickem', slug: 'ev_2026', questions: [{ type: 'champion', points: 10 }] } });
+  assert(r.status === 400 && /Runde/.test(r.body.error), 'the champion belongs to the knockout round, not round 1');
+  r = await call('POST', '/api/admin/event', { token: a, body: { action: 'pickem', slug: 'ev_2026', questions: [{ type: 'mostKills', points: 10 }, { type: 'totalGames', points: 5 }] } });
   assert(r.status === 200, 'pickem open');
-  await call('POST', '/api/event/pickem', { token: tok.Ann, body: { slug: 'ev_2026', picks: { q1: 'AAA', q2: 'LCK' } } });
-  await call('POST', '/api/event/pickem', { token: tok.Ben, body: { slug: 'ev_2026', picks: { q1: 'BBB', q2: 'LEC' } } });
+  await call('POST', '/api/event/pickem', { token: tok.Ann, body: { slug: 'ev_2026', picks: { q1: 'AAA_MID', q2: '2' } } });
+  await call('POST', '/api/event/pickem', { token: tok.Ben, body: { slug: 'ev_2026', picks: { q1: 'BBB_TOP', q2: '5' } } });
   r = await call('POST', '/api/admin/event', { token: a, body: { action: 'pickem', round: 'ko', slug: 'ev_2026', questions: [{ type: 'koFinal', points: 10 }] } });
   assert(r.status === 200, 'ko round open');
   r = await call('POST', '/api/event/pickem', { token: tok.Ann, body: { slug: 'ev_2026', round: 'ko', picks: { q1: 'AAA,CCC,AAA,BBB' } } });
@@ -826,7 +828,7 @@ tests.events = async () => {
   await worker.scheduled({}, env, { waitUntil() {} });
   let ev = league().events.ev_2026;
   assert(ev.lineups[0][ids.Ann].captain === 'AAA_MID' && ev.lineups[0][ids.Ben] && ev.revealed.includes(0), 'stage 0 teams revealed');
-  assert(ev.pickem.revealed && ev.pickem.picks[ids.Ann].q1 === 'AAA', 'tips revealed at the first match');
+  assert(ev.pickem.revealed && ev.pickem.picks[ids.Ann].q1 === 'AAA_MID', 'tips revealed at the first match');
   r = await call('POST', '/api/event/pickem', { token: tok.Ann, body: { slug: 'ev_2026', picks: { q1: 'BBB' } } });
   assert(r.status === 409, 'tips locked');
   r = await call('POST', '/api/event/team', { token: tok.Ann, body: { slug: 'ev_2026', players: team, captain: 'AAA_TOP' } });
