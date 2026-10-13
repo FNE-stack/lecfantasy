@@ -1057,6 +1057,45 @@
     }
     return Math.max(0, lv);
   }
+  // Which teams may be chosen for a given pick'em question.
+  //
+  // A Play-Ins question must only offer the teams that actually play the
+  // Play-Ins (at Worlds 2026: 4 of 19), otherwise you can "predict" that a team
+  // survives a stage it was never in. Swiss questions likewise only make sense
+  // for the Swiss field. The field is read from the schedule where it is
+  // already known; while a stage is still all TBD (Swiss pairings are drawn
+  // from results) we fall back to everyone who is not stuck in an earlier
+  // stage, which is the honest answer at that point.
+  function eventQuestionTeams(evData, type) {
+    const all = (evData && evData.teams) || [];
+    const stages = eventStages(evData);
+    const named = i => {
+      const out = new Set();
+      for (const e of (evData && evData.schedule) || []) {
+        if (e.stage !== i) continue;
+        for (const t of (e.teams || [])) if (t && t.code && t.code !== 'TBD') out.add(t.code);
+      }
+      return out;
+    };
+    const byName = re => stages.findIndex(st => re.test(String(st.name || '')));
+    const piIdx = byName(/play.?in/i);
+    const swIdx = byName(/swiss|group/i);
+
+    if (/^playInOut$/.test(type) && piIdx >= 0) {
+      const set = named(piIdx);
+      if (set.size) return all.filter(t => set.has(t.code));
+    }
+    if (/^swiss/.test(type) && swIdx >= 0) {
+      const set = named(swIdx);
+      if (set.size) return all.filter(t => set.has(t.code));
+      // Swiss not drawn yet: everyone except the teams still in the Play-Ins
+      // that have not qualified - we cannot know those yet, so offer the field
+      // minus nobody. Keeping it explicit beats silently offering a wrong set.
+      return all;
+    }
+    return all;
+  }
+
   function eventFinalScores(evData) {
     const sched = (evData && evData.schedule) || [], n = ((evData && evData.stages) || []).length;
     const fin = sched.filter(e => e.stage === n - 1).sort((a, b) => a.start.localeCompare(b.start)).pop();
@@ -1616,7 +1655,7 @@
     PICKEM_TYPES, pickemTruth, pickemPoints, pickemLock, splitDone,
     weekRecap, hallEntry, hallDue, statTruth, scoreTips,
     BINGO, bingoHits, bingoCard, bingoScore, bingoStageRows, eventBingo, eventMonopoly, monoBoard, MONO_CARDS, eventMinigame, eventSquadOn, eventPickemCatalog,
-    EVENT_TYPES, eventConfig, eventTeamPrice, eventPrice, eventPlayer, eventStages, eventOpenStage, eventDone, eventTeamError, eventLineup, eventTruth, eventStandings, eventReplay, eventReplayPlan, eventLevels, eventTeamLevel, eventFinalScores
+    EVENT_TYPES, eventConfig, eventQuestionTeams, eventTeamPrice, eventPrice, eventPlayer, eventStages, eventOpenStage, eventDone, eventTeamError, eventLineup, eventTruth, eventStandings, eventReplay, eventReplayPlan, eventLevels, eventTeamLevel, eventFinalScores
   };
 // `this` is undefined in an ES module, so a Cloudflare Worker importing this
 // file would crash on a bare `this`. globalThis works in every place these

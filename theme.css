@@ -541,3 +541,27 @@ table.lineup a:hover{text-decoration:underline!important}
 .mono-title{font-family:var(--display);font-size:clamp(14px,3.5vw,24px);color:var(--gold-hi);letter-spacing:.05em}
 @media(max-width:640px){.mono-board{gap:2px;padding:6px}.mono-cell img.tlogo{width:16px;height:16px}.mono-c{font-size:7.5px}.mono-p{display:none}
   .mono-i{font-size:12px}.mono-tok{width:12px;height:12px;font-size:7px}}
+
+/* ── Swiss-Phase ───────────────────────────────────────────────────────────
+   Gruppiert nach Bilanz (2-0, 1-1, 0-2 ...), weil das die Information ist,
+   die in einer Swiss-Runde zaehlt: gegen wen wird man als naechstes gelost,
+   wer ist bei 3 Siegen durch, wer bei 3 Niederlagen raus. */
+.swiss{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:10px;padding:14px 16px}
+.sw-g{border:1px solid var(--line);border-radius:6px;overflow:hidden;background:var(--surface-2)}
+.sw-h{display:flex;align-items:baseline;gap:7px;padding:8px 10px;border-bottom:1px solid var(--line);
+  background:rgba(255,255,255,.02);font-size:12px}
+.sw-h b{font-family:var(--display,inherit);letter-spacing:.04em}
+.sw-h .dim{font-size:10px;flex:1}
+.sw-n{font-variant-numeric:tabular-nums;color:var(--muted);font-size:11px}
+.sw-t{display:flex;align-items:center;gap:8px;padding:6px 10px;border-bottom:1px solid #1b1c20;font-size:12px}
+.sw-t:last-child{border-bottom:none}
+.sw-c{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.sw-lg{display:flex;flex:0 0 auto}
+.sw-g.sw-in{border-color:rgba(63,185,80,.5)}
+.sw-g.sw-in .sw-h{background:rgba(63,185,80,.1)}
+.sw-g.sw-in .sw-h b{color:#8fd08a}
+.sw-g.sw-out{border-color:rgba(181,52,44,.45)}
+.sw-g.sw-out .sw-h{background:rgba(181,52,44,.1)}
+.sw-g.sw-out .sw-h b{color:#ff8a7a}
+.sw-g.sw-out .sw-t{opacity:.6}
+@media(max-width:560px){ .swiss{grid-template-columns:1fr;gap:8px;padding:10px} }

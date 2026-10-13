@@ -382,15 +382,18 @@ const PK_ROUNDS = [['pre', 'pickem', 'Vor dem Event'], ['ko', 'pickemKo', 'Vor d
 function evPickInput(slug, round, q, val) {
   const d = evD(slug), def = S.EVENT_TYPES[q.type] || {}, kind = def.kind;
   const attr = `data-evq="${esc(q.id)}" data-evr="${round}"`;
+  // Only the teams that can actually appear in the answer - a Play-Ins
+  // question must not offer teams that start in the Swiss stage.
+  const pickTeams = S.eventQuestionTeams(d, q.type);
   if (def.count) {
     // several teams: tap the logos (at most `count`)
     const on = new Set(String(val || '').split(',').filter(Boolean));
-    return `<div class="evmulti" ${attr} data-max="${def.count}">${d.teams.map(t => `<button type="button" class="evchip ${on.has(t.code) ? 'on' : ''}" data-code="${esc(t.code)}" title="${esc(t.name)}">${evLogo(slug, t.code, 22)}<span>${esc(t.code)}</span></button>`).join('')}</div>
-      <div class="dim" style="font-size:12px;margin-top:6px"><b class="evcount">${on.size}</b> / ${def.count} gewählt</div>`;
+    return `<div class="evmulti" ${attr} data-max="${def.count}">${pickTeams.map(t => `<button type="button" class="evchip ${on.has(t.code) ? 'on' : ''}" data-code="${esc(t.code)}" title="${esc(t.name)}">${evLogo(slug, t.code, 22)}<span>${esc(t.code)}</span></button>`).join('')}</div>
+      <div class="dim" style="font-size:12px;margin-top:6px"><b class="evcount">${on.size}</b> / ${def.count} gewählt${pickTeams.length < (d.teams || []).length ? ` · nur die ${pickTeams.length} Teams dieser Phase` : ''}</div>`;
   }
   if (kind === 'number') return `<input type="number" step="0.1" ${attr} value="${esc(val || '')}" style="width:120px">`;
   let opts = [];
-  if (kind === 'team') opts = d.teams.map(t => [t.code, `${t.name} (${t.league || '?'})`]);
+  if (kind === 'team') opts = pickTeams.map(t => [t.code, `${t.name} (${t.league || '?'})`]);
   if (kind === 'region') opts = [...new Set(d.teams.map(t => t.league).filter(Boolean))].map(r => [r, r]);
   if (kind === 'player') opts = d.players.slice().sort((a, b) => a.team.localeCompare(b.team) || EV_ROLES.indexOf(a.role) - EV_ROLES.indexOf(b.role)).map(p => [p.id, `${p.name} (${p.team} ${p.role})`]);
   if (kind === 'champion') opts = Object.entries(app.D.champs.names || {}).sort((a, b) => a[1].localeCompare(b[1]));
@@ -599,10 +602,12 @@ function evTour(slug) {
     for (const e of ev) for (const t of e.teams) { if (!t.code || t.code === 'TBD') continue; const r = rec[t.code] || (rec[t.code] = { w: 0, l: 0 }); if (t.outcome === 'win') r.w++; if (t.outcome === 'loss') r.l++; }
     const ranked = Object.entries(rec).sort((a, b) => (b[1].w - b[1].l) - (a[1].w - a[1].l) || b[1].w - a[1].w);
     const isKo = s.i === stages.length - 1 && stages.length > 1;
+    const isSwiss = /swiss/i.test(String(s.name || ''));
     const played = ranked.some(([, r]) => r.w || r.l);
     const note = s.done ? 'beendet' : s.lock ? (s.lock > Date.now() ? 'ab ' + esc(new Date(s.lock).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit' })) : 'läuft') : '';
 
     if (isKo) return card(esc(s.name), evBracket(slug, ev) || '<div class="empty">—</div>', note);
+    if (isSwiss) return card(esc(s.name), evSwiss(slug, ev, ranked) || '<div class="empty">—</div>', note);
 
     // Standings and schedule are two different things - give each its own
     // panel with a heading instead of mashing them into one gapless grid.
@@ -615,6 +620,44 @@ function evTour(slug) {
     const body = table && list ? `<div class="evtour">${table}${list}</div>` : (table || list);
     return card(esc(s.name), body || '<div class="empty">—</div>', note);
   }).join('');
+}
+
+// Swiss: a flat win-loss table is the wrong shape. What a Swiss stage is
+// actually about is the bracket you are in - 2-0, 1-1, 0-2 - because that is
+// who you get drawn against next, and at 3 wins you are through while at 3
+// losses you are out. The schedule cannot tell us this (all Swiss pairings are
+// TBD until they are drawn from results), so the records are derived from the
+// games that have been played.
+function evSwiss(slug, evs, ranked) {
+  const WIN = 3, LOSS = 3;
+  if (!ranked.length) return `<div class="empty">Die Swiss-Phase beginnt mit dem ersten Spiel — dann steht hier, wer in welcher Runde steht.</div>`;
+  const groups = new Map();
+  for (const [code, r] of ranked) {
+    const key = r.w + '-' + r.l;
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push([code, r]);
+  }
+  const order = [...groups.keys()].sort((a, b) => {
+    const [aw, al] = a.split('-').map(Number), [bw, bl] = b.split('-').map(Number);
+    return (bw - aw) || (al - bl);
+  });
+  const label = key => {
+    const [w, l] = key.split('-').map(Number);
+    if (w >= WIN) return { t: 'Weiter', cls: 'sw-in', sub: `${w}-${l} · qualifiziert` };
+    if (l >= LOSS) return { t: 'Raus', cls: 'sw-out', sub: `${w}-${l} · ausgeschieden` };
+    return { t: `${w}-${l}`, cls: '', sub: w + l === 0 ? 'noch kein Spiel' : `${w + l} gespielt` };
+  };
+  return `<div class="swiss">${order.map(key => {
+    const g = groups.get(key), lb = label(key);
+    return `<div class="sw-g ${lb.cls}">
+      <div class="sw-h"><b>${esc(lb.t)}</b><span class="dim">${esc(lb.sub)}</span><span class="sw-n">${g.length}</span></div>
+      ${g.map(([code, r]) => `<div class="sw-t"><span class="sw-lg">${evLogo(slug, code, 20)}</span>
+        <span class="sw-c">${esc((evT(slug, code) || {}).name || code)}</span>
+        <span class="num dim">${r.w}–${r.l}</span></div>`).join('')}</div>`;
+  }).join('')}</div>
+  <div class="card-b dim" style="font-size:12px;border-top:1px solid var(--line)">
+    Drei Siege = weiter, drei Niederlagen = raus. Die Paarungen werden jeweils innerhalb
+    einer Runde ausgelost, deshalb stehen kommende Spiele erst kurz vorher fest.</div>`;
 }
 
 // knockout bracket rebuilt from the teams' path (the API links no matches):
