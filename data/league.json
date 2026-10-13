@@ -36,12 +36,18 @@
       "id": "m2f334af7",
       "name": "Max",
       "joined": "2026-10-13T09:23:40.130Z"
+    },
+    {
+      "id": "m3d462247",
+      "name": "Sacres",
+      "joined": "2026-10-13T10:43:20.179Z"
     }
   ],
   "draft": {
     "order": [
       "m02595135",
-      "m2f334af7"
+      "m2f334af7",
+      "m3d462247"
     ],
     "snake": true,
     "picks": [],
