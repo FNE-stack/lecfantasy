@@ -784,6 +784,47 @@ tests.test_mode = async () => {
   return `bots join, pick instantly around me, ${role ? 'accept a fair trade, ' : ''}${robbery ? 'reject a bad one, ' : ''}tip the test pick'em; end removes bots + test data, people who joined keep their account`;
 };
 
+tests.admin_sees_who_tipped = async () => {
+  // Before a lock the admin needs to know who still has to be nudged. The
+  // overview must show the STAND (how many questions answered) and never the
+  // picks themselves - the players are promised nobody sees their tips early,
+  // and that has to hold for the admin too.
+  const R = ['TOP', 'JNG', 'MID', 'BOT', 'SUP'];
+  const teams = [['AAA', 'LCK'], ['BBB', 'LEC']].map(([code, league]) => ({ code, league, name: code }));
+  const players = teams.flatMap(t => R.map(r => ({ id: t.code + '_' + r, name: t.code + r, team: t.code, role: r })));
+  const h = 3600e3, iso = ms => new Date(ms).toISOString();
+  EVENT = { slug: 'ev_2026', name: 'Tip', logo: '', teams, players, stages: [{ name: 'Swiss' }], games: [],
+    schedule: [{ match: 'm1', stage: 0, start: iso(Date.now() + 5 * h), state: 'unstarted', teams: [{ code: 'AAA' }, { code: 'BBB' }] }] };
+  const { a, tok } = await liveLeague(['Ann', 'Ben']);
+  let r = await call('POST', '/api/admin/event', { token: a, body: { action: 'create', slug: 'ev_2026', name: 'Tip 2026' } });
+  assert(r.status === 200, 'event created: ' + JSON.stringify(r.body));
+  r = await call('POST', '/api/admin/event', { token: a, body: { action: 'pickem', slug: 'ev_2026', round: 'pre',
+    questions: [{ type: 'swiss30s', points: 10 }, { type: 'totalGames', points: 5 }] } });
+  assert(r.status === 200, 'pickem opened: ' + JSON.stringify(r.body));
+
+  // nobody has tipped yet
+  let st = (await call('GET', '/api/admin/state', { token: a })).body;
+  let pre = ((st.tips || {}).ev_2026 || {}).pre;
+  assert(pre && pre.total === 2, 'status knows the question count: ' + JSON.stringify(pre));
+  assert(Object.values(pre.answered).every(n => n === 0), 'nobody tipped yet: ' + JSON.stringify(pre.answered));
+
+  // Ann answers one of two, Ben both
+  await call('POST', '/api/event/pickem', { token: tok.Ann, body: { slug: 'ev_2026', round: 'pre', picks: { q1: 'AAA' } } });
+  await call('POST', '/api/event/pickem', { token: tok.Ben, body: { slug: 'ev_2026', round: 'pre', picks: { q1: 'BBB', q2: '30' } } });
+
+  st = (await call('GET', '/api/admin/state', { token: a })).body;
+  pre = st.tips.ev_2026.pre;
+  const byName = {};
+  for (const m of st.league.managers) byName[m.name] = pre.answered[m.id];
+  assert(byName.Ann === 1 && byName.Ben === 2, 'partial vs complete visible: ' + JSON.stringify(byName));
+
+  // and the admin must NOT be able to read the picks before the lock
+  const blob = JSON.stringify(st);
+  assert(!blob.includes('"q1":"AAA"') && !blob.includes('"q1":"BBB"'),
+    'admin state leaks the actual tips');
+  assert(pre.revealed === false, 'not revealed yet');
+};
+
 tests.events = async () => {
   const R = ['TOP', 'JNG', 'MID', 'BOT', 'SUP'];
   const teams = [['AAA', 'LCK'], ['BBB', 'LEC'], ['CCC', 'LCS']].map(([code, league]) => ({ code, league, name: code }));

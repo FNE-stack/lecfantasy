@@ -446,6 +446,35 @@ function evaData(slug) {
 // collapsible section (closed by default; remembers what is open while the tab is shown)
 const EV_OPEN = new Set();
 const fold = (title, meta, body, id) => `<details class="evfold" data-fold="${esc(id || title)}" ${EV_OPEN.has(id || title) ? 'open' : ''}><summary><b>${title}</b><span class="dim" style="font-size:12px">${meta}</span></summary>${body}</details>`;
+// Who has tipped, and how far - never WHAT they tipped. Without this the admin
+// is blind before a lock: you cannot tell whether someone still has to be
+// nudged or simply has not opened the page. Counts only, on purpose: reading
+// the picks would break the same promise the players are given.
+function tipStatusRows(slug, round) {
+  const st = ((A.tips || {})[slug] || {})[round];
+  if (!st) return '';
+  const mgrs = A.league.managers || [];
+  if (!mgrs.length) return '';
+  const done = mgrs.filter(m => (st.answered[m.id] || 0) >= st.total).length;
+  const none = mgrs.filter(m => !(st.answered[m.id] || 0)).length;
+  const rows = mgrs.slice().sort((a, b) => (st.answered[b.id] || 0) - (st.answered[a.id] || 0) || a.name.localeCompare(b.name))
+    .map(m => {
+      const n = st.answered[m.id] || 0;
+      const full = n >= st.total;
+      const cls = full ? 'teal' : n ? 'gold' : 'live';
+      const label = full ? 'komplett' : n ? n + ' / ' + st.total : 'nichts';
+      return `<tr><td class="fill">${esc(m.name)}</td>
+        <td class="num" style="width:120px"><span class="pill ${cls}">${esc(label)}</span></td></tr>`;
+    }).join('');
+  return `<div class="card-b" style="border-top:1px solid var(--line)">
+    <div class="row" style="justify-content:space-between;flex-wrap:wrap;gap:8px;margin-bottom:8px">
+      <b style="font-size:13px">Wer hat getippt?</b>
+      <span class="dim" style="font-size:12px">${done} von ${mgrs.length} komplett${none ? ` · ${none} noch gar nicht` : ''}${st.revealed ? ' · aufgedeckt' : ''}</span>
+    </div>
+    <table class="tight"><tbody>${rows}</tbody></table>
+    <p class="muted" style="font-size:11px;margin:8px 0 0">Nur der Stand — die Tipps selbst sieht auch der Admin erst nach der Sperre.</p></div>`;
+}
+
 function viewEventsAdmin() {
   const S = window.LECScoring, idx = ((ctx.D.eventsIndex || {}).events) || [], evs = A.league.events || {};
   evaCfg();
@@ -479,7 +508,8 @@ function viewEventsAdmin() {
         : `<div class="card-b"><p class="muted" style="font-size:12px;margin-top:0">${hint}</p>${types.map(([k, t]) => `<label class="row" style="gap:8px;margin:0 0 6px;color:var(--text)"><input type="checkbox" data-evpk="${id}" value="${k}" ${(pe.questions ? on.has(k) : EV_PK_ON[round].includes(k)) ? 'checked' : ''} style="width:auto"><span style="flex:1">${esc(t.label)}</span><input type="number" min="0" data-evpkp="${id}" data-t="${k}" value="${pts[k] ?? (round === 'ko' ? EV_KO_DEFAULT[k] : null) ?? EV_PK_DEFAULT[k] ?? 5}" style="width:60px"> Pkt</label>`).join('')}
           <label>Eigene Frage (Antwort trägst du danach ein)</label><div class="row" style="gap:8px;flex-wrap:wrap"><input id="evcq_${id}" placeholder="z. B. MVP der Finals" style="flex:1;min-width:160px" value="${esc(((pe.questions || []).find(q => q.type === 'manualPlayer') || {}).label || '')}"><input id="evcp_${id}" type="number" value="5" style="width:60px"> Pkt</div>
           <label>Tipp-Schluss (leer = ${round === 'ko' ? 'erstes K.-o.-Spiel' : 'erstes Spiel'}${lockStage && lockStage.lock ? ': ' + new Date(lockStage.lock).toLocaleString('de-DE', { dateStyle: 'short', timeStyle: 'short' }) : ''})</label><input type="datetime-local" id="evl_${id}" value="${esc(pe.lockAt ? pe.lockAt.slice(0, 16) : '')}">
-          <div style="margin-top:12px">${btn(pe.questions ? "Pick'em speichern" : "Pick'em öffnen", 'evPickem', { slug: info.slug, round }, 'gold')}</div></div>`;
+          <div style="margin-top:12px">${btn(pe.questions ? "Pick'em speichern" : "Pick'em öffnen", 'evPickem', { slug: info.slug, round }, 'gold')}</div></div>`
+        + tipStatusRows(info.slug, round);
       return fold(title, pe.questions ? (pe.revealed ? 'aufgedeckt' : `offen · ${pe.questions.length} Fragen`) : 'noch nicht geöffnet', body, id + '_pk');
     };
     const pk = pkSection('pre', "Pick'em · vor dem Event", 'Runde 1, sperrt beim ersten Spiel. Teams mit „pro Treffer": jeder Spieler wählt mehrere Teams, Punkte für jedes richtige.')

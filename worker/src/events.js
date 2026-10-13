@@ -109,6 +109,38 @@ export async function eventSaveMono(env, me, body) {
   return { ok: true, choice: c };
 }
 
+// Admin overview: WHO has tipped, and how far - never WHAT they tipped.
+// Counting the answered questions is enough to chase people before the lock,
+// and reading the picks would break the same secrecy promise the players get
+// ("niemand sieht deine Tipps vorher") for the admin too. So this returns
+// counts only, deliberately.
+export async function tipStatus(env, league) {
+  const out = {};
+  const evs = (league && league.events) || {};
+  for (const [slug, ev] of Object.entries(evs)) {
+    const rounds = {};
+    for (const [round, key] of [['pre', 'pickem'], ['ko', 'pickemKo']]) {
+      const pe = ev[key];
+      if (!pe || !(pe.questions || []).length) continue;
+      const total = pe.questions.length;
+      const per = {};
+      for (const m of (league.managers || [])) {
+        let n = 0;
+        if (pe.revealed) {
+          n = Object.keys((pe.picks || {})[m.id] || {}).length;
+        } else {
+          const t = await env.LEAGUE.get(tipKey(slug, round, m.id), 'json').catch(() => null);
+          n = t ? Object.keys(t).length : 0;
+        }
+        per[m.id] = n;
+      }
+      rounds[round] = { total, revealed: !!pe.revealed, answered: per };
+    }
+    if (Object.keys(rounds).length) out[slug] = rounds;
+  }
+  return out;
+}
+
 // cron: move teams/tips of everything that has started into league.json;
 // freeze a finished event in the hall of fame
 export async function eventCron(env, league) {

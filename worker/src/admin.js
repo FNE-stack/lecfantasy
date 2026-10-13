@@ -11,6 +11,7 @@ import { S, HttpError, cfg, writeLeague, readLeagueFresh, leagueHistory, leagueA
          pagesMeta, writeSiteFile, githubRaw } from './store.js';
 import { setMemberPassword, deleteMember, revokeSessions, sessionCounts, hasPassword, randomHex } from './auth.js';
 import { addMember, makePick, cleanName, nameKey, mgrName, runWaivers, claimsOf, revealPickems } from './draft.js';
+import { tipStatus } from './events.js';
 import { notify, subscriberCounts, pushEnabled } from './push.js';
 
 const now = () => new Date().toISOString();
@@ -358,8 +359,9 @@ export async function adminState(env) {
   const invite = await env.LEAGUE.get('invite', 'json');
   const claims = {};
   for (const id of ids) { const c = await claimsOf(env, id).catch(() => []); if (c.length) claims[id] = c; }
+  const tips = await tipStatus(env, league).catch(() => ({}));
   return {
-    league, sha, members, invite, claims, nextWaiver: S.nextWaiverRun(league),
+    league, sha, members, invite, claims, tips, nextWaiver: S.nextWaiverRun(league),
     validation: S.validateLeague(league, players),
     capacity: players ? S.capacity(league, players) : null,
     suggestedCapacity: players ? S.suggestedCapacity(league, players) : null,
