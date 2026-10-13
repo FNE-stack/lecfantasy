@@ -41,13 +41,19 @@
       "id": "m3d462247",
       "name": "Sacres",
       "joined": "2026-10-13T10:43:20.179Z"
+    },
+    {
+      "id": "m41cdc303",
+      "name": "Dalurox",
+      "joined": "2026-10-13T18:20:52.912Z"
     }
   ],
   "draft": {
     "order": [
       "m02595135",
       "m2f334af7",
-      "m3d462247"
+      "m3d462247",
+      "m41cdc303"
     ],
     "snake": true,
     "picks": [],
