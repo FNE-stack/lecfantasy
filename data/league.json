@@ -161,7 +161,93 @@
       "createdAt": "2026-10-10T23:14:12.628Z",
       "lineups": {},
       "revealed": [],
-      "videoStart": 0
+      "videoStart": 0,
+      "pickem": {
+        "questions": [
+          {
+            "id": "q1",
+            "type": "playInOut",
+            "points": 5
+          },
+          {
+            "id": "q2",
+            "type": "swiss30s",
+            "points": 5
+          },
+          {
+            "id": "q3",
+            "type": "swissAdv6",
+            "points": 2
+          },
+          {
+            "id": "q4",
+            "type": "swiss03s",
+            "points": 5
+          },
+          {
+            "id": "q5",
+            "type": "bestLec",
+            "points": 5
+          },
+          {
+            "id": "q6",
+            "type": "regionMostKo",
+            "points": 5
+          },
+          {
+            "id": "q7",
+            "type": "mostKills",
+            "points": 5
+          },
+          {
+            "id": "q8",
+            "type": "mostDeaths",
+            "points": 5
+          },
+          {
+            "id": "q9",
+            "type": "mostAssists",
+            "points": 5
+          },
+          {
+            "id": "q10",
+            "type": "mostPicked",
+            "points": 5
+          },
+          {
+            "id": "q11",
+            "type": "shortestGame",
+            "points": 5
+          },
+          {
+            "id": "q12",
+            "type": "longestGame",
+            "points": 5
+          },
+          {
+            "id": "q13",
+            "type": "totalGames",
+            "points": 5
+          },
+          {
+            "id": "q14",
+            "type": "distinctChamps",
+            "points": 5
+          },
+          {
+            "id": "q15",
+            "type": "teamKillsGame",
+            "points": 5
+          },
+          {
+            "id": "q16",
+            "type": "bloodiest",
+            "points": 5
+          }
+        ],
+        "revealed": false,
+        "lockAt": null
+      }
     }
   }
 }
