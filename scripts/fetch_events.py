@@ -19,7 +19,7 @@ not downloaded again.
     python scripts/fetch_events.py                  # season from data/config.json
     python scripts/fetch_events.py --season 2026 --only msi_2026
 """
-import argparse, datetime, json, os, re, sys, time, urllib.parse, urllib.request
+import argparse, datetime, json, os, re, sys, urllib.parse, urllib.request
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import fetch_lolesports as F   # noqa: E402
@@ -198,12 +198,8 @@ def lp_bans(t, games, names, old):
                                         "fields": "Team1Bans,Team2Bans,Team1Picks,Team2Picks,DateTime_UTC",
                                         "where": f'DateTime_UTC >= "{start} 00:00:00" AND DateTime_UTC <= "{end} 00:00:00"'})
             req = urllib.request.Request(LP + "?" + q, headers={"User-Agent": "lecfantasy-stats/1.0 (github.com/FNE-stack/lecfantasy)"})
-            for attempt in range(2):
-                j = json.load(urllib.request.urlopen(req, timeout=30))
-                if (j.get("error") or {}).get("code") == "ratelimited":
-                    time.sleep(30 * (attempt + 1))
-                    continue
-                break
+            # one try: a quick retry only extends the block, the next run is in 2 h
+            j = json.load(urllib.request.urlopen(req, timeout=30))
             if j.get("error"):
                 print(f"  ! leaguepedia: {j['error'].get('code')} - bans later", file=sys.stderr)
                 return out
