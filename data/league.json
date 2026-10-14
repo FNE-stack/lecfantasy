@@ -215,17 +215,17 @@
           {
             "id": "q7",
             "type": "mostKills",
-            "points": 5
+            "points": 2
           },
           {
             "id": "q8",
             "type": "mostDeaths",
-            "points": 5
+            "points": 2
           },
           {
             "id": "q9",
             "type": "mostAssists",
-            "points": 5
+            "points": 2
           },
           {
             "id": "q10",
