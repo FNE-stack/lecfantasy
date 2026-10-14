@@ -185,12 +185,12 @@
           {
             "id": "q1",
             "type": "playInOut",
-            "points": 5
+            "points": 2
           },
           {
             "id": "q2",
             "type": "swiss30s",
-            "points": 5
+            "points": 2
           },
           {
             "id": "q3",
@@ -200,17 +200,17 @@
           {
             "id": "q4",
             "type": "swiss03s",
-            "points": 5
+            "points": 2
           },
           {
             "id": "q5",
             "type": "bestLec",
-            "points": 5
+            "points": 2
           },
           {
             "id": "q6",
             "type": "regionMostKo",
-            "points": 5
+            "points": 2
           },
           {
             "id": "q7",
@@ -240,27 +240,27 @@
           {
             "id": "q12",
             "type": "longestGame",
-            "points": 5
+            "points": 2
           },
           {
             "id": "q13",
             "type": "totalGames",
-            "points": 5
+            "points": 2
           },
           {
             "id": "q14",
             "type": "distinctChamps",
-            "points": 5
+            "points": 2
           },
           {
             "id": "q15",
             "type": "teamKillsGame",
-            "points": 5
+            "points": 2
           },
           {
             "id": "q16",
             "type": "bloodiest",
-            "points": 5
+            "points": 2
           }
         ],
         "revealed": false,
