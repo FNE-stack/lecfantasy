@@ -13,7 +13,7 @@ window.LECEventsInit = function (app) {
 'use strict';
 const { L, S, U, esc, fmt, card, loggedIn, adminOnly, me, api, toast, render, store, path, scoring } = app;
 const $ = id => document.getElementById(id);
-const EVX = { data: {}, loading: {}, mine: {}, form: {}, tips: {}, tab: 'pickem', role: 'TOP', q: '', team: '', open: null, player: null, playerSlug: null, entered: {}, ytReady: null, bingoStage: null };
+const EVX = { data: {}, loading: {}, mine: {}, form: {}, tips: {}, mt: {}, openMatch: null, tab: 'tips', role: 'TOP', q: '', team: '', open: null, player: null, playerSlug: null, entered: {}, ytReady: null, bingoStage: null };
 const EV_ROLES = ['TOP', 'JNG', 'MID', 'BOT', 'SUP'];
 // Colors per event (the font is the same on the whole site, theme.css).
 // Worlds: Riot's League/Worlds Hextech palette - gold on deep blue, teal.
@@ -47,6 +47,7 @@ async function loadMine(slug) {
   try { EVX.mine[slug] = await api('/api/event?slug=' + encodeURIComponent(slug)); } catch (e) { EVX.mine[slug] = { err: e.message }; }
   const t = EVX.mine[slug].team;
   if (!EVX.form[slug]) EVX.form[slug] = t ? { players: Object.fromEntries(t.players.map(id => [evP(slug, id) ? evP(slug, id).role : '', id])), captain: t.captain } : { players: {}, captain: '' };
+  EVX.mt[slug] = Object.assign({}, EVX.mine[slug].matchTips || {});
   if (!EVX.tips[slug]) { const r = EVX.mine[slug].rounds || {}; EVX.tips[slug] = { pre: Object.assign({}, (r.pre || {}).tips || EVX.mine[slug].tips || {}), ko: Object.assign({}, (r.ko || {}).tips || {}) }; }
   render();
 }
@@ -54,8 +55,36 @@ async function loadMine(slug) {
 // ── small helpers ─────────────────────────────────────────────────────────
 // event data as of now - a test replay (ev.replay) recomputed at most every 5 s
 const EVR = {};
+// The schedule straight from lolesports while an event page is open: new
+// Swiss pairings and results show up within a minute (the event file only
+// refreshes every 2 hours). Merged by match id; replays keep their own clock.
+const EVLIVE = {}, EVLID = {};
+async function loadLive(slug) {
+  const raw = EVX.data[slug];
+  if (!raw || !raw.league || (EVLIVE[slug] && Date.now() - EVLIVE[slug].at < 55000)) return;
+  EVLIVE[slug] = Object.assign({}, EVLIVE[slug], { at: Date.now() });
+  const H = { headers: { 'x-api-key': '0TvQnueqKa5mxJntVWt0w4LpLfEkrV1Ta8rQBb9Z' } }, G = 'https://esports-api.lolesports.com/persisted/gw/';
+  try {
+    if (!EVLID[raw.league]) EVLID[raw.league] = ((await (await fetch(G + 'getLeagues?hl=en-US', H)).json()).data.leagues.find(l => l.slug === raw.league) || {}).id;
+    const id = EVLID[raw.league];
+    if (!id) return;
+    const first = (await (await fetch(G + 'getSchedule?hl=en-US&leagueId=' + id, H)).json()).data.schedule;
+    let evs = first.events.slice();
+    for (const dir of ['newer', 'older']) {
+      const tok = (first.pages || {})[dir];
+      if (tok) { const sch = (await (await fetch(G + 'getSchedule?hl=en-US&leagueId=' + id + '&pageToken=' + encodeURIComponent(tok), H)).json()).data.schedule; evs = dir === 'newer' ? evs.concat(sch.events) : sch.events.concat(evs); }
+    }
+    const rows = evs.filter(e => e.type === 'match' && e.match).map(e => ({ match: e.match.id, start: e.startTime, state: e.state, bestOf: (e.match.strategy || {}).count || 1,
+      teams: (e.match.teams || []).map(t => ({ code: t.code || 'TBD', wins: (t.result || {}).gameWins, outcome: (t.result || {}).outcome })) }));
+    EVLIVE[slug] = { at: Date.now(), rows };
+    render();
+  } catch (e) { /* the event file is good enough */ }
+}
+setInterval(() => { const m = path().match(/^\/event\/([\w-]+)$/); if (m && !document.hidden) loadLive(m[1]); }, 60000);
 function evD(slug) {
-  const raw = EVX.data[slug], ev = ((L() && L().events) || {})[slug];
+  const raw0 = EVX.data[slug], ev = ((L() && L().events) || {})[slug];
+  const live = EVLIVE[slug] && EVLIVE[slug].rows;
+  const raw = raw0 && live && !(ev && ev.replay) ? S.mergeLiveSchedule(raw0, live) : raw0;
   if (!raw || !ev || !ev.replay) return raw;
   const k = JSON.stringify(ev.replay) + '|' + Math.floor(Date.now() / 5000);
   if (!EVR[slug] || EVR[slug].k !== k) EVR[slug] = { k, d: S.eventReplay(raw, ev.replay) };
@@ -281,12 +310,14 @@ function viewEvent(slug) {
   if (!ev) return card('Event', '<div class="empty">Dieses Event ist nicht angelegt. <a href="#/">Zur Übersicht</a></div>');
   const d = evD(slug);
   if (!d) { loadEventData(slug); return card(esc(ev.name), '<div class="empty">lädt …</div>'); }
+  if (!ev.replay) loadLive(slug);
   if (EVX.mine[slug] === undefined) { EVX.mine[slug] = null; loadMine(slug); }
   const info = evInfo(slug) || {};
   // no squad unless the event switches it on (ev.squad)
   const squadOn = S.eventSquadOn(ev);
-  if (!squadOn && EVX.tab === 'team') EVX.tab = 'pickem';
-  const tabs = [...(squadOn ? [['team', adminOnly() ? 'Teams' : 'Mein Team']] : []), ['pickem', 'Pick\'em'], ...(S.eventMinigame(ev) === 'bingo' ? [['bingo', 'Bingo']] : S.eventMinigame(ev) === 'monopoly' ? [['mono', 'Monopoly']] : []), ['table', 'Tabelle'], ['tour', 'Turnier'], ['teams', 'Teilnehmer']];
+  if (!squadOn && EVX.tab === 'team') EVX.tab = 'tips';
+  if (!S.eventTipsOn(ev) && EVX.tab === 'tips') EVX.tab = 'pickem';
+  const tabs = [...(squadOn ? [['team', adminOnly() ? 'Teams' : 'Mein Team']] : []), ...(S.eventTipsOn(ev) ? [['tips', 'Tippspiel']] : []), ['pickem', 'Pick\'em'], ...(S.eventMinigame(ev) === 'bingo' ? [['bingo', 'Bingo']] : S.eventMinigame(ev) === 'monopoly' ? [['mono', 'Monopoly']] : []), ['table', 'Tabelle'], ['tour', 'Turnier'], ['teams', 'Teilnehmer']];
   const hero = `<section class="hero evhero">
       <div class="row" style="gap:18px;align-items:center;flex-wrap:wrap">${info.logo ? `<img src="${esc(info.logo)}" alt="" style="height:64px;max-width:160px;object-fit:contain">` : ''}
       <div style="min-width:0;flex:1"><div class="eyebrow">Special Event · ${esc(info.start ? new Date(info.start).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit' }) + ' – ' + new Date(info.end).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' }) : '')}</div>
@@ -294,8 +325,9 @@ function viewEvent(slug) {
       ${ev.video && videoOff(slug) ? `<button class="btn sm" id="evVid" style="margin-top:10px">▶ Video &amp; Musik an</button>` : ''}</div></div></section>`;
   const chips = `<div class="chips" style="margin:0 0 16px">${tabs.map(([k, l]) => `<button class="chip ${EVX.tab === k ? 'on' : ''}" data-evtab="${k}">${l}</button>`).join('')}</div>`;
   let body = '';
-  if (!d.teams.length && (EVX.tab === 'team' || EVX.tab === 'teams')) body = card(esc(ev.name), '<div class="empty">Die Teilnehmer stehen noch nicht fest. Sobald Riot sie einträgt (meist ein paar Tage vorher), kannst du hier dein Team bauen.</div>');
+  if (!d.teams.length && (EVX.tab === 'team' || EVX.tab === 'teams' || EVX.tab === 'tips')) body = card(esc(ev.name), '<div class="empty">Die Teilnehmer stehen noch nicht fest. Sobald Riot sie einträgt (meist ein paar Tage vorher), kannst du hier dein Team bauen.</div>');
   else if (EVX.tab === 'team') body = adminOnly() ? evAllTeams(slug) : evBuilder(slug);
+  else if (EVX.tab === 'tips') body = evTips(slug);
   else if (EVX.tab === 'pickem') body = evPickem(slug);
   else if (EVX.tab === 'bingo') body = evBingo(slug);
   else if (EVX.tab === 'mono') body = evMono(slug);
@@ -448,10 +480,12 @@ function evTable(slug) {
   const st = S.eventStages(d), rows = S.eventStandings(L(), ev, d);
   if (!S.eventSquadOn(ev)) {
     const bingo = S.eventMinigame(ev) === 'bingo';
-    return card('Event-Tabelle', `<table><thead><tr><th>#</th><th>Manager</th><th class="num">Pick'em</th>${bingo ? '<th class="num">Bingo</th>' : ''}<th class="num">Punkte</th></tr></thead><tbody>`
-      + rows.map((r, i) => `<tr class="${r.manager === me() ? 'me' : ''}"><td class="rank r${i + 1}">${i + 1}</td><td class="fill"><b>${esc(r.name)}</b>${r.manager === me() ? ' <span class="pill gold">Du</span>' : ''}</td>
-        <td class="num">${fmt(r.pickem)}</td>${bingo ? `<td class="num">${fmt(r.bingo)}</td>` : ''}<td class="num pts" style="font-size:16px">${fmt(r.total)}</td></tr>`).join('')
-      + '</tbody></table>', 'Pick\'em zählt nach dem Event');
+    const tipsOn = S.eventTipsOn(ev);
+    return card('Event-Tabelle', `<table><thead><tr><th>#</th><th>Manager</th>${tipsOn ? '<th class="num">Tipps</th>' : ''}<th class="num">Pick'em</th>${bingo ? '<th class="num hide-s">Bingo</th>' : ''}<th class="num">Punkte</th></tr></thead><tbody>`
+      + rows.map((r, i) => `<tr class="${r.manager === me() ? 'me' : ''}"><td class="rank r${i + 1}">${i + 1}</td><td class="fill"><b>${esc(r.name)}</b>${r.manager === me() ? ' <span class="pill gold">Du</span>' : ''}
+          ${tipsOn ? `<div class="dim" style="font-size:11px">${(r.tipStats || {}).right || 0} richtig · ${(r.tipStats || {}).exact || 0} exakt</div>` : ''}</td>
+        ${tipsOn ? `<td class="num">${fmt(r.tips || 0)}</td>` : ''}<td class="num">${fmt(r.pickem)}</td>${bingo ? `<td class="num hide-s">${fmt(r.bingo)}</td>` : ''}<td class="num pts" style="font-size:16px">${fmt(r.total)}</td></tr>`).join('')
+      + '</tbody></table>', tipsOn ? 'Tipps live · Pick\'em nach dem Event' : 'Pick\'em zählt nach dem Event');
   }
   if (!(ev.revealed || []).length) return card('Tabelle', '<div class="empty">Die Teams werden beim ersten Spiel aufgedeckt — ab dann zählen die Punkte.</div>');
   const table = `<table><thead><tr><th>#</th><th>Manager</th>${st.map(s => `<th class="num hide-s">${esc(s.name)}</th>`).join('')}<th class="num hide-s">Pick'em</th><th class="num">Punkte</th></tr></thead><tbody>`
@@ -572,6 +606,55 @@ function evMono(slug) {
     : '<div class="empty">Noch kein Zug — sobald die Piloten spielen, laufen die Figuren.</div>');
   return `<div class="grid g-main"><div class="stack">${card('Brett', board, 'kein Punktewert — Test')}${feed}</div><div class="stack">${mine}${table}
     ${card('Rift-Karten', `<div class="card-b dim" style="font-size:12px;line-height:1.7">${m.cards.map(c => '🃏 ' + esc(c.text)).join('<br>')}</div>`)}</div></div>`;
+}
+
+// ── Tippspiel: every match of the event ───────────────────────────────────
+function evTipChips(slug, e, mine, open) {
+  const scores = S.tipScores(e.bestOf), a = e.teams[0].code, b = e.teams[1].code;
+  if ((e.bestOf || 1) <= 1) return `<div class="tipchips">${scores.map(sc => { const winA = sc === '1:0';
+    return `<button class="tipchip ${mine === sc ? 'on' : ''}" ${open ? `data-tip="${esc(e.match)}" data-sc="${sc}"` : 'disabled'}>${evLogo(slug, winA ? a : b, 16)} ${esc(winA ? a : b)}</button>`; }).join('')}</div>`;
+  return `<div class="tipchips">${scores.map(sc => `<button class="tipchip ${mine === sc ? 'on' : ''}" ${open ? `data-tip="${esc(e.match)}" data-sc="${sc}"` : 'disabled'}>${sc}</button>`).join('')}</div>`;
+}
+function evTips(slug) {
+  const ev = L().events[slug], d = evD(slug), now = Date.now();
+  const mine = EVX.mt[slug] || (EVX.mine[slug] && EVX.mine[slug].matchTips) || {};
+  const revealed = ev.tips || {}, stages = S.eventStages(d);
+  const rows = S.eventStandings(L(), ev, d), meRow = rows.find(r => r.manager === me()) || {};
+  const c = S.tipConfig(ev);
+  const open = (d.schedule || []).filter(e => S.tipOpen(e, now));
+  const missing = open.filter(e => !mine[e.match]).length;
+  const head = adminOnly() ? '' : card('Mein Tippspiel', `<div class="card-b row" style="gap:18px;flex-wrap:wrap;align-items:baseline">
+      <span><b style="font-size:22px">${fmt(meRow.tips || 0)}</b> <span class="dim">Punkte</span></span>
+      <span><b>${(meRow.tipStats || {}).right || 0}</b> <span class="dim">richtig</span></span><span><b>${(meRow.tipStats || {}).exact || 0}</b> <span class="dim">exakt</span></span>
+      <span style="flex:1;text-align:right">${missing ? `<span class="pill live">${missing} offen zu tippen</span>` : open.length ? '<span class="pill teal">alles getippt ✓</span>' : ''}</span></div>
+    <div class="card-b dim" style="font-size:12px;border-top:1px solid var(--line)">Bo1: richtiger Sieger ${c.bo1} · Bo3/Bo5: richtiger Sieger ${c.winner}, genaues Ergebnis +${c.exact} · K.-o.-Phase ×${c.koFactor}.
+      Tippen bis zum Spielbeginn, danach sehen alle die Tipps. Neue Paarungen erscheinen von selbst.</div>`);
+  const day = iso => new Date(iso).toLocaleDateString('de-DE', { timeZone: 'Europe/Berlin', weekday: 'short', day: '2-digit', month: '2-digit' });
+  const time = iso => new Date(iso).toLocaleTimeString('de-DE', { timeZone: 'Europe/Berlin', hour: '2-digit', minute: '2-digit' });
+  const body = stages.map(st => {
+    const ms = (d.schedule || []).filter(e => e.stage === st.i).sort((x, y) => x.start.localeCompare(y.start));
+    if (!ms.length) return '';
+    const known = ms.filter(S.tipKnown).length, openN = ms.filter(e => S.tipOpen(e, now)).length;
+    let lastDay = '';
+    const list = ms.map(e => {
+      const k = S.tipKnown(e), isOpen = S.tipOpen(e, now), my = mine[e.match] || (revealed[e.match] || {})[me()];
+      const pts = S.tipPoints(ev, d, e, my);
+      const dd = day(e.start), sep = dd !== lastDay ? `<div class="tipday">${esc(dd)}</div>` : ''; lastDay = dd;
+      if (!k) return sep + `<div class="tiprow tbd"><span class="tiptime">${time(e.start)}</span><span class="dim">Paarung steht noch nicht fest · Bo${e.bestOf || 1}</span></div>`;
+      const [ta, tb] = e.teams, done = e.state === 'completed', live = !done && !isOpen;
+      const res = done ? `<b class="num">${ta.wins ?? ''}:${tb.wins ?? ''}</b>` : live ? '<span class="pill live">läuft</span>' : `<span class="dim">Bo${e.bestOf || 1}</span>`;
+      const badge = pts === null ? '' : `<span class="tippts ${pts > 0 ? 'ok' : ''}">${pts > 0 ? '+' + fmt(pts) : '0'}</span>`;
+      const others = !isOpen && EVX.openMatch === e.match ? `<div class="tipothers">${(L().managers || []).map(m => { const t = (revealed[e.match] || {})[m.id], p2 = S.tipPoints(ev, d, e, t);
+          return `<span><b>${esc(m.name)}</b> ${t ? esc(t) : '—'}${p2 ? ` <span class="tippts ok">+${fmt(p2)}</span>` : ''}</span>`; }).join('')}</div>` : '';
+      return sep + `<div class="tiprow ${isOpen ? 'open' : 'locked'}" ${!isOpen ? `data-tipopen="${esc(e.match)}"` : ''}>
+        <span class="tiptime">${time(e.start)}</span>
+        <span class="tipteam">${evLogo(slug, ta.code, 20)} <b>${esc(ta.code)}</b></span><span class="tipres">${res}</span><span class="tipteam r"><b>${esc(tb.code)}</b> ${evLogo(slug, tb.code, 20)}</span>
+        ${adminOnly() ? '' : `<div class="tipmine">${isOpen ? evTipChips(slug, e, my, true) : `<span class="dim" style="font-size:12px">Dein Tipp: <b style="color:var(--text)">${my ? esc(my) : '—'}</b></span> ${badge}`}</div>`}
+        ${others}</div>`;
+    }).join('');
+    return card(esc(st.name), list, openN ? `${openN} offen` : known < ms.length ? 'Paarungen folgen' : st.done ? 'beendet' : '');
+  }).join('');
+  return head + body;
 }
 
 function evTour(slug) {
@@ -706,7 +789,7 @@ function eventBanner() {
     ${info.logo ? `<img src="${esc(info.logo)}" alt="" style="height:46px;max-width:110px;object-fit:contain">` : ''}
     <div style="flex:1;min-width:0"><div style="font-family:var(--display);color:${t.accent};font-size:12px;letter-spacing:.14em;text-transform:uppercase">Special Event</div>
       <div style="font-family:var(--display);font-size:22px;font-weight:700;color:#fff">${esc(ev.name)}</div>
-      <div class="dim" style="font-size:12px">${started ? 'läuft — Team & Tabelle' : ev.replay ? 'Wiederholung startet ' + esc(new Date(ev.replay.from).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' })) + ' Uhr' : 'ab ' + esc(new Date(info.start).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit' })) + ' · jetzt Team bauen & tippen'}</div></div>
+      <div class="dim" style="font-size:12px">${started ? 'läuft — Tippspiel & Tabelle' : ev.replay ? 'Wiederholung startet ' + esc(new Date(ev.replay.from).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' })) + ' Uhr' : 'ab ' + esc(new Date(info.start).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit' })) + ' · jetzt Spiele tippen'}</div></div>
     <span class="btn sm" style="border-color:${t.accent};color:${t.accent}">Öffnen →</span></a>`;
 }
 
@@ -720,6 +803,15 @@ function bindEvent() {
     try { const r = await app.adminApi('POST', '/api/admin/test', { action: 'jump', slug, to: b.dataset.evjump }); toast(esc(r.message)); await app.refresh(); }
     catch (e) { toast(`<span style="color:#ffb1b3">${esc(e.message)}</span>`); b.disabled = false; }
   });
+  document.querySelectorAll('[data-tip]').forEach(b => b.onclick = async () => {
+    const match = b.dataset.tip, cur = (EVX.mt[slug] || (EVX.mt[slug] = Object.assign({}, (EVX.mine[slug] || {}).matchTips || {})))[match];
+    const score = cur === b.dataset.sc ? null : b.dataset.sc;
+    if (score === null) delete EVX.mt[slug][match]; else EVX.mt[slug][match] = score;
+    render();
+    try { await api('/api/event/tip', { method: 'POST', body: { slug, match, score } }); }
+    catch (e) { if (cur) EVX.mt[slug][match] = cur; else delete EVX.mt[slug][match]; render(); toast(`<span style="color:#ffb1b3">${esc(e.message)}</span>`); }
+  });
+  document.querySelectorAll('[data-tipopen]').forEach(r => r.onclick = () => { EVX.openMatch = EVX.openMatch === r.dataset.tipopen ? null : r.dataset.tipopen; render(); });
   const mp = $('monoPilotSave'); if (mp) mp.onclick = async () => {
     try { await api('/api/event/mono', { method: 'POST', body: { slug, pilot: $('monoPilot').value } }); toast('Pilot gesetzt — gilt ab dem nächsten Spiel.'); await app.refresh(); } catch (e) { toast(`<span style="color:#ffb1b3">${esc(e.message)}</span>`); }
   };

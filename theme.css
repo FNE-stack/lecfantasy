@@ -565,3 +565,21 @@ table.lineup a:hover{text-decoration:underline!important}
 .sw-g.sw-out .sw-h b{color:#ff8a7a}
 .sw-g.sw-out .sw-t{opacity:.6}
 @media(max-width:560px){ .swiss{grid-template-columns:1fr;gap:8px;padding:10px} }
+
+/* Tippspiel */
+.tipday{padding:8px 16px 4px;font:600 11px var(--font);letter-spacing:.12em;text-transform:uppercase;color:var(--gold);border-top:1px solid var(--line)}
+.tiprow{display:grid;grid-template-columns:44px 1fr auto 1fr;align-items:center;gap:6px 8px;padding:9px 16px;border-top:1px solid var(--line)}
+.tiprow.locked{cursor:pointer}
+.tiprow.tbd{grid-template-columns:44px 1fr;opacity:.6}
+.tiptime{font-size:12px;color:var(--muted);font-variant-numeric:tabular-nums}
+.tipteam{display:flex;align-items:center;gap:6px;min-width:0}
+.tipteam.r{justify-content:flex-end}
+.tipres{text-align:center;min-width:48px}
+.tipmine{grid-column:1 / -1;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.tipchips{display:flex;gap:6px;flex-wrap:wrap;width:100%}
+.tipchip{flex:1;min-width:52px;padding:8px 6px;border-radius:8px;border:1px solid var(--line-2);background:var(--surface-2);color:var(--text);
+  font:700 13px var(--font);display:inline-flex;align-items:center;justify-content:center;gap:6px;cursor:pointer}
+.tipchip.on{border-color:var(--gold);background:var(--gold-soft);color:var(--gold-hi)}
+.tippts{display:inline-block;padding:1px 7px;border-radius:999px;background:var(--surface-2);font:700 12px var(--font);color:var(--muted)}
+.tippts.ok{background:rgba(63,185,80,.18);color:#7ee787}
+.tipothers{grid-column:1 / -1;display:flex;flex-wrap:wrap;gap:6px 14px;font-size:12px;color:var(--muted);padding-top:4px}

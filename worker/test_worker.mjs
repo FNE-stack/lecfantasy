@@ -958,6 +958,51 @@ tests.monopoly_choices = async () => {
   return 'monopoly only when switched on, pilot / buy rule saved with time, unknown pilot / minigame refused';
 };
 
+tests.match_tips = async () => {
+  const S = globalThis.LECScoring, h = 3600e3, iso = ms => new Date(ms).toISOString();
+  const R5 = ['TOP', 'JNG', 'MID', 'BOT', 'SUP'];
+  const teams = [['AAA', 'LCK'], ['BBB', 'LEC'], ['CCC', 'LCS']].map(([code, league]) => ({ code, league, name: code }));
+  EVENT = { slug: 'ev_2026', name: 'Worlds', logo: '', teams, players: teams.flatMap(x => R5.map(r => ({ id: x.code + '_' + r, name: x.code + r, team: x.code, role: r }))),
+    stages: [{ name: 'Swiss' }, { name: 'Knockouts' }], games: [],
+    schedule: [
+      { match: 'm1', stage: 0, bestOf: 1, start: iso(Date.now() + 2 * h), state: 'unstarted', teams: [{ code: 'AAA' }, { code: 'BBB' }] },
+      { match: 'm2', stage: 0, bestOf: 3, start: iso(Date.now() + 3 * h), state: 'unstarted', teams: [{ code: 'BBB' }, { code: 'CCC' }] },
+      { match: 'm3', stage: 1, bestOf: 5, start: iso(Date.now() + 9 * h), state: 'unstarted', teams: [{ code: 'TBD' }, { code: 'TBD' }] }] };
+  const { a, tok, ids } = await liveLeague(['Ann', 'Ben']);
+  await call('POST', '/api/admin/event', { token: a, body: { action: 'create', slug: 'ev_2026', name: 'Worlds' } });
+  const tip = (who, match, score) => call('POST', '/api/event/tip', { token: tok[who], body: { slug: 'ev_2026', match, score } });
+  let r = await tip('Ann', 'm1', '1:0');
+  assert(r.status === 200, 'Bo1 tip: ' + JSON.stringify(r.body));
+  r = await tip('Ann', 'm2', '3:0');
+  assert(r.status === 400, 'a Bo3 cannot end 3:0');
+  await tip('Ann', 'm2', '2:1'); await tip('Ben', 'm1', '0:1'); await tip('Ben', 'm2', '0:2');
+  r = await tip('Ann', 'm3', '3:1');
+  assert(r.status === 409 && /Paarung/.test(r.body.error), 'TBD match not open');
+  r = await call('GET', '/api/event?slug=ev_2026', { token: tok.Ann });
+  assert(r.body.matchTips.m1 === '1:0' && r.body.matchTips.m2 === '2:1', 'own tips readable');
+  assert(!JSON.stringify(league()).includes('2:1'), 'tips secret before kickoff');
+  // m1 starts and ends: AAA wins; m2 starts, BBB wins 2:1; the knockout pairing appears
+  Object.assign(EVENT.schedule[0], { start: iso(Date.now() - h), state: 'completed', teams: [{ code: 'AAA', wins: 1, outcome: 'win' }, { code: 'BBB', wins: 0, outcome: 'loss' }] });
+  Object.assign(EVENT.schedule[1], { start: iso(Date.now() - 0.5 * h), state: 'completed', teams: [{ code: 'BBB', wins: 2, outcome: 'win' }, { code: 'CCC', wins: 1, outcome: 'loss' }] });
+  EVENT.schedule[2].teams = [{ code: 'AAA' }, { code: 'BBB' }];
+  r = await tip('Ann', 'm1', '0:1');
+  assert(r.status === 409, 'started match locked');
+  r = await tip('Ann', 'm3', '3:1');
+  assert(r.status === 200, 'knockout opens once the pairing is known');
+  await worker.scheduled({}, env, { waitUntil() {} });
+  const ev = league().events.ev_2026;
+  assert(ev.tips.m1[ids.Ann] === '1:0' && ev.tips.m2[ids.Ben] === '0:2' && !ev.tips.m3, 'started matches revealed, open ones stay secret');
+  const rows = S.eventStandings(league(), ev, EVENT);
+  const ann = rows.find(x => x.manager === ids.Ann), ben = rows.find(x => x.manager === ids.Ben);
+  // Ann: m1 right (Bo1 3) + m2 exact (2 + 2) = 7 ; Ben: both wrong = 0
+  assert(ann.tips === 7 && ann.tipStats.exact === 2 && ben.tips === 0 && rows[0].manager === ids.Ann, 'tip points: ' + JSON.stringify(rows.map(x => [x.name, x.tips])));
+  // knockouts count double: m3 AAA 3:1 -> Ann exact = (2+2)*2
+  Object.assign(EVENT.schedule[2], { start: iso(Date.now() - 0.2 * h), state: 'completed', teams: [{ code: 'AAA', wins: 3, outcome: 'win' }, { code: 'BBB', wins: 1, outcome: 'loss' }] });
+  await worker.scheduled({}, env, { waitUntil() {} });
+  assert(S.eventStandings(league(), league().events.ev_2026, EVENT).find(x => x.manager === ids.Ann).tips === 15, 'knockout x2');
+  return 'Bo1/Bo3/Bo5 scores validated, TBD + started matches locked, secret until kickoff, revealed by the cron, 3 / 2+2 points, knockouts x2';
+};
+
 tests.faab = async () => {
   const S = globalThis.LECScoring, idx = new Map(PLAYERS.players.map(p => [p.id, p]));
   const { a, tok, ids } = await liveLeague(['Ann', 'Ben']);

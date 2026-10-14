@@ -149,6 +149,12 @@ export async function botEvents(env, league) {
           if (!S.eventTeamError(ev, d, sel)) { await env.LEAGUE.put(`evt:${slug}:${stage}:${bot}`, JSON.stringify(sel)); n++; break; }
         }
       }
+      if (S.eventTipsOn(ev)) {
+        const key = `evm:${slug}:${bot}`, mine = (await env.LEAGUE.get(key, 'json')) || {};
+        let add = 0;
+        for (const e of d.schedule || []) if (S.tipOpen(e) && !mine[e.match]) { mine[e.match] = pickOne(S.tipScores(e.bestOf)); add++; }
+        if (add) { await env.LEAGUE.put(key, JSON.stringify(mine)); n++; }
+      }
       for (const round of ['pre', 'ko']) {
       const pe = ev[round === 'ko' ? 'pickemKo' : 'pickem'], lock = eventPickemLock(ev, d, round), key = round === 'ko' ? `evp:${slug}:ko:${bot}` : `evp:${slug}:${bot}`;
       if (pe && !pe.revealed && !(lock && Date.now() >= lock) && !(await env.LEAGUE.get(key))) {

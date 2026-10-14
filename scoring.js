@@ -1465,6 +1465,7 @@
     const rounds = [ev.pickem, ev.pickemKo].filter(x => x && x.revealed);
     const truth = rounds.length && eventDone(evData) ? eventTruth(evData, sc) : null;
     const shared = evData && eventMinigame(ev) === 'bingo' ? eventBingo(league, ev, evData) : null;
+    const tipTotals = eventTipTotals(league, ev, evData);
     const rows = (league.managers || []).map(m => {
       const r = { manager: m.id, name: m.name, players: 0, pickem: 0, bingo: 0, total: 0, byStage: {}, perPlayer: {}, correct: [] };
       for (const g of (squadOn && evData && evData.games) || []) {
@@ -1485,7 +1486,9 @@
       // Bingo: one card per manager per stage, scored from the games of that
       // stage. Opt-in via league.bingo.enabled so an event can run without it.
       if (shared) r.bingo = shared.score.points;
-      r.players = r2(r.players); r.total = r2(r.players + r.pickem + r.bingo);
+      const tt = tipTotals[m.id] || { pts: 0 };
+      r.tips = tt.pts; r.tipStats = tt;
+      r.players = r2(r.players); r.total = r2(r.players + r.pickem + r.bingo + (r.tips || 0));
       return r;
     });
     return rows.sort((a, b) => b.total - a.total);
@@ -1548,6 +1551,77 @@
     for (const c of ((ev.mono || {}).choices || {})[managerId] || []) if (c.rule && monoChoiceT(ev, c) < t) rule = c.rule;
     return rule;
   }
+  // ── match tips: the main game of an event ────────────────────────────────
+  // Every match is tipped as a series score in the schedule's team order
+  // ("a:b" = games of teams[0] : games of teams[1]). A match is open once
+  // both teams are known and locks at its start. Points: Bo1 right winner 3;
+  // Bo3/Bo5 right winner 2, exact score +2; knockouts (last phase) x2.
+  const TIP_DEFAULT = { bo1: 3, winner: 2, exact: 2, koFactor: 2 };
+  const tipConfig = ev => Object.assign({}, TIP_DEFAULT, (ev && ev.tipRules) || {});
+  const eventTipsOn = ev => !(ev && ev.tipping === false);
+  // the valid results of a best-of-N series, winner of teams[0] first
+  function tipScores(bestOf) {
+    const need = Math.ceil((bestOf || 1) / 2), out = [];
+    for (let l = 0; l < need; l++) out.push(`${need}:${l}`);
+    for (let l = need - 1; l >= 0; l--) out.push(`${l}:${need}`);
+    return out;
+  }
+  const tipValid = (bestOf, s) => tipScores(bestOf).includes(String(s));
+  const tipKnown = e => e && e.teams && e.teams.length === 2 && e.teams.every(t => t.code && t.code !== 'TBD');
+  // open for tips right now?
+  function tipOpen(e, now) {
+    const t = now === undefined ? Date.now() : now;
+    return tipKnown(e) && e.state !== 'completed' && e.state !== 'inProgress' && Date.parse(e.start) > t;
+  }
+  // points for one tip on one finished match (null = not finished)
+  function tipPoints(ev, evData, e, tip) {
+    if (!e || e.state !== 'completed' || !tip) return null;
+    const [a, b] = String(tip).split(':').map(Number);
+    const wa = Number(e.teams[0].wins) || 0, wb = Number(e.teams[1].wins) || 0;
+    if (wa === wb) return null;
+    const c = tipConfig(ev), stages = eventStages(evData);
+    const ko = stages.length > 1 && e.stage === stages[stages.length - 1].i ? c.koFactor : 1;
+    const rightWinner = (a > b) === (wa > wb);
+    if (!rightWinner) return 0;
+    if ((e.bestOf || 1) <= 1) return c.bo1 * ko;
+    return (c.winner + (a === wa && b === wb ? c.exact : 0)) * ko;
+  }
+  // { [manager]: { pts, tips, right, exact } } from the revealed tips (ev.tips)
+  function eventTipTotals(league, ev, evData) {
+    const out = {};
+    for (const m of league.managers || []) out[m.id] = { pts: 0, tips: 0, right: 0, exact: 0 };
+    if (!eventTipsOn(ev)) return out;
+    const byMatch = new Map(((evData && evData.schedule) || []).map(e => [e.match, e]));
+    for (const [match, tips] of Object.entries((ev && ev.tips) || {})) {
+      const e = byMatch.get(match);
+      for (const [mid, tip] of Object.entries(tips || {})) {
+        const r = out[mid];
+        if (!r) continue;
+        const p = tipPoints(ev, evData, e, tip);
+        if (p === null) continue;
+        r.tips++; r.pts += p;
+        if (p > 0) r.right++;
+        const [a, b] = String(tip).split(':').map(Number);
+        if (e && a === Number(e.teams[0].wins) && b === Number(e.teams[1].wins)) r.exact++;
+      }
+    }
+    for (const r of Object.values(out)) r.pts = r2(r.pts);
+    return out;
+  }
+  // the live schedule from lolesports, merged over the (2-hourly) event file:
+  // new pairings and results show up at once. Same match ids on both sides.
+  function mergeLiveSchedule(evData, live) {
+    if (!evData || !live || !live.length) return evData;
+    const by = new Map(live.map(e => [e.match, e]));
+    const schedule = (evData.schedule || []).map(e => {
+      const l = by.get(e.match);
+      if (!l) return e;
+      return Object.assign({}, e, { start: l.start || e.start, state: l.state || e.state, bestOf: l.bestOf || e.bestOf,
+        teams: (l.teams && l.teams.length === 2) ? l.teams : e.teams });
+    });
+    return Object.assign({}, evData, { schedule });
+  }
+
   // which side game an event runs: 'bingo' (default), 'monopoly' or 'none'
   const eventMinigame = ev => (ev && ['bingo', 'monopoly', 'none'].includes(ev.minigame) ? ev.minigame : 'bingo');
   function eventMonopoly(league, ev, evData) {
@@ -1657,7 +1731,7 @@
     suggestedCapacity, calendar, blockKey, lineupConfig, lineupFor, lineupPreview, scoreBook, autoWindows, faabLeft,
     PICKEM_TYPES, pickemTruth, pickemPoints, pickemLock, splitDone,
     weekRecap, hallEntry, hallDue, statTruth, scoreTips,
-    BINGO, bingoHits, bingoCard, bingoScore, bingoStageRows, eventBingo, eventMonopoly, monoBoard, MONO_CARDS, eventMinigame, eventSquadOn, eventPickemCatalog,
+    BINGO, bingoHits, bingoCard, bingoScore, bingoStageRows, eventBingo, eventMonopoly, monoBoard, MONO_CARDS, eventMinigame, eventSquadOn, eventPickemCatalog, tipScores, tipValid, tipOpen, tipKnown, tipPoints, tipConfig, eventTipsOn, eventTipTotals, mergeLiveSchedule,
     EVENT_TYPES, eventConfig, eventQuestionTeams, eventTeamPrice, eventPrice, eventPlayer, eventStages, eventOpenStage, eventDone, eventTeamError, eventLineup, eventTruth, eventStandings, eventReplay, eventReplayPlan, eventLevels, eventTeamLevel, eventFinalScores
   };
 // `this` is undefined in an ES module, so a Cloudflare Worker importing this

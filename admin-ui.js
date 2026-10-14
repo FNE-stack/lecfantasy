@@ -429,9 +429,9 @@ function viewTest() {
 const EVA = { data: {} };
 // points per question (multi picks: per correct team); what is ticked by default per round
 // points per question (team lists: per correct team) and what is ticked by default
-const EV_PK_DEFAULT = { playInOut: 5, firstTop: 5, swiss30s: 5, swissAdv6: 2, swiss03s: 5, bestLec: 5, regionMostKo: 5,
-  mostKills: 5, mostDeaths: 5, mostAssists: 5, mostPicked: 5, champMostWins: 5, shortestGame: 5, longestGame: 5, totalGames: 5,
-  distinctChamps: 5, teamKillsGame: 5, bloodiest: 5, koSemis: 5, koFinal: 10, champion: 20, finalScore: 10, winnerRegion: 5 };
+const EV_PK_DEFAULT = { playInOut: 2, firstTop: 2, swiss30s: 2, swissAdv6: 1, swiss03s: 2, bestLec: 2, regionMostKo: 2,
+  mostKills: 2, mostDeaths: 2, mostAssists: 2, mostPicked: 2, champMostWins: 2, shortestGame: 2, longestGame: 2, totalGames: 2,
+  distinctChamps: 2, teamKillsGame: 2, bloodiest: 2, koSemis: 2, koFinal: 3, champion: 5, finalScore: 3, winnerRegion: 2 };
 const EV_PK_ON = { pre: ['playInOut', 'firstTop', 'swiss30s', 'swissAdv6', 'swiss03s', 'bestLec', 'koSemis', 'koFinal', 'champion', 'finalScore', 'mostKills', 'mostDeaths', 'mostPicked', 'shortestGame', 'totalGames'],
                    ko: ['koSemis', 'koFinal', 'champion', 'finalScore', 'winnerRegion'] };
 const EV_KO_DEFAULT = {};

@@ -10,12 +10,47 @@
 import { S, HttpError, readLeague, readLeagueFresh, writeLeague, publicData, writeSiteFile } from './store.js';
 import { notify } from './push.js';
 
-// ev given: a test replay (ev.replay) is applied, so every check sees replay time
+// The schedule straight from lolesports (pairings + results within a minute),
+// merged over the event file that the stats job only refreshes every 2 hours.
+const GW = 'https://esports-api.lolesports.com/persisted/gw/', GW_KEY = '0TvQnueqKa5mxJntVWt0w4LpLfEkrV1Ta8rQBb9Z';
+let leagueIds = null;
+const liveCache = new Map();
+async function gw(op, params) {
+  const q = new URLSearchParams(Object.assign({ hl: 'en-US' }, params || {}));
+  const r = await fetch(`${GW}${op}?${q}`, { headers: { 'x-api-key': GW_KEY }, cf: { cacheTtl: 30, cacheEverything: true } });
+  if (!r.ok) throw new Error(op + ' ' + r.status);
+  return (await r.json()).data;
+}
+export async function liveSchedule(leagueSlug) {
+  const hit = liveCache.get(leagueSlug);
+  if (hit && Date.now() - hit.at < 30000) return hit.rows;
+  if (!leagueIds) leagueIds = Object.fromEntries((await gw('getLeagues')).leagues.map(l => [l.slug, l.id]));
+  const id = leagueIds[leagueSlug];
+  if (!id) return [];
+  const first = (await gw('getSchedule', { leagueId: id })).schedule;
+  let events = first.events.slice();
+  for (const dir of ['newer', 'older']) {
+    const tok = (first.pages || {})[dir];
+    if (tok) { const s = (await gw('getSchedule', { leagueId: id, pageToken: tok })).schedule; events = dir === 'newer' ? events.concat(s.events) : s.events.concat(events); }
+  }
+  const rows = events.filter(e => e.type === 'match' && e.match).map(e => ({ match: e.match.id, start: e.startTime, state: e.state,
+    bestOf: (e.match.strategy || {}).count || 1,
+    teams: (e.match.teams || []).map(t => ({ code: t.code || 'TBD', wins: (t.result || {}).gameWins, outcome: (t.result || {}).outcome })) }));
+  liveCache.set(leagueSlug, { at: Date.now(), rows });
+  return rows;
+}
+// ev given: a test replay (ev.replay) is applied, so every check sees replay
+// time; a real event that is on gets the live schedule merged in
 export async function eventData(env, slug, ev) {
   if (!/^[a-z0-9_]+$/.test(String(slug || ''))) throw new HttpError(400, 'Event fehlt');
   const d = await publicData(env, `events/${slug}.json`, 120);
   if (!d) throw new HttpError(404, 'Für dieses Event gibt es noch keine Daten.');
-  return ev && ev.replay ? S.eventReplay(d, ev.replay) : d;
+  if (ev && ev.replay) return S.eventReplay(d, ev.replay);
+  const now = Date.now();
+  if (d.league && d.start && Date.parse(d.start) - 3 * 864e5 <= now && Date.parse(d.end) + 3 * 864e5 >= now) {
+    try { return S.mergeLiveSchedule(d, await liveSchedule(d.league)); } catch (e) { /* the file is good enough */ }
+  }
+  return d;
 }
 function eventOf(league, slug) {
   const ev = (league.events || {})[slug];
@@ -51,7 +86,28 @@ export async function eventState(env, me, slug) {
   }
   // older pages read tips/pickemLocked/pickemLockAt
   const pre = rounds.pre || {};
-  return { stage, team, rounds, tips: pre.tips || {}, pickemLocked: !!pre.locked, pickemLockAt: pre.lockAt || null };
+  const matchTips = (await env.LEAGUE.get(`evm:${slug}:${me}`, 'json')) || {};
+  return { stage, team, rounds, tips: pre.tips || {}, pickemLocked: !!pre.locked, pickemLockAt: pre.lockAt || null, matchTips };
+}
+
+// one match tip: { slug, match, score: "a:b" | null }. Only while the match is
+// open (both teams known, not started); secret until the match starts.
+export async function eventSaveTip(env, me, body) {
+  const slug = String(body.slug || '');
+  const { data: league } = await readLeague(env);
+  const ev = eventOf(league, slug);
+  if (!S.eventTipsOn(ev)) throw new HttpError(409, 'Bei diesem Event gibt es kein Tippspiel.');
+  const d = await eventData(env, slug, ev);
+  const e = (d.schedule || []).find(x => x.match === String(body.match || ''));
+  if (!e) throw new HttpError(404, 'Unbekanntes Spiel.');
+  if (!S.tipKnown(e)) throw new HttpError(409, 'Die Paarung steht noch nicht fest.');
+  if (!S.tipOpen(e)) throw new HttpError(409, 'Das Spiel hat schon begonnen — Tipp gesperrt.');
+  const score = body.score === null || body.score === '' ? null : String(body.score);
+  if (score !== null && !S.tipValid(e.bestOf, score)) throw new HttpError(400, `Kein gültiges Ergebnis für Bo${e.bestOf || 1}.`);
+  const key = `evm:${slug}:${me}`, mine = (await env.LEAGUE.get(key, 'json')) || {};
+  if (score === null) delete mine[e.match]; else mine[e.match] = score;
+  await env.LEAGUE.put(key, JSON.stringify(mine));
+  return { match: e.match, score };
 }
 
 export async function eventSaveTeam(env, me, body) {
@@ -151,8 +207,21 @@ export async function eventCron(env, league) {
   for (const [slug, ev] of evs) {
     const raw = await publicData(env, `events/${slug}.json`, 120);
     if (!raw) continue;
-    const d = ev.replay ? S.eventReplay(raw, ev.replay) : raw;
-    const now = Date.now(), p = { stages: {}, tips: null, hall: null };
+    const d = await eventData(env, slug, ev).catch(() => (ev.replay ? S.eventReplay(raw, ev.replay) : raw));
+    const now = Date.now(), p = { stages: {}, tips: null, hall: null, matchTips: null };
+    if (S.eventTipsOn(ev)) {
+      const done = new Set(ev.tipsDone || []);
+      const started = (d.schedule || []).filter(e => !done.has(e.match) && S.tipKnown(e) && (e.state !== 'unstarted' || Date.parse(e.start) <= now));
+      if (started.length) {
+        const all = {};
+        for (const id of ids) all[id] = (await env.LEAGUE.get(`evm:${slug}:${id}`, 'json')) || {};
+        p.matchTips = {};
+        for (const e of started) {
+          p.matchTips[e.match] = {};
+          for (const id of ids) if (all[id][e.match]) p.matchTips[e.match][id] = all[id][e.match];
+        }
+      }
+    }
     for (const st of S.eventSquadOn(ev) ? S.eventStages(d) : []) {
       if (st.lock === null || st.lock > now || (ev.revealed || []).includes(st.i)) continue;
       p.stages[st.i] = {};
@@ -167,9 +236,9 @@ export async function eventCron(env, league) {
       }
     }
     // hall of fame once it is over - and only if anybody actually played it
-    const played = Object.keys(ev.lineups || {}).length || (ev.pickem && ev.pickem.revealed && Object.keys(ev.pickem.picks || {}).length) || S.eventMinigame(ev) === 'bingo';
+    const played = Object.keys(ev.lineups || {}).length || Object.keys(ev.tips || {}).length || (ev.pickem && ev.pickem.revealed && Object.keys(ev.pickem.picks || {}).length) || S.eventMinigame(ev) === 'bingo';
     if (S.eventDone(d) && !(league.hall || {})['event_' + slug] && played && (league.managers || []).length) p.hall = { d };
-    if (Object.keys(p.stages).length || p.tips || p.hall) patch[slug] = p;
+    if (Object.keys(p.stages).length || p.tips || p.hall || p.matchTips) patch[slug] = p;
   }
   await bingoNotices(env, league).catch(() => null);
   if (!Object.keys(patch).length) return null;
@@ -183,6 +252,14 @@ export async function eventCron(env, league) {
         ev.lineups[i] = Object.assign({}, ev.lineups[i] || {}, teams);
         ev.revealed.push(+i);
       }
+      if (p.matchTips) {
+        ev.tips = ev.tips || {}; ev.tipsDone = ev.tipsDone || [];
+        for (const [m, t] of Object.entries(p.matchTips)) {
+          if (ev.tipsDone.includes(m)) continue;
+          ev.tips[m] = Object.assign({}, ev.tips[m] || {}, t);
+          ev.tipsDone.push(m);
+        }
+      }
       for (const [key, tips] of Object.entries(p.tips || {})) {
         const pe = ev[key];
         if (pe && !pe.revealed) { pe.picks = Object.assign({}, pe.picks || {}, tips); pe.revealed = true; pe.revealedAt = new Date().toISOString(); }
@@ -191,7 +268,7 @@ export async function eventCron(env, league) {
         const rows = S.eventStandings(l, ev, p.hall.d);
         l.hall = l.hall || {};
         l.hall['event_' + slug] = { event: true, slug, name: ev.name, logo: p.hall.d.logo, at: new Date().toISOString(),
-          table: rows.map(r => ({ manager: r.manager, name: r.name, pts: r.total, players: r.players, pickem: r.pickem })) };
+          table: rows.map(r => ({ manager: r.manager, name: r.name, pts: r.total, tips: r.tips, players: r.players, pickem: r.pickem })) };
       }
     }
     return l;
@@ -296,7 +373,7 @@ export async function eventAdmin(env, body) {
     return l;
   }, () => 'admin: ' + msg);
   if (a === 'delete') {
-    for (const pre of [`evt:${slug}:`, `evp:${slug}:`]) {
+    for (const pre of [`evt:${slug}:`, `evp:${slug}:`, `evm:${slug}:`]) {
       const r = await env.LEAGUE.list({ prefix: pre });
       for (const k of r.keys) await env.LEAGUE.delete(k.name);
     }

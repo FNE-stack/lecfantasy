@@ -21,7 +21,7 @@ import { addMember, makePick, autoPickIfDue, deadline, tradeAction, nameKey, cla
          setLineup, pickemState, savePickem, revealPickems } from './draft.js';
 import { runOp, adminState, rotateInvite, health, runStats, broadcast, leagueHistory } from './admin.js';
 import { subscribe, unsubscribe, notify } from './push.js';
-import { eventState, eventSaveTeam, eventSavePickem, eventSaveMono, eventCron, eventAdmin } from './events.js';
+import { eventState, eventSaveTeam, eventSavePickem, eventSaveMono, eventSaveTip, eventCron, eventAdmin } from './events.js';
 import { testStart, testEnd, runBots, botPickems, botTrade, botChat, botEvents } from './testmode.js';
 import { backupCron, backupList, backupGet, backupNow, backupRestore, backupDelete } from './backup.js';
 import { chatState, chatLast, chatPost, chatDelete, chatMute, lineupReminders, recapPush, hallCron, hallAdmin } from './extras.js';
@@ -257,6 +257,7 @@ async function route(request, env, ctx) {
   if (p === '/api/event/team' && method === 'POST') return eventSaveTeam(env, me, body);
   if (p === '/api/event/pickem' && method === 'POST') return eventSavePickem(env, me, body);
   if (p === '/api/event/mono' && method === 'POST') return eventSaveMono(env, me, body);
+  if (p === '/api/event/tip' && method === 'POST') return eventSaveTip(env, me, body);
   if (p === '/api/chat/mute' && method === 'POST') return chatMute(env, me, !!body.mute);
   if (p === '/api/chat') {
     if (method === 'POST') {

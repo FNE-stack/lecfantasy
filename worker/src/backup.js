@@ -15,7 +15,7 @@
 import { S, HttpError, readLeagueFresh, writeLeague, publicData, playerIndex } from './store.js';
 
 const KEEP = 60;
-const KV_PARTS = { tips: 'pick:', claims: 'claims:', queues: 'queue:', eventTeams: 'evt:', eventTips: 'evp:' };
+const KV_PARTS = { tips: 'pick:', claims: 'claims:', queues: 'queue:', eventTeams: 'evt:', eventTips: 'evp:', matchTips: 'evm:' };
 
 async function listAll(env, prefix) {
   const keys = [];
