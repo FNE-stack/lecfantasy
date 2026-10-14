@@ -577,7 +577,7 @@ table.lineup a:hover{text-decoration:underline!important}
 .tipres{text-align:center;min-width:48px}
 .tipmine{grid-column:1 / -1;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
 .tipchips{display:flex;gap:6px;flex-wrap:wrap;width:100%}
-.tipchip{flex:1;min-width:52px;padding:8px 6px;border-radius:8px;border:1px solid var(--line-2);background:var(--surface-2);color:var(--text);
+.tipchip{flex:1;min-width:0;padding:8px 6px;border-radius:8px;border:1px solid var(--line-2);background:var(--surface-2);color:var(--text);
   font:700 13px var(--font);display:inline-flex;align-items:center;justify-content:center;gap:6px;cursor:pointer}
 .tipchip.on{border-color:var(--gold);background:var(--gold-soft);color:var(--gold-hi)}
 .tippts{display:inline-block;padding:1px 7px;border-radius:999px;background:var(--surface-2);font:700 12px var(--font);color:var(--muted)}

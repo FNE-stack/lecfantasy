@@ -484,7 +484,7 @@ function evTable(slug) {
     return card('Event-Tabelle', `<table><thead><tr><th>#</th><th>Manager</th>${tipsOn ? '<th class="num">Tipps</th>' : ''}<th class="num">Pick'em</th>${bingo ? '<th class="num hide-s">Bingo</th>' : ''}<th class="num">Punkte</th></tr></thead><tbody>`
       + rows.map((r, i) => `<tr class="${r.manager === me() ? 'me' : ''}"><td class="rank r${i + 1}">${i + 1}</td><td class="fill"><b>${esc(r.name)}</b>${r.manager === me() ? ' <span class="pill gold">Du</span>' : ''}
           ${tipsOn ? `<div class="dim" style="font-size:11px">${(r.tipStats || {}).right || 0} richtig · ${(r.tipStats || {}).exact || 0} exakt</div>` : ''}</td>
-        ${tipsOn ? `<td class="num">${fmt(r.tips || 0)}</td>` : ''}<td class="num">${fmt(r.pickem)}</td>${bingo ? `<td class="num hide-s">${fmt(r.bingo)}</td>` : ''}<td class="num pts" style="font-size:16px">${fmt(r.total)}</td></tr>`).join('')
+        ${tipsOn ? `<td class="num">${r.tips || 0}</td>` : ''}<td class="num">${fmt(r.pickem)}</td>${bingo ? `<td class="num hide-s">${fmt(r.bingo)}</td>` : ''}<td class="num pts" style="font-size:16px">${fmt(r.total)}</td></tr>`).join('')
       + '</tbody></table>', tipsOn ? 'Tipps live · Pick\'em nach dem Event' : 'Pick\'em zählt nach dem Event');
   }
   if (!(ev.revealed || []).length) return card('Tabelle', '<div class="empty">Die Teams werden beim ersten Spiel aufgedeckt — ab dann zählen die Punkte.</div>');
@@ -613,7 +613,8 @@ function evTipChips(slug, e, mine, open) {
   const scores = S.tipScores(e.bestOf), a = e.teams[0].code, b = e.teams[1].code;
   if ((e.bestOf || 1) <= 1) return `<div class="tipchips">${scores.map(sc => { const winA = sc === '1:0';
     return `<button class="tipchip ${mine === sc ? 'on' : ''}" ${open ? `data-tip="${esc(e.match)}" data-sc="${sc}"` : 'disabled'}>${evLogo(slug, winA ? a : b, 16)} ${esc(winA ? a : b)}</button>`; }).join('')}</div>`;
-  return `<div class="tipchips">${scores.map(sc => `<button class="tipchip ${mine === sc ? 'on' : ''}" ${open ? `data-tip="${esc(e.match)}" data-sc="${sc}"` : 'disabled'}>${sc}</button>`).join('')}</div>`;
+  const cols = scores.length > 4 ? scores.length / 2 : scores.length;
+  return `<div class="tipchips" style="display:grid;grid-template-columns:repeat(${cols},1fr)">${scores.map(sc => `<button class="tipchip ${mine === sc ? 'on' : ''}" ${open ? `data-tip="${esc(e.match)}" data-sc="${sc}"` : 'disabled'}>${sc}</button>`).join('')}</div>`;
 }
 function evTips(slug) {
   const ev = L().events[slug], d = evD(slug), now = Date.now();
@@ -624,7 +625,7 @@ function evTips(slug) {
   const open = (d.schedule || []).filter(e => S.tipOpen(e, now));
   const missing = open.filter(e => !mine[e.match]).length;
   const head = adminOnly() ? '' : card('Mein Tippspiel', `<div class="card-b row" style="gap:18px;flex-wrap:wrap;align-items:baseline">
-      <span><b style="font-size:22px">${fmt(meRow.tips || 0)}</b> <span class="dim">Punkte</span></span>
+      <span><b style="font-size:22px">${meRow.tips || 0}</b> <span class="dim">Punkte</span></span>
       <span><b>${(meRow.tipStats || {}).right || 0}</b> <span class="dim">richtig</span></span><span><b>${(meRow.tipStats || {}).exact || 0}</b> <span class="dim">exakt</span></span>
       <span style="flex:1;text-align:right">${missing ? `<span class="pill live">${missing} offen zu tippen</span>` : open.length ? '<span class="pill teal">alles getippt ✓</span>' : ''}</span></div>
     <div class="card-b dim" style="font-size:12px;border-top:1px solid var(--line)">Bo1: richtiger Sieger ${c.bo1} · Bo3/Bo5: richtiger Sieger ${c.winner}, genaues Ergebnis +${c.exact} · K.-o.-Phase ×${c.koFactor}.
@@ -643,9 +644,9 @@ function evTips(slug) {
       if (!k) return sep + `<div class="tiprow tbd"><span class="tiptime">${time(e.start)}</span><span class="dim">Paarung steht noch nicht fest · Bo${e.bestOf || 1}</span></div>`;
       const [ta, tb] = e.teams, done = e.state === 'completed', live = !done && !isOpen;
       const res = done ? `<b class="num">${ta.wins ?? ''}:${tb.wins ?? ''}</b>` : live ? '<span class="pill live">läuft</span>' : `<span class="dim">Bo${e.bestOf || 1}</span>`;
-      const badge = pts === null ? '' : `<span class="tippts ${pts > 0 ? 'ok' : ''}">${pts > 0 ? '+' + fmt(pts) : '0'}</span>`;
+      const badge = pts === null ? '' : `<span class="tippts ${pts > 0 ? 'ok' : ''}">${pts > 0 ? '+' + pts : '0'}</span>`;
       const others = !isOpen && EVX.openMatch === e.match ? `<div class="tipothers">${(L().managers || []).map(m => { const t = (revealed[e.match] || {})[m.id], p2 = S.tipPoints(ev, d, e, t);
-          return `<span><b>${esc(m.name)}</b> ${t ? esc(t) : '—'}${p2 ? ` <span class="tippts ok">+${fmt(p2)}</span>` : ''}</span>`; }).join('')}</div>` : '';
+          return `<span><b>${esc(m.name)}</b> ${t ? esc(t) : '—'}${p2 ? ` <span class="tippts ok">+${p2}</span>` : ''}</span>`; }).join('')}</div>` : '';
       return sep + `<div class="tiprow ${isOpen ? 'open' : 'locked'}" ${!isOpen ? `data-tipopen="${esc(e.match)}"` : ''}>
         <span class="tiptime">${time(e.start)}</span>
         <span class="tipteam">${evLogo(slug, ta.code, 20)} <b>${esc(ta.code)}</b></span><span class="tipres">${res}</span><span class="tipteam r"><b>${esc(tb.code)}</b> ${evLogo(slug, tb.code, 20)}</span>
