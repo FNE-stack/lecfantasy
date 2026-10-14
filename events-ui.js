@@ -317,7 +317,7 @@ function viewEvent(slug) {
   const squadOn = S.eventSquadOn(ev);
   if (!squadOn && EVX.tab === 'team') EVX.tab = 'tips';
   if (!S.eventTipsOn(ev) && EVX.tab === 'tips') EVX.tab = 'pickem';
-  const tabs = [...(squadOn ? [['team', adminOnly() ? 'Teams' : 'Mein Team']] : []), ...(S.eventTipsOn(ev) ? [['tips', 'Tippspiel']] : []), ['pickem', 'Pick\'em'], ...(S.eventMinigame(ev) === 'bingo' ? [['bingo', 'Bingo']] : S.eventMinigame(ev) === 'monopoly' ? [['mono', 'Monopoly']] : []), ['table', 'Tabelle'], ['tour', 'Turnier'], ['teams', 'Teilnehmer']];
+  const tabs = [...(squadOn ? [['team', adminOnly() ? 'Teams' : 'Mein Team']] : []), ...(S.eventTipsOn(ev) ? [['tips', 'Tippspiel']] : []), ['live', ((d.schedule || []).some(e => e.state === 'inProgress') ? '<span class="live-dot"></span> ' : '') + 'Live'], ['pickem', 'Pick\'em'], ...(S.eventMinigame(ev) === 'bingo' ? [['bingo', 'Bingo']] : S.eventMinigame(ev) === 'monopoly' ? [['mono', 'Monopoly']] : []), ['table', 'Tabelle'], ['tour', 'Turnier'], ['teams', 'Teilnehmer']];
   const hero = `<section class="hero evhero">
       <div class="row" style="gap:18px;align-items:center;flex-wrap:wrap">${info.logo ? `<img src="${esc(info.logo)}" alt="" style="height:64px;max-width:160px;object-fit:contain">` : ''}
       <div style="min-width:0;flex:1"><div class="eyebrow">Special Event · ${esc(info.start ? new Date(info.start).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit' }) + ' – ' + new Date(info.end).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' }) : '')}</div>
@@ -328,6 +328,7 @@ function viewEvent(slug) {
   if (!d.teams.length && (EVX.tab === 'team' || EVX.tab === 'teams' || EVX.tab === 'tips')) body = card(esc(ev.name), '<div class="empty">Die Teilnehmer stehen noch nicht fest. Sobald Riot sie einträgt (meist ein paar Tage vorher), kannst du hier dein Team bauen.</div>');
   else if (EVX.tab === 'team') body = adminOnly() ? evAllTeams(slug) : evBuilder(slug);
   else if (EVX.tab === 'tips') body = evTips(slug);
+  else if (EVX.tab === 'live') body = evLive(slug);
   else if (EVX.tab === 'pickem') body = evPickem(slug);
   else if (EVX.tab === 'bingo') body = evBingo(slug);
   else if (EVX.tab === 'mono') body = evMono(slug);
@@ -658,6 +659,192 @@ function evTips(slug) {
   return head + body;
 }
 
+// ── Live: every game of the event, straight from the lolesports feed ─────
+// Scoreboard, champions, K/D/A, CS, gold, items, damage share, dragons - live
+// (the feed lags the stream by a few minutes) and for finished games. The feed
+// has no draft: bans come from Leaguepedia (entered by hand a few minutes
+// after a game). Asked here once per game; the stats job also stores them in
+// the event file (d.bans) every 2 hours, so they always arrive.
+const LV = { match: null, pinned: false, sel: {}, selUser: {}, det: {}, game: {}, t0: {}, lag: {}, lp: {}, lpWait: 0, busy: {}, tried: {}, inv: null };
+const LGW = 'https://esports-api.lolesports.com/persisted/gw/', LFEED = 'https://feed.lolesports.com/livestats/v1/', LKEY = '0TvQnueqKa5mxJntVWt0w4LpLfEkrV1Ta8rQBb9Z';
+const LADDER = [60, 120, 180, 240, 300, 420, 600, 900];
+const TRINKETS = new Set([3340, 3363, 3364, 3330, 3513]);
+const DRAGON_DE = { infernal: 'Infernal', ocean: 'Ozean', mountain: 'Berg', cloud: 'Wolken', hextech: 'Hextech', chemtech: 'Chemtech', elder: 'Älteste' };
+const lvStamp = ms => { const x = new Date(ms); x.setMilliseconds(0); x.setSeconds(x.getSeconds() - x.getSeconds() % 10); return x.toISOString().replace('.000Z', 'Z'); };
+async function lvJson(url, headers) {
+  const r = await fetch(url, headers ? { headers } : undefined).catch(() => null);
+  if (!r || !r.ok) return null;          // 400 = "that moment is not in the feed yet"
+  const t = await r.text();
+  try { return t ? JSON.parse(t) : null; } catch (e) { return null; }
+}
+// one async load at a time per key, never more often than every 15 s
+function lvKick(key, fn) {
+  if (LV.busy[key] || Date.now() - (LV.tried[key] || 0) < 15000) return;
+  LV.busy[key] = true; LV.tried[key] = Date.now();
+  fn().catch(() => {}).finally(() => { delete LV.busy[key]; if (EVX.tab === 'live' && /^\/event\//.test(path())) render(); });
+}
+// the games of one match
+async function lvMatch(id) {
+  const j = await lvJson(LGW + 'getEventDetails?hl=en-US&id=' + id, { 'x-api-key': LKEY });
+  const m = j && j.data && j.data.event && j.data.event.match;
+  if (!m) return;
+  LV.det[id] = { at: Date.now(), teams: (m.teams || []).map(t => ({ id: t.id, code: t.code })),
+    games: (m.games || []).filter(g => g.state === 'completed' || g.state === 'inProgress').map(g => ({ id: g.id, n: g.number, state: g.state })) };
+}
+async function lvAt(gid, at) {
+  const [w, dt] = await Promise.all([lvJson(`${LFEED}window/${gid}?startingTime=${at}`), lvJson(`${LFEED}details/${gid}?startingTime=${at}`)]);
+  if (!w || !w.frames || !w.frames.length) return null;
+  return { meta: w.gameMetadata, frame: w.frames[w.frames.length - 1], det: dt && dt.frames && dt.frames.length ? dt.frames[dt.frames.length - 1] : null };
+}
+// live: the newest moment the feed has; finished: its last frame
+async function lvGame(gid, finished) {
+  if (LV.game[gid] && LV.game[gid].done) return;
+  if (!LV.t0[gid]) {
+    const w0 = await lvJson(LFEED + 'window/' + gid);
+    if (!w0 || !w0.frames || !w0.frames.length) return;
+    LV.t0[gid] = Date.parse(w0.frames[0].rfc460Timestamp);
+  }
+  const t0 = LV.t0[gid];
+  let g = null;
+  if (finished) {
+    // past the end the feed keeps answering with the last frame; a game that
+    // never says "finished" (surrender, feed cut) ends where frames stop moving
+    let prev = null;
+    for (const m of [70, 100, 140]) {
+      const x = await lvAt(gid, lvStamp(t0 + m * 60e3));
+      if (!x) continue;
+      g = x;
+      if (x.frame.gameState === 'finished' || x.frame.rfc460Timestamp === prev) break;
+      prev = x.frame.rfc460Timestamp;
+    }
+  } else {
+    for (const back of LADDER.slice(Math.max(0, LADDER.indexOf(LV.lag[gid] || 60) - 1))) {
+      const x = await lvAt(gid, lvStamp(Date.now() - back * 1000));
+      if (x) { LV.lag[gid] = back; g = x; break; }
+    }
+  }
+  if (!g) return;
+  g.at = Date.now(); g.t0 = t0;
+  g.done = finished || g.frame.gameState === 'finished';
+  LV.game[gid] = g;
+}
+const lvNorm = x => String(x || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+function lvChamp(name) {
+  if (!LV.inv) { LV.inv = {}; for (const [id, n] of Object.entries((app.D.champs && app.D.champs.names) || {})) { LV.inv[lvNorm(n)] = id; LV.inv[lvNorm(id)] = id; } }
+  return LV.inv[lvNorm(name)] || null;
+}
+const lvChamps = list => String(list || '').split(',').map(lvChamp).filter(Boolean);
+// Leaguepedia, for a finished game: { bans: { [code]: [champ ids] }, win: code }
+async function lvBans(gid, g, cb, cr) {
+  if (Date.now() < LV.lpWait) return;
+  const f = ms => new Date(ms).toISOString().slice(0, 19).replace('T', ' ');
+  const q = new URLSearchParams({ action: 'cargoquery', format: 'json', origin: '*', tables: 'ScoreboardGames', limit: '40',
+    fields: 'Team1Bans,Team2Bans,Team1Picks,Team2Picks,Winner', where: `DateTime_UTC >= "${f(g.t0 - 4 * 36e5)}" AND DateTime_UTC <= "${f(g.t0 + 4 * 36e5)}"` });
+  const j = await lvJson('https://lol.fandom.com/api.php?' + q);
+  if (!j || j.error) { if (j && j.error && j.error.code === 'ratelimited') LV.lpWait = Date.now() + 10 * 60e3; return; }
+  const side = sd => new Set(g.meta[sd + 'TeamMetadata'].participantMetadata.map(x => x.championId));
+  const blue = side('blue'), red = side('red');
+  const hits = (list, set) => lvChamps(list).filter(c => set.has(c)).length;
+  for (const r of (j.cargoquery || []).map(x => x.title)) {
+    for (const [a, b] of [['Team1', 'Team2'], ['Team2', 'Team1']]) {
+      if (hits(r[a + 'Picks'], blue) >= 4 && hits(r[b + 'Picks'], red) >= 4) {
+        const w = String(r.Winner || '');
+        LV.lp[gid] = { bans: { [cb]: lvChamps(r[a + 'Bans']), [cr]: lvChamps(r[b + 'Bans']) }, win: w === (a === 'Team1' ? '1' : '2') ? cb : w ? cr : null };
+        return;
+      }
+    }
+  }
+}
+function evLive(slug) {
+  const d = evD(slug), now = Date.now(), ev = L().events[slug];
+  const day = iso => new Date(iso).toLocaleDateString('de-DE', { timeZone: 'Europe/Berlin', day: '2-digit', month: '2-digit' });
+  const known = (d.schedule || []).filter(S.tipKnown);
+  const running = known.filter(e => e.state === 'inProgress');
+  const list = running.concat(known.filter(e => e.state === 'completed').sort((a, b) => b.start.localeCompare(a.start)));
+  if (!list.length) {
+    const next = (d.schedule || []).filter(e => e.state === 'unstarted').sort((a, b) => a.start.localeCompare(b.start))[0];
+    return card('Live', `<div class="empty">Noch kein Spiel gelaufen.${next ? ` Los geht's ${esc(day(next.start))} um ${esc(new Date(next.start).toLocaleTimeString('de-DE', { timeZone: 'Europe/Berlin', hour: '2-digit', minute: '2-digit' }))} Uhr.` : ''}<br>
+      Hier läuft dann jedes Spiel mit: Champions, K/D/A, Items, Gold, Türme, Drachen — und die Bans.</div>`);
+  }
+  if (!LV.pinned || !list.find(e => e.match === LV.match)) { LV.match = list[0].match; LV.pinned = false; }
+  const e = list.find(x => x.match === LV.match), live = e.state === 'inProgress';
+  const strip = `<div class="lvstrip">${list.map(x => `<button class="lvm ${x.match === e.match ? 'on' : ''}" data-lvm="${esc(x.match)}">
+      <span class="lvm-t">${evLogo(slug, x.teams[0].code, 18)}<b>${x.teams[0].wins ?? 0}:${x.teams[1].wins ?? 0}</b>${evLogo(slug, x.teams[1].code, 18)}</span>
+      <small>${x.state === 'inProgress' ? '<span class="live-dot"></span> live' : esc(day(x.start))}</small></button>`).join('')}</div>`;
+  const det = LV.det[e.match];
+  if (!det || live && now - det.at > 30000 || !live && det.games.some(g => g.state === 'inProgress')) lvKick('m' + e.match, () => lvMatch(e.match));
+  const title = `${esc(e.teams[0].code)} ${e.teams[0].wins ?? 0}:${e.teams[1].wins ?? 0} ${esc(e.teams[1].code)} · Bo${e.bestOf || 1}`;
+  if (!det) return strip + card(title, '<div class="empty">lädt …</div>');
+  if (!det.games.length) return strip + card(title, '<div class="empty">Gleich geht\'s los — der Live-Feed kommt ein paar Minuten nach dem Stream.</div>');
+  let gid = LV.sel[e.match];
+  const cur = det.games.find(g => g.state === 'inProgress') || det.games[det.games.length - 1];
+  if (!gid || !LV.selUser[e.match] || !det.games.find(g => g.id === gid)) gid = cur.id;
+  const gm = det.games.find(g => g.id === gid), g = LV.game[gid];
+  const finished = gm.state === 'completed' || !!ev.replay;
+  if (!g || !g.done && now - g.at > 20000) lvKick('g' + gid, () => lvGame(gid, finished));
+  const gtabs = det.games.length > 1 || e.bestOf > 1 ? `<div class="chips" style="margin:0 0 12px">${det.games.map(x => `<button class="chip ${x.id === gid ? 'on' : ''}" data-lvg="${esc(x.id)}" data-lvmatch="${esc(e.match)}">${x.state === 'inProgress' ? '<span class="live-dot"></span> ' : ''}Spiel ${x.n}</button>`).join('')}</div>` : '';
+  return strip + `<div class="eyebrow" style="margin:4px 0 10px">${title}</div>` + gtabs + (g ? lvGameView(slug, e, gid, g, det) : card('Spiel ' + gm.n, `<div class="empty">${LV.tried['g' + gid] && !LV.busy['g' + gid] ? (finished ? 'Für dieses Spiel hat der Feed keine Daten.' : 'Der Live-Feed startet ein paar Minuten nach Spielbeginn — gleich geht es los.') : 'lädt Spieldaten …'}</div>`));
+}
+function lvGameView(slug, e, gid, g, det) {
+  const d = evD(slug), { meta, frame } = g;
+  const code = sd => (det.teams.find(t => t.id === meta[sd + 'TeamMetadata'].esportsTeamId) || {}).code || (sd === 'blue' ? 'Blau' : 'Rot');
+  const cb = code('blue'), cr = code('red'), fb = frame.blueTeam, fr = frame.redTeam;
+  // bans + winner: the event file first, else Leaguepedia (finished games only)
+  const fileBans = (d.bans || {})[gid];
+  if (g.done && !fileBans && !(LV.lp[gid] && LV.lp[gid].bans)) lvKick('b' + gid, () => lvBans(gid, g, cb, cr));
+  const lp = LV.lp[gid] || {}, bans = fileBans || lp.bans || null;
+  const winRow = (d.games || []).find(r => r.game === gid && r.win);
+  const win = g.done ? (winRow ? winRow.team : lp.win || null) : null;
+  const mins = Math.max(0, (Date.parse(frame.rfc460Timestamp) - g.t0) / 60e3);
+  const clock = `${Math.floor(mins)}:${String(Math.floor(mins % 1 * 60)).padStart(2, '0')}`;
+  const lag = Math.max(0, Math.round((Date.now() - Date.parse(frame.rfc460Timestamp)) / 60e3));
+  const k = n => (n / 1000).toFixed(1).replace('.', ',') + 'k';
+  const share = fb.totalGold + fr.totalGold ? fb.totalGold / (fb.totalGold + fr.totalGold) * 100 : 50;
+  const diff = fb.totalGold - fr.totalGold;
+  const drag = l => (l || []).map(t => `<span class="lvdrag d-${esc(t)}" title="${esc(DRAGON_DE[t] || t)}"></span>`).join('') || '<span class="dim">—</span>';
+  const stat = (a, label, b) => `<div class="lvst"><span>${a}</span><span class="dim">${label}</span><span>${b}</span></div>`;
+  const banRow = c => bans && bans[c] && bans[c].length ? bans[c].map(x => `<span class="lvban">${U.champIcon(app.D, x, 26)}</span>`).join('') : '';
+  const banNote = bans ? '' : `<div class="dim" style="font-size:12px;text-align:center;padding:4px 0 2px">${g.done ? 'Bans folgen, sobald Leaguepedia das Spiel eingetragen hat (meist ein paar Minuten).' : 'Bans gibt es nach dem Spiel (der Live-Feed hat keinen Draft).'}</div>`;
+  const head = card(g.done ? 'Endstand' : '<span class="live-dot"></span>&nbsp; Live', `<div class="card-b">
+      <div class="lvscore">
+        <div class="lvside">${evLogo(slug, cb, 40)}<b>${esc(cb)}</b>${win === cb ? '<span class="pill gold">Sieg</span>' : ''}<small class="dim">blau</small></div>
+        <div class="lvmid"><div class="lvk">${fb.totalKills}<span>:</span>${fr.totalKills}</div><div class="dim" style="font-size:12px">${clock}${g.done ? '' : ` · Stand vor ${lag || '<1'} min`}</div></div>
+        <div class="lvside">${evLogo(slug, cr, 40)}<b>${esc(cr)}</b>${win === cr ? '<span class="pill gold">Sieg</span>' : ''}<small class="dim">rot</small></div>
+      </div>
+      <div class="lvbar"><span style="width:${share.toFixed(1)}%"></span></div>
+      ${stat(k(fb.totalGold), `Gold ${diff ? (diff > 0 ? '◀ +' : '+') + k(Math.abs(diff)) + (diff < 0 ? ' ▶' : '') : ''}`, k(fr.totalGold))}
+      ${stat(fb.towers, 'Türme', fr.towers)}${stat(fb.inhibitors, 'Inhibitoren', fr.inhibitors)}${stat(fb.barons, 'Barone', fr.barons)}
+      ${stat(`<span class="lvdrags">${drag(fb.dragons)}</span>`, 'Drachen', `<span class="lvdrags r">${drag(fr.dragons)}</span>`)}
+      ${bans ? `<div class="lvst lvbans"><span>${banRow(cb)}</span><span class="dim">Bans</span><span>${banRow(cr)}</span></div>` : banNote}
+    </div>`, g.done ? '' : 'alle 20 s');
+  const ver = app.D.champs && app.D.champs.version;
+  const byPid = Object.fromEntries(((g.det && g.det.participants) || []).map(x => [x.participantId, x]));
+  const team = sd => {
+    const md = meta[sd + 'TeamMetadata'], fp = Object.fromEntries(frame[sd + 'Team'].participants.map(x => [x.participantId, x])), c = code(sd);
+    const rows = md.participantMetadata.map(pm => {
+      const p = Object.assign({}, fp[pm.participantId] || {}, byPid[pm.participantId] || {});
+      const pl = evP(slug, pm.esportsPlayerId);
+      const name = pl ? pl.name : String(pm.summonerName || '?').replace(new RegExp('^' + c + '\\s+'), '');
+      const items = (p.items || []).filter(x => !TRINKETS.has(x)).concat((p.items || []).filter(x => TRINKETS.has(x)));
+      const champName = (app.D.champs.names || {})[pm.championId] || pm.championId;
+      return `<div class="lvp">
+        <div class="lvc">${U.champIcon(app.D, pm.championId, 36)}<span class="lvlvl">${p.level || ''}</span></div>
+        <div class="lvn"><b>${esc(name)}</b><small class="dim">${esc(champName)}${pm.role ? ' · ' + esc(String(pm.role).toUpperCase().replace('JUNGLE', 'JNG').replace('BOTTOM', 'BOT').replace('SUPPORT', 'SUP')) : ''}</small></div>
+        <div class="lvkda"><b>${p.kills ?? 0}/${p.deaths ?? 0}/${p.assists ?? 0}</b><small class="dim">${p.creepScore ?? 0} CS · ${k(p.totalGoldEarned || p.totalGold || 0)}${p.championDamageShare ? ' · ' + Math.round(p.championDamageShare * 100) + '% Dmg' : ''}</small></div>
+        <div class="lvitems">${ver ? items.map(x => `<img src="https://ddragon.leagueoflegends.com/cdn/${ver}/img/item/${x}.png" alt="" width="22" height="22" loading="lazy" onerror="this.style.visibility='hidden'">`).join('') : ''}</div>
+      </div>`;
+    }).join('');
+    return card(`${evLogo(slug, c, 22)} ${esc(c)}`, rows, `${frame[sd + 'Team'].totalKills} Kills`);
+  };
+  return head + `<div class="grid g-2" style="margin-top:14px">${team('blue')}${team('red')}</div>`;
+}
+// while a live game is on screen: refresh every 20 s
+setInterval(() => {
+  if (EVX.tab !== 'live' || document.hidden || !/^\/event\//.test(path())) return;
+  const g = LV.game[LV.sel[LV.match] || ''] || Object.values(LV.game).find(x => !x.done);
+  if (!g || !g.done) render();
+}, 20000);
+
 function evTour(slug) {
   const d = evD(slug), stages = S.eventStages(d);
   if (!stages.length) return card('Turnier', '<div class="empty">Spielplan kommt noch.</div>');
@@ -812,6 +999,8 @@ function bindEvent() {
     try { await api('/api/event/tip', { method: 'POST', body: { slug, match, score } }); }
     catch (e) { if (cur) EVX.mt[slug][match] = cur; else delete EVX.mt[slug][match]; render(); toast(`<span style="color:#ffb1b3">${esc(e.message)}</span>`); }
   });
+  document.querySelectorAll('[data-lvm]').forEach(b => b.onclick = () => { LV.match = b.dataset.lvm; LV.pinned = true; render(); });
+  document.querySelectorAll('[data-lvg]').forEach(b => b.onclick = () => { LV.sel[b.dataset.lvmatch] = b.dataset.lvg; LV.selUser[b.dataset.lvmatch] = true; render(); });
   document.querySelectorAll('[data-tipopen]').forEach(r => r.onclick = () => { EVX.openMatch = EVX.openMatch === r.dataset.tipopen ? null : r.dataset.tipopen; render(); });
   const mp = $('monoPilotSave'); if (mp) mp.onclick = async () => {
     try { await api('/api/event/mono', { method: 'POST', body: { slug, pilot: $('monoPilot').value } }); toast('Pilot gesetzt — gilt ab dem nächsten Spiel.'); await app.refresh(); } catch (e) { toast(`<span style="color:#ffb1b3">${esc(e.message)}</span>`); }

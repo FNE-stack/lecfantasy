@@ -19,7 +19,7 @@ not downloaded again.
     python scripts/fetch_events.py                  # season from data/config.json
     python scripts/fetch_events.py --season 2026 --only msi_2026
 """
-import argparse, datetime, json, os, sys
+import argparse, datetime, json, os, re, sys, time, urllib.parse, urllib.request
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import fetch_lolesports as F   # noqa: E402
@@ -168,6 +168,68 @@ def team_names(lg, t):
     return names
 
 
+LP = "https://lol.fandom.com/api.php"
+
+
+def lp_bans(t, games, names, old):
+    """Bans per game from Leaguepedia - the lolesports feed has no draft. One
+    query for the whole event (Leaguepedia rate-limits hard); a game is matched
+    by its ten champions, so no team-name mapping is needed. Games already
+    known keep their bans; on any error the old ones stay."""
+    norm = lambda x: re.sub(r"[^a-z0-9]", "", (x or "").lower())
+    inv = {}
+    for cid, n in names.items():
+        inv[norm(n)] = cid
+        inv[norm(cid)] = cid
+    by_game = {}
+    for r in games:
+        if r.get("champ"):
+            by_game.setdefault(r["game"], {}).setdefault(r["team"], set()).add(r["champ"])
+    out = dict(old or {})
+    todo = {g: v for g, v in by_game.items() if g not in out and len(v) == 2}
+    if not todo:
+        return out
+    start = (datetime.date.fromisoformat(t["startDate"]) - datetime.timedelta(days=1)).isoformat()
+    end = (datetime.date.fromisoformat(t["endDate"]) + datetime.timedelta(days=2)).isoformat()
+    rows, off = [], 0
+    try:
+        while True:
+            q = urllib.parse.urlencode({"action": "cargoquery", "format": "json", "tables": "ScoreboardGames", "limit": 500, "offset": off,
+                                        "fields": "Team1Bans,Team2Bans,Team1Picks,Team2Picks,DateTime_UTC",
+                                        "where": f'DateTime_UTC >= "{start} 00:00:00" AND DateTime_UTC <= "{end} 00:00:00"'})
+            req = urllib.request.Request(LP + "?" + q, headers={"User-Agent": "lecfantasy-stats/1.0 (github.com/FNE-stack/lecfantasy)"})
+            for attempt in range(2):
+                j = json.load(urllib.request.urlopen(req, timeout=30))
+                if (j.get("error") or {}).get("code") == "ratelimited":
+                    time.sleep(30 * (attempt + 1))
+                    continue
+                break
+            if j.get("error"):
+                print(f"  ! leaguepedia: {j['error'].get('code')} - bans later", file=sys.stderr)
+                return out
+            page = [x["title"] for x in j.get("cargoquery", [])]
+            rows += page
+            if len(page) < 500:
+                break
+            off += 500
+    except Exception as e:  # never let the bans break the stats
+        print(f"  ! leaguepedia: {e} - bans later", file=sys.stderr)
+        return out
+    ids = lambda x: [inv[norm(c)] for c in (x or "").split(",") if norm(c) in inv]
+    for gid, teams in todo.items():
+        (a, ca), (b, cb) = teams.items()
+        for r in rows:
+            p1, p2 = set(ids(r.get("Team1Picks"))), set(ids(r.get("Team2Picks")))
+            if len(p1 & ca) >= 4 and len(p2 & cb) >= 4:
+                out[gid] = {a: ids(r.get("Team1Bans")), b: ids(r.get("Team2Bans"))}
+                break
+            if len(p1 & cb) >= 4 and len(p2 & ca) >= 4:
+                out[gid] = {a: ids(r.get("Team2Bans")), b: ids(r.get("Team1Bans"))}
+                break
+    print(f"  bans: {len(out)} games ({len(out) - len(old or {})} new, {len(by_game) - len(out)} not on Leaguepedia yet)")
+    return out
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--season", default=None)
@@ -211,6 +273,8 @@ def main():
             if g["player"] and g["player"] not in ids:
                 ids.add(g["player"])
                 players.append({"id": g["player"], "name": g["ign"], "realName": "", "role": g["role"] or "MID", "team": g["team"], "photo": ""})
+        champs = F.load_json(os.path.join(ROOT, "data", "champions.json"), {}).get("names") or {}
+        bans = lp_bans(t, games, champs, old.get("bans")) if games else (old.get("bans") or {})
         standings = F.fetch_standings(t) or {"stages": []}
         # stage of every match (for per-stage lineups and locks)
         stage_of = {}
@@ -227,7 +291,7 @@ def main():
                "logo": F.https(lg.get("image")), "updated": int(datetime.datetime.now().timestamp()),
                "stages": [{"name": s["name"], "sections": s["sections"]} for s in standings["stages"]],
                "teams": teams, "players": sorted(players, key=lambda p: (p["team"], "TJMBS".index(p["role"][0]), p["name"])),
-               "schedule": sched, "games": games}
+               "schedule": sched, "games": games, "bans": bans}
         with open(path, "w", encoding="utf-8") as f:
             json.dump(out, f, ensure_ascii=False, separators=(",", ":"))
         done = sum(1 for e in sched if e["state"] == "completed")
