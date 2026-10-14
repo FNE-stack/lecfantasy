@@ -972,7 +972,7 @@
     mostAssists: { kind: 'player', label: 'Meiste Assists (Spieler)' },
     champMostWins:{ kind: 'champion', label: 'Champion mit den meisten Siegen' },
     distinctChamps:{ kind: 'number', label: 'Wie viele verschiedene Champions werden gespielt? (am nächsten)' },
-    totalGames:  { kind: 'number', label: 'Wie viele Spiele hat das Event? (am nächsten)' },
+    totalGames:  { kind: 'number', label: 'Wie viele einzelne Spiele hat das Event? (Games, nicht Serien — ein 3:1 sind 4; am nächsten)' },
     teamKillsGame:{ kind: 'number', label: 'Meiste Kills eines Teams in einem Spiel (am nächsten)' },
     finalist:    { kind: 'team',   label: 'Ein Finalist' },
     swiss30:     { kind: 'team',   label: 'Ein Team, das die Swiss-Phase 3-0 gewinnt' },
@@ -1448,9 +1448,12 @@
   function eventPickemCatalog(evData, round) {
     const names = ((evData && evData.stages) || []).map(s => s.name);
     const hasPlayIn = names.some(n => /play.?in/i.test(n)), hasSwiss = names.some(n => /swiss/i.test(n));
-    if (round === 'ko') return ['koSemis', 'koFinal', 'champion', 'finalScore', 'winnerRegion'];
+    const bracket = ['koSemis', 'koFinal', 'champion', 'finalScore', 'winnerRegion'];
+    if (round === 'ko') return bracket;
+    // round 1 may also ask the bracket (an event can run with round 1 only);
+    // a question used in one round is not offered in the other
     return [].concat(hasPlayIn ? ['playInOut'] : [], hasSwiss ? ['swiss30s', 'swissAdv6', 'swiss03s'] : hasPlayIn ? [] : ['firstTop'],
-      ['bestLec', 'regionMostKo', 'mostKills', 'mostDeaths', 'mostAssists', 'mostPicked', 'champMostWins', 'shortestGame', 'longestGame', 'totalGames', 'distinctChamps', 'teamKillsGame', 'bloodiest']);
+      ['bestLec', 'regionMostKo'], bracket, ['mostKills', 'mostDeaths', 'mostAssists', 'mostPicked', 'champMostWins', 'shortestGame', 'longestGame', 'totalGames', 'distinctChamps', 'teamKillsGame', 'bloodiest']);
   }
   // [{manager, name, players, pickem, total, byStage:{i:pts}, perPlayer:{id:pts}, correct:[qid]}] best first
   // Events are prediction contests (Fabian, 2026-10-12): Pick'em + the side

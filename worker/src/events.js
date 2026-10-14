@@ -276,6 +276,8 @@ export async function eventAdmin(env, body) {
       const qs = (body.questions || []).map((q, i) => {
         if (!S.EVENT_TYPES[q.type]) throw new HttpError(400, 'Unbekannter Fragetyp: ' + q.type);
         if (!S.EVENT_TYPES[q.type].manual && !S.eventPickemCatalog(d, body.round === 'ko' ? 'ko' : 'pre').includes(q.type)) throw new HttpError(400, `„${S.EVENT_TYPES[q.type].label}" gehört nicht in diese Runde.`);
+        const other = ev[body.round === 'ko' ? 'pickem' : 'pickemKo'];
+        if (!S.EVENT_TYPES[q.type].manual && other && (other.questions || []).some(x => x.type === q.type)) throw new HttpError(400, `„${S.EVENT_TYPES[q.type].label}" steht schon in der anderen Runde.`);
         return { id: 'q' + (i + 1), type: q.type, points: Math.max(0, Number(q.points) || 0), label: String(q.label || '').slice(0, 80) || undefined };
       });
       if (!qs.length) throw new HttpError(400, 'Mindestens eine Frage');

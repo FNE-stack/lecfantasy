@@ -432,7 +432,7 @@ const EVA = { data: {} };
 const EV_PK_DEFAULT = { playInOut: 5, firstTop: 5, swiss30s: 5, swissAdv6: 2, swiss03s: 5, bestLec: 5, regionMostKo: 5,
   mostKills: 5, mostDeaths: 5, mostAssists: 5, mostPicked: 5, champMostWins: 5, shortestGame: 5, longestGame: 5, totalGames: 5,
   distinctChamps: 5, teamKillsGame: 5, bloodiest: 5, koSemis: 5, koFinal: 10, champion: 20, finalScore: 10, winnerRegion: 5 };
-const EV_PK_ON = { pre: ['playInOut', 'firstTop', 'swiss30s', 'swissAdv6', 'swiss03s', 'bestLec', 'regionMostKo', 'mostKills', 'mostDeaths', 'mostPicked', 'shortestGame', 'totalGames'],
+const EV_PK_ON = { pre: ['playInOut', 'firstTop', 'swiss30s', 'swissAdv6', 'swiss03s', 'bestLec', 'koSemis', 'koFinal', 'champion', 'finalScore', 'mostKills', 'mostDeaths', 'mostPicked', 'shortestGame', 'totalGames'],
                    ko: ['koSemis', 'koFinal', 'champion', 'finalScore', 'winnerRegion'] };
 const EV_KO_DEFAULT = {};
 function evaCfg() {
@@ -502,7 +502,8 @@ function viewEventsAdmin() {
       const key = round === 'ko' ? 'pickemKo' : 'pickem', pe = ev[key] || {}, id = info.slug + '_' + round;
       const on = new Set((pe.questions || []).map(q => q.type)), pts = Object.fromEntries((pe.questions || []).map(q => [q.type, q.points]));
       const lockStage = round === 'ko' ? st[st.length - 1] : st.find(x => x.lock !== null);
-      const types = (d ? S.eventPickemCatalog(d, round) : []).map(k => [k, S.EVENT_TYPES[k]]);
+      const otherQs = ((ev[round === 'ko' ? 'pickem' : 'pickemKo'] || {}).questions || []).map(q => q.type);
+      const types = (d ? S.eventPickemCatalog(d, round) : []).filter(k => !otherQs.includes(k)).map(k => [k, S.EVENT_TYPES[k]]);
       const body = pe.revealed
         ? `<div class="card-b muted" style="font-size:13px">Aufgedeckt — ${Object.keys(pe.picks || {}).length} Manager haben getippt.</div>` + (pe.questions || []).filter(q => S.EVENT_TYPES[q.type].manual).map(q => `<div class="card-b row" style="gap:8px;flex-wrap:wrap"><b style="flex:1">${esc(q.label || q.type)}</b><input id="eva_${id}_${q.id}" value="${esc(q.answer || '')}" placeholder="Antwort (Kürzel / Name)">${btn('Antwort', 'evAnswer', { slug: info.slug, round, qid: q.id })}</div>`).join('')
         : `<div class="card-b"><p class="muted" style="font-size:12px;margin-top:0">${hint}</p>${types.map(([k, t]) => `<label class="row" style="gap:8px;margin:0 0 6px;color:var(--text)"><input type="checkbox" data-evpk="${id}" value="${k}" ${(pe.questions ? on.has(k) : EV_PK_ON[round].includes(k)) ? 'checked' : ''} style="width:auto"><span style="flex:1">${esc(t.label)}</span><input type="number" min="0" data-evpkp="${id}" data-t="${k}" value="${pts[k] ?? (round === 'ko' ? EV_KO_DEFAULT[k] : null) ?? EV_PK_DEFAULT[k] ?? 5}" style="width:60px"> Pkt</label>`).join('')}
@@ -512,8 +513,8 @@ function viewEventsAdmin() {
         + tipStatusRows(info.slug, round);
       return fold(title, pe.questions ? (pe.revealed ? 'aufgedeckt' : `offen · ${pe.questions.length} Fragen`) : 'noch nicht geöffnet', body, id + '_pk');
     };
-    const pk = pkSection('pre', "Pick'em · vor dem Event", 'Runde 1, sperrt beim ersten Spiel. Teams mit „pro Treffer": jeder Spieler wählt mehrere Teams, Punkte für jedes richtige.')
-      + pkSection('ko', "Pick'em · vor der K.-o.-Phase", 'Runde 2 — am besten öffnen, sobald die Swiss-Phase vorbei ist (dann stehen die K.-o.-Teams fest). Sperrt beim ersten K.-o.-Spiel.');
+    const pk = pkSection('pre', "Pick'em · vor dem Event", 'Sperrt beim ersten Spiel und läuft bis zum Finale — Punkte gibt es, wenn das Event vorbei ist. Reicht allein: Turnierbaum-Fragen (Halbfinale, Finale, Sieger) sind schon dabei. Teams mit „pro Treffer": mehrere Teams wählen, Punkte für jedes richtige.')
+      + pkSection('ko', "Pick'em · vor der K.-o.-Phase (optional)", 'Nur nötig, wenn du den Turnierbaum erst nach der Swiss-Phase tippen lassen willst. Zeigt nur Fragen, die nicht schon in Runde 1 stehen. Sperrt beim ersten K.-o.-Spiel.');
     return card(esc(ev.name), head
       + fold('Einstellungen', `Budget ${c.budget} · Kapitän ×${c.captain}${ev.video ? ' · Video' : ''}`, `<div class="card-b"><div class="grid g-2" style="gap:10px">
           <label style="margin:0">Name<input id="evn_${info.slug}" value="${esc(ev.name)}" style="width:100%"></label>

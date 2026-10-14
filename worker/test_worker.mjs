@@ -749,7 +749,10 @@ tests.test_mode = async () => {
   }
   L = league();
   assert(S.draftStatus(L) === 'done' && L.draft.picks.length === 20, 'draft done with 4 x 5 picks');
-  // trades with a bot: fair -> accepted, robbery -> rejected
+  // trades with a bot: fair -> accepted, robbery -> rejected. The bots draft
+  // randomly from their top 3, so the team limit would sometimes refuse the
+  // test trade (4 from one team) - that rule has its own test; off here.
+  await call('POST', '/api/admin/op', { token: a, body: { op: 'setTradeRules', rules: Object.assign({}, league().tradeRules || {}, { teamLimit: false }) } });
   const ros = S.rosters(L), bot = tm.bots[0];
   const sameRole = role => [ros[fabi].find(id => idx.get(id).role === role), ros[bot].find(id => idx.get(id).role === role)];
   const g2 = id => idx.get(id).team === 'G2';             // fixture: G2 players score 9 kills, others 1
@@ -854,12 +857,17 @@ tests.events = async () => {
   assert(!JSON.stringify(league()).includes('CCC_BOT'), 'teams secret before the lock');
   r = await call('POST', '/api/admin/event', { token: a, body: { action: 'pickem', slug: 'ev_2026', questions: [{ type: 'champion', points: 10 }, { type: 'nonsense', points: 1 }] } });
   assert(r.status === 400, 'unknown question type refused');
-  r = await call('POST', '/api/admin/event', { token: a, body: { action: 'pickem', slug: 'ev_2026', questions: [{ type: 'champion', points: 10 }] } });
-  assert(r.status === 400 && /Runde/.test(r.body.error), 'the champion belongs to the knockout round, not round 1');
+  r = await call('POST', '/api/admin/event', { token: a, body: { action: 'pickem', round: 'ko', slug: 'ev_2026', questions: [{ type: 'mostKills', points: 10 }] } });
+  assert(r.status === 400 && /Runde/.test(r.body.error), 'stats questions are not part of the knockout round');
   r = await call('POST', '/api/admin/event', { token: a, body: { action: 'pickem', slug: 'ev_2026', questions: [{ type: 'mostKills', points: 10 }, { type: 'totalGames', points: 5 }] } });
   assert(r.status === 200, 'pickem open');
   await call('POST', '/api/event/pickem', { token: tok.Ann, body: { slug: 'ev_2026', picks: { q1: 'AAA_MID', q2: '2' } } });
   await call('POST', '/api/event/pickem', { token: tok.Ben, body: { slug: 'ev_2026', picks: { q1: 'BBB_TOP', q2: '5' } } });
+  r = await call('POST', '/api/admin/event', { token: a, body: { action: 'pickem', slug: 'ev_2026', questions: [{ type: 'mostKills', points: 10 }, { type: 'totalGames', points: 5 }, { type: 'koFinal', points: 1 }] } });
+  assert(r.status === 200, 'round 1 may hold bracket questions too');
+  r = await call('POST', '/api/admin/event', { token: a, body: { action: 'pickem', round: 'ko', slug: 'ev_2026', questions: [{ type: 'koFinal', points: 10 }] } });
+  assert(r.status === 400 && /anderen Runde/.test(r.body.error), 'never the same question in both rounds');
+  r = await call('POST', '/api/admin/event', { token: a, body: { action: 'pickem', slug: 'ev_2026', questions: [{ type: 'mostKills', points: 10 }, { type: 'totalGames', points: 5 }] } });
   r = await call('POST', '/api/admin/event', { token: a, body: { action: 'pickem', round: 'ko', slug: 'ev_2026', questions: [{ type: 'koFinal', points: 10 }] } });
   assert(r.status === 200, 'ko round open');
   r = await call('POST', '/api/event/pickem', { token: tok.Ann, body: { slug: 'ev_2026', round: 'ko', picks: { q1: 'AAA,CCC,AAA,BBB' } } });
