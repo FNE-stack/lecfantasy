@@ -362,25 +362,33 @@ export async function eventCron(env, league) {
   return res.changed ? Object.keys(patch) : null;
 }
 
-// a new bingo line: push to everyone (once per line, KV bingo:<slug> = lines seen)
+// a new bingo line on someone's card: push to that manager (once per line).
+// KV bingo:<slug>:<seed> = { [manager]: lines seen } - one read per event.
 async function bingoNotices(env, league) {
-  const ids = (league.managers || []).map(m => m.id);
   for (const [slug, ev] of Object.entries(league.events || {})) {
+    if (S.eventMinigame(ev) !== 'bingo') continue;
     const raw = await publicData(env, `events/${slug}.json`, 120);
     if (!raw) continue;
     const d = ev.replay ? S.eventReplay(raw, ev.replay) : raw;
-    const b = S.eventBingo(league, ev, d), lines = b.score.lines;
-    const key = `bingo:${slug}:${ev.bingoSeed || ''}`, seen = Number(await env.LEAGUE.get(key)) || 0;
-    if (S.eventMinigame(ev) !== 'bingo') continue;
-    if (lines <= seen) { if (lines < seen) await env.LEAGUE.put(key, String(lines)); continue; }
-    await env.LEAGUE.put(key, String(lines));
-    // the square that finished it: the newest hit inside a finished line
-    const inLine = new Set(b.score.lineCells.flat());
-    const last = b.card.cells.filter((k, i) => inLine.has(i) && b.hits[k].hit).sort((x, y) => String(b.hits[y].at).localeCompare(String(b.hits[x].at)))[0];
-    const sq = S.BINGO[last] || {};
-    await notify(env, ids, { title: b.score.full ? '🎉 VOLLE BINGO-KARTE!' : '🎉 BINGO!',
-      body: `${ev.name}: ${lines === 1 ? 'erste Linie' : lines + '. Linie'} — alle bekommen +${b.score.full ? b.cfg.full : b.cfg.line} Punkte.${sq.label ? ' Letztes Feld: ' + sq.label + '.' : ''}`,
-      url: `./#/event/${slug}`, tag: 'bingo-' + slug }).catch(() => null);
+    const all = S.eventBingoAll(league, ev, d);
+    const key = `bingo:${slug}:${ev.bingoSeed || ''}`;
+    let seen = {};
+    try { const v = JSON.parse((await env.LEAGUE.get(key)) || '{}'); if (v && typeof v === 'object') seen = v; } catch (e) { /* old format: a number */ }
+    let changed = false;
+    for (const [mid, b] of Object.entries(all)) {
+      const lines = b.score.lines, was = Number(seen[mid]) || 0;
+      if (lines === was) continue;
+      seen[mid] = lines; changed = true;
+      if (lines < was) continue;
+      // the square that finished it: the newest hit inside a finished line
+      const inLine = new Set(b.score.lineCells.flat());
+      const last = b.card.cells.filter((k, i) => inLine.has(i) && b.hits[k].hit).sort((x, y) => String(b.hits[y].at).localeCompare(String(b.hits[x].at)))[0];
+      const sq = S.BINGO[last] || {};
+      await notify(env, [mid], { title: b.score.full ? '🎉 VOLLE BINGO-KARTE!' : '🎉 BINGO!',
+        body: `${ev.name}: ${lines === 1 ? 'deine erste Linie' : 'deine ' + lines + '. Linie'} — +${b.score.full ? b.cfg.full : b.cfg.line} Punkte.${sq.label ? ' Letztes Feld: ' + sq.label + '.' : ''}`,
+        url: `./#/event/${slug}`, tag: 'bingo-' + slug }).catch(() => null);
+    }
+    if (changed) await env.LEAGUE.put(key, JSON.stringify(seen));
   }
 }
 

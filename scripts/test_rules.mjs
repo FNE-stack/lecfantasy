@@ -336,6 +336,27 @@ tests.monopoly = () => {
   return 'ring board, pilot stats move you, choices only count for later games, deterministic, minigame switch';
 };
 
+tests.bingo_own_cards = () => {
+  const d = eventFixture();
+  const L = { managers: [{ id: 'a', name: 'Ann' }, { id: 'b', name: 'Ben' }, { id: 'c', name: 'Cid' }], scoring: { kill: 0, death: 0, assist: 0, cs10: 0, win: 0 } };
+  const ev = { slug: 'w', minigame: 'bingo' };
+  const all = S.eventBingoAll(L, ev, d), pool = Object.keys(S.BINGO);
+  const cards = Object.values(all).map(x => x.card.cells);
+  assert(cards.every(c => c.length === 25 && new Set(c).size === 25 && c.every(k => pool.includes(k))), '25 different squares from the pool per card');
+  assert(new Set(cards.map(c => c.join())).size === 3, 'every manager has their own card');
+  assert(JSON.stringify(S.eventBingo(L, ev, d, 'a').card) === JSON.stringify(all.a.card), 'same card every time');
+  assert(JSON.stringify(S.eventBingo(L, Object.assign({}, ev, { bingoSeed: 'x' }), d, 'a').card) !== JSON.stringify(all.a.card), 'a reshuffle deals new cards');
+  // the same games tick the same squares on every card; points come from the own card only
+  for (const x of Object.values(all)) for (let i = 0; i < 25; i++) assert(!!x.hits[x.card.cells[i]].hit === !!all.a.hits[x.card.cells[i]].hit, 'shared hits');
+  // force lines: pretend every square has happened -> full card for everyone, own points
+  const hitAll = Object.fromEntries(pool.map(k => [k, { hit: true }]));
+  const full = S.eventBingo(L, ev, d, 'a', hitAll).score;
+  assert(full.full && full.lines === 12 && full.points === 12 * 3 + 10, 'full card: 12 lines x3 + 10 = ' + full.points);
+  const rows = S.eventStandings(L, ev, d);
+  assert(rows.every(r => r.bingo === all[r.manager].score.points), 'standings use the own card');
+  return '3 managers, 3 different cards from one pool, stable, reshuffle redeals, shared ticks, own lines count (3 / full 10)';
+};
+
 tests.pickem = () => {
   const L = league(2);
   const ev = (m, block, a, b, aw, start) => ({ match: m, start, state: 'completed', block, tournament: 'sp',

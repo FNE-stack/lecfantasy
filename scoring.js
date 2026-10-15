@@ -1229,14 +1229,25 @@
     kda20: x => x.d === 0 && x.k + x.a >= 20, perfect18: x => x.d === 0 && x.k + x.a >= 18, botDeaths6: x => x.role === 'BOT' && x.d >= 6, jglNoKills: x => x.role === 'JNG' && x.k === 0 })) {
     if (BINGO[k] && !BINGO[k].who) BINGO[k].who = g => g.find(f);
   }
-  // One card per event, the same for everyone: a fun extra, not a contest.
-  // Every finished line gives EVERY manager `line` points, a full card `full`.
-  function eventBingo(league, ev, evData) {
-    const cfg = Object.assign({ line: 5, full: 25 }, (ev && ev.bingo) || {});
-    const card = bingoCard('event|' + ((ev && ev.slug) || (evData && evData.slug) || '') + '|' + ((ev && ev.bingoSeed) || ''));
-    const hits = bingoHits((evData && evData.games) || []);
+  // A real bingo: one pool (BINGO, 40 stats), every manager their own 5x5
+  // card drawn from it - seeded by event + manager, so it is personal, stable
+  // on every device, and a new admin shuffle (ev.bingoSeed) redraws all cards.
+  // Squares tick from ALL games of the event, so a card that is dealt after
+  // the first games still catches up - fair, the draw is random for everyone.
+  // Points per own line + full card; kept small next to the Tippspiel.
+  const BINGO_DEFAULT = { line: 3, full: 10 };
+  function eventBingo(league, ev, evData, manager, hits) {
+    const cfg = Object.assign({}, BINGO_DEFAULT, (ev && ev.bingo) || {});
+    const card = bingoCard('event|' + ((ev && ev.slug) || (evData && evData.slug) || '') + '|' + ((ev && ev.bingoSeed) || '') + '|' + (manager || ''));
+    hits = hits || bingoHits((evData && evData.games) || []);
     const sc = bingoScore(card, hits, { square: 0, line: cfg.line, full: cfg.full });
-    return { card, hits, cfg, score: sc };
+    return { card, hits, cfg, score: sc, manager };
+  }
+  // every manager's card, the games evaluated once: { [manager]: eventBingo }
+  function eventBingoAll(league, ev, evData) {
+    const hits = bingoHits((evData && evData.games) || []), out = {};
+    for (const m of (league && league.managers) || []) out[m.id] = eventBingo(league, ev, evData, m.id, hits);
+    return out;
   }
 
   // Which squares are already ticked, given the games of an event (or season).
@@ -1464,7 +1475,7 @@
     const stageOf = new Map(((evData && evData.schedule) || []).map(e => [e.match, e.stage]));
     const rounds = [ev.pickem, ev.pickemKo].filter(x => x && x.revealed);
     const truth = rounds.length && eventDone(evData) ? eventTruth(evData, sc) : null;
-    const shared = evData && eventMinigame(ev) === 'bingo' ? eventBingo(league, ev, evData) : null;
+    const bingoAll = evData && eventMinigame(ev) === 'bingo' ? eventBingoAll(league, ev, evData) : null;
     const tipTotals = eventTipTotals(league, ev, evData);
     const rows = (league.managers || []).map(m => {
       const r = { manager: m.id, name: m.name, players: 0, pickem: 0, bingo: 0, total: 0, byStage: {}, perPlayer: {}, correct: [] };
@@ -1485,7 +1496,7 @@
       }
       // Bingo: one card per manager per stage, scored from the games of that
       // stage. Opt-in via league.bingo.enabled so an event can run without it.
-      if (shared) r.bingo = shared.score.points;
+      if (bingoAll && bingoAll[m.id]) r.bingo = bingoAll[m.id].score.points;
       const tt = tipTotals[m.id] || { pts: 0 };
       r.tips = tt.pts; r.tipStats = tt;
       r.players = r2(r.players); r.total = r2(r.players + r.pickem + r.bingo + (r.tips || 0));
@@ -1731,7 +1742,7 @@
     suggestedCapacity, calendar, blockKey, lineupConfig, lineupFor, lineupPreview, scoreBook, autoWindows, faabLeft,
     PICKEM_TYPES, pickemTruth, pickemPoints, pickemLock, splitDone,
     weekRecap, hallEntry, hallDue, statTruth, scoreTips,
-    BINGO, bingoHits, bingoCard, bingoScore, bingoStageRows, eventBingo, eventMonopoly, monoBoard, MONO_CARDS, eventMinigame, eventSquadOn, eventPickemCatalog, tipScores, tipValid, tipOpen, tipKnown, tipPoints, tipConfig, eventTipsOn, eventTipTotals, mergeLiveSchedule,
+    BINGO, bingoHits, bingoCard, bingoScore, bingoStageRows, eventBingo, eventBingoAll, eventMonopoly, monoBoard, MONO_CARDS, eventMinigame, eventSquadOn, eventPickemCatalog, tipScores, tipValid, tipOpen, tipKnown, tipPoints, tipConfig, eventTipsOn, eventTipTotals, mergeLiveSchedule,
     EVENT_TYPES, eventConfig, eventQuestionTeams, eventTeamPrice, eventPrice, eventPlayer, eventStages, eventOpenStage, eventDone, eventTeamError, eventLineup, eventTruth, eventStandings, eventReplay, eventReplayPlan, eventLevels, eventTeamLevel, eventFinalScores
   };
 // `this` is undefined in an ES module, so a Cloudflare Worker importing this

@@ -499,15 +499,21 @@ function evTable(slug) {
 }
 
 // tournament: per stage a table (W-L) and the matches; knockouts as a bracket by day
+const mgrName = id => (((L() && L().managers) || []).find(m => m.id === id) || {}).name || id;
 // ── Bingo ─────────────────────────────────────────────────────────────────
-// The minigame: a 5x5 card per manager per stage. Squares tick themselves as
-// the games land - nothing to submit, nothing for the admin to answer. Each
-// manager's card is drawn from their id + the stage, so it is personal but
-// stable, and the same card shows on every device.
+// The minigame: a real bingo - one pool of stats, a 5x5 card per manager.
+// Squares tick themselves as the games land - nothing to submit, nothing for
+// the admin to answer. A card is drawn from the event + manager id, so it is
+// personal but stable, and the same card shows on every device.
 function evBingo(slug) {
   const d = evD(slug), ev = L().events[slug];
   if (!d) return card('Bingo', '<div class="empty">lädt …</div>');
-  const b = S.eventBingo(L(), ev, d), sc = b.score, hits = b.hits;
+  const all = S.eventBingoAll(L(), ev, d), mgrs = L().managers || [];
+  if (!mgrs.length) return card('Event-Bingo', '<div class="empty">Noch keine Mitspieler.</div>');
+  // whose card: my own; the admin (and anyone who taps the table) can look at the others
+  if (!EVX.bingoCard || !all[EVX.bingoCard]) EVX.bingoCard = all[me()] ? me() : mgrs[0].id;
+  const who = EVX.bingoCard, own = who === me();
+  const b = all[who], sc = b.score, hits = b.hits;
   const inLine = new Set(sc.lineCells.flat());
   const games = new Set((d.games || []).map(g => g.game)).size;
   const grid = `<div class="bingo">${b.card.cells.map((key, i) => {
@@ -531,21 +537,27 @@ function evBingo(slug) {
         <span style="font-size:16px">${(b.card.rare || []).includes(b.card.cells.indexOf(k)) ? '★' : '✓'}</span>
         <div style="flex:1;min-width:0"><b>${esc(sq.label || k)}</b><div class="dim" style="font-size:12px">${who}${teams.map(c => evLogo(slug, c, 14) + ' ' + esc(c)).join(' vs ')}${min ? ' · ' + min + ' Min' : ''}${w ? ' · Sieg ' + esc(w.team) : ''}${h.at ? ' · ' + esc(new Date(h.at).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit' })) : ''}</div></div></div>`;
     }).join('');
-  const reshuffle = adminOnly() && !sc.squares ? ` <button class="btn sm" id="bgShuffle">🎲 Neue Karte</button>` : '';
-  return card('Event-Bingo', `<div class="card-b row" style="gap:14px;flex-wrap:wrap;align-items:baseline">
+  const anyHit = Object.values(all).some(x => x.score.squares);
+  const reshuffle = adminOnly() && !anyHit ? ` <button class="btn sm" id="bgShuffle">🎲 Neue Karten</button>` : '';
+  const ranking = Object.values(all).sort((x, y) => y.score.points - x.score.points || y.score.lines - x.score.lines || y.score.squares - x.score.squares);
+  const table = `<table><thead><tr><th>#</th><th>Karte</th><th class="num">Linien</th><th class="num">Felder</th><th class="num">Punkte</th></tr></thead><tbody>${ranking.map((x, i) =>
+      `<tr class="${x.manager === me() ? 'me' : ''}" data-bgcard="${esc(x.manager)}" style="cursor:pointer"><td class="rank r${i + 1}">${i + 1}</td>
+        <td class="fill"><b>${esc(mgrName(x.manager))}</b>${x.manager === who ? ' <span class="pill gold">angezeigt</span>' : ''}${x.score.full ? ' <span class="pill live">VOLL</span>' : ''}</td>
+        <td class="num">${x.score.lines}</td><td class="num">${x.score.squares}</td><td class="num pts">${fmt(x.score.points)}</td></tr>`).join('')}</tbody></table>`;
+  return card(own ? 'Meine Bingo-Karte' : 'Bingo-Karte von ' + esc(mgrName(who)), `<div class="card-b row" style="gap:14px;flex-wrap:wrap;align-items:baseline">
        <span><b style="font-size:20px">${sc.lines}</b> <span class="dim">${sc.lines === 1 ? 'Linie' : 'Linien'}</span></span>
        <span><b>${sc.squares}</b><span class="dim">/25 Felder</span></span>
-       <span>für alle: <b class="pts">+${sc.points}</b></span>${sc.full ? '<span class="pill live">VOLLE KARTE</span>' : ''}
+       <span><b class="pts">+${fmt(sc.points)}</b> <span class="dim">Punkte</span></span>${sc.full ? '<span class="pill live">VOLLE KARTE</span>' : ''}
        <span class="dim" style="font-size:12px;flex:1;text-align:right">${games ? games + ' Spiele' : 'noch kein Spiel'}${reshuffle}</span></div>${grid}
-     <div class="card-b dim" style="font-size:12px;border-top:1px solid var(--line)">Eine Karte für alle. Felder haken sich selbst ab, sobald ein Spiel sie erfüllt.
-       Jede volle Linie (Reihe, Spalte, Diagonale): <b>+${b.cfg.line} Punkte für jeden</b>, volle Karte +${b.cfg.full}. ★ = selten — jede Reihe hat eins.</div>`, `+${b.cfg.line} pro Linie`)
-    + card('Momente', moments || '<div class="empty">Noch nichts passiert. Hier steht, welches Spiel welches Feld abgehakt hat.</div>');
+     <div class="card-b dim" style="font-size:12px;border-top:1px solid var(--line)">Jeder hat seine eigene Karte aus demselben Pool von ${Object.keys(S.BINGO).length} Stats. Felder haken sich selbst ab, sobald ein Spiel sie erfüllt — auch rückwirkend.
+       Jede volle Linie (Reihe, Spalte, Diagonale) auf <b>deiner</b> Karte: <b>+${b.cfg.line}</b>, volle Karte +${b.cfg.full}. ★ = selten — jede Reihe hat eins.</div>`, `+${b.cfg.line} pro Linie`)
+    + card('Bingo-Tabelle', table, 'antippen = Karte ansehen')
+    + card(own ? 'Momente auf deiner Karte' : 'Momente auf dieser Karte', moments || '<div class="empty">Noch nichts abgehakt. Hier steht, welches Spiel welches Feld abgehakt hat.</div>');
 }
 
 // ── Rift-Monopoly ─────────────────────────────────────────────────────────
 // The board is replayed from the real games every time (scoring.js
 // eventMonopoly); the page only shows it and saves pilot / buy rule.
-const mgrName = id => (((L() && L().managers) || []).find(m => m.id === id) || {}).name || id;
 const MONO_COLORS = ['#e8b04b', '#4fc3f7', '#ef5350', '#66bb6a', '#ab47bc', '#ff8a65', '#26c6da', '#d4e157', '#ec407a', '#8d6e63'];
 const MONO_ICON = { start: '⬢', baron: '🐛', elder: '🐉', jail: '⏸', tax: '♻', pot: '⛲', card: '🃏' };
 const MONO_RULES = [['all', 'Alles kaufen'], ['top', 'Nur LCK & LPL'], ['lec', 'Nur LEC'], ['none', 'Nichts kaufen']];
@@ -999,6 +1011,7 @@ function bindEvent() {
     try { await api('/api/event/tip', { method: 'POST', body: { slug, match, score } }); }
     catch (e) { if (cur) EVX.mt[slug][match] = cur; else delete EVX.mt[slug][match]; render(); toast(`<span style="color:#ffb1b3">${esc(e.message)}</span>`); }
   });
+  document.querySelectorAll('[data-bgcard]').forEach(r => r.onclick = () => { EVX.bingoCard = r.dataset.bgcard; render(); });
   document.querySelectorAll('[data-lvm]').forEach(b => b.onclick = () => { LV.match = b.dataset.lvm; LV.pinned = true; render(); });
   document.querySelectorAll('[data-lvg]').forEach(b => b.onclick = () => { LV.sel[b.dataset.lvmatch] = b.dataset.lvg; LV.selUser[b.dataset.lvmatch] = true; render(); });
   document.querySelectorAll('[data-tipopen]').forEach(r => r.onclick = () => { EVX.openMatch = EVX.openMatch === r.dataset.tipopen ? null : r.dataset.tipopen; render(); });
