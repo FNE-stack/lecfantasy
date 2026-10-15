@@ -1307,9 +1307,10 @@
     for (let i = 0; i < str.length; i++) { h ^= str.charCodeAt(i); h = Math.imul(h, 16777619); }
     const rnd = () => { h ^= h << 13; h ^= h >>> 17; h ^= h << 5; return ((h >>> 0) % 100000) / 100000; };
     const shuffle = a => { for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(rnd() * (i + 1)); const t = a[i]; a[i] = a[j]; a[j] = t; } return a; };
-    // Every row and column gets exactly one RARE square (hit rate <= 3%), and
-    // each diagonal at least one - so no line is finished on common squares
-    // alone. Rare squares sit on a random permutation; the rest is common.
+    // EVERY line - each row, each column and both diagonals - holds exactly
+    // one RARE square (hit rate <= 3%): no line is finished on common squares
+    // alone, and no line is buried under several rares. The rares sit on a
+    // permutation (one per row and column) that hits each diagonal once.
     const rare = shuffle(keys.filter(k => BINGO[k].rate <= BINGO_RARE));
     const common = shuffle(keys.filter(k => BINGO[k].rate > BINGO_RARE));
     if (rare.length < size || rare.length + common.length < need) {
@@ -1317,11 +1318,10 @@
       for (let i = 0; i < need; i++) cells.push(pool[i % pool.length]);
       return { size, cells, rare: [] };
     }
-    let perm;
-    for (let t = 0; t < 200; t++) {
-      perm = shuffle([...Array(size).keys()]);                       // row r -> column perm[r]
-      if (perm.some((c, r) => c === r) && perm.some((c, r) => c === size - 1 - r)) break;
-    }
+    const perms = [], walk = (pre, left) => { if (!left.length) { perms.push(pre); return; } left.forEach((c, i) => walk(pre.concat(c), left.filter((_, j) => j !== i))); };
+    walk([], [...Array(size).keys()]);                               // row r -> column perm[r]
+    const fair = perms.filter(p => p.filter((c, r) => c === r).length === 1 && p.filter((c, r) => c === size - 1 - r).length === 1);
+    const perm = (fair.length ? fair : perms)[Math.floor(rnd() * (fair.length || perms.length))];
     const cells = new Array(need), rarePos = [];
     perm.forEach((c, r) => { cells[r * size + c] = rare[r]; rarePos.push(r * size + c); });
     let k = 0;

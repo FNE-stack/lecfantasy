@@ -354,7 +354,17 @@ tests.bingo_own_cards = () => {
   assert(full.full && full.lines === 12 && full.points === 12 * 3 + 10, 'full card: 12 lines x3 + 10 = ' + full.points);
   const rows = S.eventStandings(L, ev, d);
   assert(rows.every(r => r.bingo === all[r.manager].score.points), 'standings use the own card');
-  return '3 managers, 3 different cards from one pool, stable, reshuffle redeals, shared ticks, own lines count (3 / full 10)';
+  // every line (5 rows, 5 columns, 2 diagonals) has exactly one rare - on many cards
+  const lines = [];
+  for (let i = 0; i < 5; i++) { lines.push([0, 1, 2, 3, 4].map(c => i * 5 + c)); lines.push([0, 1, 2, 3, 4].map(r => r * 5 + i)); }
+  lines.push([0, 6, 12, 18, 24]); lines.push([4, 8, 12, 16, 20]);
+  for (let n = 0; n < 300; n++) {
+    const c = S.bingoCard('event|w||m' + n), rare = new Set(c.rare);
+    assert(c.rare.length === 5 && c.rare.every(i => S.BINGO[c.cells[i]].rate <= 0.03), 'five rares');
+    const counts = lines.map(l => l.filter(i => rare.has(i)).length);
+    assert(counts.every(x => x === 1), 'card ' + n + ': rares per line ' + counts.join(','));
+  }
+  return '3 managers, 3 different cards from one pool, stable, reshuffle redeals, shared ticks, own lines count (3 / full 10), exactly one rare in every line (300 cards)';
 };
 
 tests.pickem = () => {
