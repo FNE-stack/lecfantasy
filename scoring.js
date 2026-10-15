@@ -1577,7 +1577,16 @@
     for (let l = need - 1; l >= 0; l--) out.push(`${l}:${need}`);
     return out;
   }
-  const tipValid = (bestOf, s) => tipScores(bestOf).includes(String(s));
+  const tipValid = (bestOf, s) => tipScores(bestOf).includes(String(s).split('@')[0]);
+  // A stored tip is "a:b@CODE": CODE is the team the first number belongs to.
+  // Riot reorders the two teams of a match (seen at kickoff of Worlds 2026
+  // C9-KC: C9 first all week, KC first once it went live), so a bare "a:b"
+  // would silently flip. Tips without "@" are read in the current order.
+  function tipOriented(e, tip) {
+    if (!tip) return tip;
+    const [sc, first] = String(tip).split('@'), [a, b] = sc.split(':');
+    return first && e && e.teams && e.teams[1] && e.teams[1].code === first ? `${b}:${a}` : `${a}:${b}`;
+  }
   const tipKnown = e => e && e.teams && e.teams.length === 2 && e.teams.every(t => t.code && t.code !== 'TBD');
   // open for tips right now?
   function tipOpen(e, now) {
@@ -1587,7 +1596,7 @@
   // points for one tip on one finished match (null = not finished)
   function tipPoints(ev, evData, e, tip) {
     if (!e || e.state !== 'completed' || !tip) return null;
-    const [a, b] = String(tip).split(':').map(Number);
+    const [a, b] = tipOriented(e, tip).split(':').map(Number);
     const wa = Number(e.teams[0].wins) || 0, wb = Number(e.teams[1].wins) || 0;
     if (wa === wb) return null;
     const c = tipConfig(ev), stages = eventStages(evData);
@@ -1612,7 +1621,7 @@
         if (p === null) continue;
         r.tips++; r.pts += p;
         if (p > 0) r.right++;
-        const [a, b] = String(tip).split(':').map(Number);
+        const [a, b] = String(tipOriented(e, tip) || '').split(':').map(Number);
         if (e && a === Number(e.teams[0].wins) && b === Number(e.teams[1].wins)) r.exact++;
       }
     }
@@ -1742,7 +1751,7 @@
     suggestedCapacity, calendar, blockKey, lineupConfig, lineupFor, lineupPreview, scoreBook, autoWindows, faabLeft,
     PICKEM_TYPES, pickemTruth, pickemPoints, pickemLock, splitDone,
     weekRecap, hallEntry, hallDue, statTruth, scoreTips,
-    BINGO, bingoHits, bingoCard, bingoScore, bingoStageRows, eventBingo, eventBingoAll, eventMonopoly, monoBoard, MONO_CARDS, eventMinigame, eventSquadOn, eventPickemCatalog, tipScores, tipValid, tipOpen, tipKnown, tipPoints, tipConfig, eventTipsOn, eventTipTotals, mergeLiveSchedule,
+    BINGO, bingoHits, bingoCard, bingoScore, bingoStageRows, eventBingo, eventBingoAll, eventMonopoly, monoBoard, MONO_CARDS, eventMinigame, eventSquadOn, eventPickemCatalog, tipScores, tipValid, tipOriented, tipOpen, tipKnown, tipPoints, tipConfig, eventTipsOn, eventTipTotals, mergeLiveSchedule,
     EVENT_TYPES, eventConfig, eventQuestionTeams, eventTeamPrice, eventPrice, eventPlayer, eventStages, eventOpenStage, eventDone, eventTeamError, eventLineup, eventTruth, eventStandings, eventReplay, eventReplayPlan, eventLevels, eventTeamLevel, eventFinalScores
   };
 // `this` is undefined in an ES module, so a Cloudflare Worker importing this

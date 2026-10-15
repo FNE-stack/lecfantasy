@@ -640,10 +640,11 @@ function evMono(slug) {
 // ── Tippspiel: every match of the event ───────────────────────────────────
 function evTipChips(slug, e, mine, open) {
   const scores = S.tipScores(e.bestOf), a = e.teams[0].code, b = e.teams[1].code;
+  mine = S.tipOriented(e, mine);
   if ((e.bestOf || 1) <= 1) return `<div class="tipchips">${scores.map(sc => { const winA = sc === '1:0';
-    return `<button class="tipchip ${mine === sc ? 'on' : ''}" ${open ? `data-tip="${esc(e.match)}" data-sc="${sc}"` : 'disabled'}>${evLogo(slug, winA ? a : b, 16)} ${esc(winA ? a : b)}</button>`; }).join('')}</div>`;
+    return `<button class="tipchip ${mine === sc ? 'on' : ''}" ${open ? `data-tip="${esc(e.match)}" data-sc="${sc}" data-first="${esc(a)}" data-second="${esc(b)}"` : 'disabled'}>${evLogo(slug, winA ? a : b, 16)} ${esc(winA ? a : b)}</button>`; }).join('')}</div>`;
   const cols = scores.length > 4 ? scores.length / 2 : scores.length;
-  return `<div class="tipchips" style="display:grid;grid-template-columns:repeat(${cols},1fr)">${scores.map(sc => `<button class="tipchip ${mine === sc ? 'on' : ''}" ${open ? `data-tip="${esc(e.match)}" data-sc="${sc}"` : 'disabled'}>${sc}</button>`).join('')}</div>`;
+  return `<div class="tipchips" style="display:grid;grid-template-columns:repeat(${cols},1fr)">${scores.map(sc => `<button class="tipchip ${mine === sc ? 'on' : ''}" ${open ? `data-tip="${esc(e.match)}" data-sc="${sc}" data-first="${esc(a)}" data-second="${esc(b)}"` : 'disabled'}>${sc}</button>`).join('')}</div>`;
 }
 function evTips(slug) {
   const ev = L().events[slug], d = evD(slug), now = Date.now();
@@ -667,19 +668,19 @@ function evTips(slug) {
     const known = ms.filter(S.tipKnown).length, openN = ms.filter(e => S.tipOpen(e, now)).length;
     let lastDay = '';
     const list = ms.map(e => {
-      const k = S.tipKnown(e), isOpen = S.tipOpen(e, now), my = mine[e.match] || (revealed[e.match] || {})[me()];
-      const pts = S.tipPoints(ev, d, e, my);
+      const k = S.tipKnown(e), isOpen = S.tipOpen(e, now), myRaw = mine[e.match] || (revealed[e.match] || {})[me()], my = S.tipOriented(e, myRaw);
+      const pts = S.tipPoints(ev, d, e, myRaw);
       const dd = day(e.start), sep = dd !== lastDay ? `<div class="tipday">${esc(dd)}</div>` : ''; lastDay = dd;
       if (!k) return sep + `<div class="tiprow tbd"><span class="tiptime">${time(e.start)}</span><span class="dim">Paarung steht noch nicht fest · Bo${e.bestOf || 1}</span></div>`;
       const [ta, tb] = e.teams, done = e.state === 'completed', live = !done && !isOpen;
       const res = done ? `<b class="num">${ta.wins ?? ''}:${tb.wins ?? ''}</b>` : live ? '<span class="pill live">läuft</span>' : `<span class="dim">Bo${e.bestOf || 1}</span>`;
       const badge = pts === null ? '' : `<span class="tippts ${pts > 0 ? 'ok' : ''}">${pts > 0 ? '+' + pts : '0'}</span>`;
       const others = !isOpen && EVX.openMatch === e.match ? `<div class="tipothers">${(L().managers || []).map(m => { const t = (revealed[e.match] || {})[m.id], p2 = S.tipPoints(ev, d, e, t);
-          return `<span><b>${esc(m.name)}</b> ${t ? esc(t) : '—'}${p2 ? ` <span class="tippts ok">+${p2}</span>` : ''}</span>`; }).join('')}</div>` : '';
+          return `<span><b>${esc(m.name)}</b> ${t ? esc(S.tipOriented(e, t)) : '—'}${p2 ? ` <span class="tippts ok">+${p2}</span>` : ''}</span>`; }).join('')}</div>` : '';
       return sep + `<div class="tiprow ${isOpen ? 'open' : 'locked'}" ${!isOpen ? `data-tipopen="${esc(e.match)}"` : ''}>
         <span class="tiptime">${time(e.start)}</span>
         <span class="tipteam">${evLogo(slug, ta.code, 20)} <b>${esc(ta.code)}</b></span><span class="tipres">${res}</span><span class="tipteam r"><b>${esc(tb.code)}</b> ${evLogo(slug, tb.code, 20)}</span>
-        ${adminOnly() ? '' : `<div class="tipmine">${isOpen ? evTipChips(slug, e, my, true) : `<span class="dim" style="font-size:12px">Dein Tipp: <b style="color:var(--text)">${my ? esc(my) : '—'}</b></span> ${badge}`}</div>`}
+        ${adminOnly() ? '' : `<div class="tipmine">${isOpen ? evTipChips(slug, e, myRaw, true) : `<span class="dim" style="font-size:12px">Dein Tipp: <b style="color:var(--text)">${my ? esc(my) : '—'}</b></span> ${badge}`}</div>`}
         ${others}</div>`;
     }).join('');
     return card(esc(st.name), list, openN ? `${openN} offen` : known < ms.length ? 'Paarungen folgen' : st.done ? 'beendet' : '');
@@ -734,7 +735,10 @@ async function lvGame(gid, finished) {
   }
   const t0 = LV.t0[gid];
   let g = null;
-  if (finished) {
+  // a game that ended less than ~70 min after its start has no "t0 + 70 min"
+  // in the feed yet - take the newest moment instead, like a live game
+  const recent = finished && t0 + 70 * 60e3 > Date.now() - 2 * 60e3;
+  if (finished && !recent) {
     // past the end the feed keeps answering with the last frame; a game that
     // never says "finished" (surrender, feed cut) ends where frames stop moving
     let prev = null;
@@ -753,7 +757,7 @@ async function lvGame(gid, finished) {
   }
   if (!g) return;
   g.at = Date.now(); g.t0 = t0;
-  g.done = finished || g.frame.gameState === 'finished';
+  g.done = (finished && !recent) || g.frame.gameState === 'finished';
   LV.game[gid] = g;
 }
 const lvNorm = x => String(x || '').toLowerCase().replace(/[^a-z0-9]/g, '');
@@ -1020,11 +1024,12 @@ function bindEvent() {
     catch (e) { toast(`<span style="color:#ffb1b3">${esc(e.message)}</span>`); b.disabled = false; }
   });
   document.querySelectorAll('[data-tip]').forEach(b => b.onclick = async () => {
-    const match = b.dataset.tip, cur = (EVX.mt[slug] || (EVX.mt[slug] = Object.assign({}, (EVX.mine[slug] || {}).matchTips || {})))[match];
-    const score = cur === b.dataset.sc ? null : b.dataset.sc;
-    if (score === null) delete EVX.mt[slug][match]; else EVX.mt[slug][match] = score;
+    const match = b.dataset.tip, first = b.dataset.first, cur = (EVX.mt[slug] || (EVX.mt[slug] = Object.assign({}, (EVX.mine[slug] || {}).matchTips || {})))[match];
+    const same = cur && S.tipOriented({ teams: [{ code: first }, { code: b.dataset.second }] }, cur) === b.dataset.sc;
+    const score = same ? null : b.dataset.sc;
+    if (score === null) delete EVX.mt[slug][match]; else EVX.mt[slug][match] = score + '@' + first;
     render();
-    try { await api('/api/event/tip', { method: 'POST', body: { slug, match, score } }); }
+    try { await api('/api/event/tip', { method: 'POST', body: { slug, match, score, first } }); }
     catch (e) { if (cur) EVX.mt[slug][match] = cur; else delete EVX.mt[slug][match]; render(); toast(`<span style="color:#ffb1b3">${esc(e.message)}</span>`); }
   });
   document.querySelectorAll('[data-bgcard]').forEach(r => r.onclick = () => { EVX.bingoCard = r.dataset.bgcard; render(); });

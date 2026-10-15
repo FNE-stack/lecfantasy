@@ -135,7 +135,7 @@ async function tipsAdminView(env, slug) {
     const tips = {}, pts = {};
     for (const m of mgrs) {
       const t = revealed ? shown[m.id] : all[m.id][e.match];
-      if (t) tips[m.id] = locked ? t : '✓';
+      if (t) tips[m.id] = locked ? S.tipOriented(e, t) : '✓';
       if (e.state === 'completed' && revealed) pts[m.id] = S.tipPoints(ev, d, e, shown[m.id]) || 0;
       // a saved tip that differs from the revealed one should never happen
       if (revealed && (all[m.id][e.match] || null) !== (shown[m.id] || null))
@@ -148,8 +148,14 @@ async function tipsAdminView(env, slug) {
       src: ev.replay ? 'replay' : liveBy.has(e.match) ? 'live' : 'datei' };
   });
   const log = await readTipLog(env, slug);
-  const open = new Set(matches.filter(m => !m.locked).map(m => m.match));
-  for (const x of log) if (x.k === 'tip' && open.has(x.x)) { if (x.s) x.s = '✓'; if (x.o) x.o = '✓'; }
+  const open = new Set(matches.filter(m => !m.locked).map(m => m.match)), byMatch = new Map((d.schedule || []).map(e => [e.match, e]));
+  for (const x of log) {
+    if (x.k !== 'tip' && x.k !== 'anchor') continue;
+    if (open.has(x.x)) { if (x.s) x.s = '✓'; if (x.o) x.o = '✓'; continue; }
+    const e = byMatch.get(x.x);
+    if (e && x.s) x.s = S.tipOriented(e, x.s);
+    if (e && x.o) x.o = S.tipOriented(e, x.o);
+  }
   return { now, replay: !!ev.replay, source: { file: raw.updated ? raw.updated * 1000 : null, live: live ? live.length : null, liveErr },
     stages: (d.stages || []).map(s => s.name), matches, totals: S.eventTipTotals(league, ev, d), warnings, log: log.slice(-2000) };
 }
@@ -182,8 +188,11 @@ export async function eventSaveTip(env, me, body) {
   if (!e) throw new HttpError(404, 'Unbekanntes Spiel.');
   if (!S.tipKnown(e)) throw new HttpError(409, 'Die Paarung steht noch nicht fest.');
   if (!S.tipOpen(e)) throw new HttpError(409, 'Das Spiel hat schon begonnen — Tipp gesperrt.');
-  const score = body.score === null || body.score === '' ? null : String(body.score);
-  if (score !== null && !S.tipValid(e.bestOf, score)) throw new HttpError(400, `Kein gültiges Ergebnis für Bo${e.bestOf || 1}.`);
+  const raw = body.score === null || body.score === '' ? null : String(body.score).split('@')[0];
+  if (raw !== null && !S.tipValid(e.bestOf, raw)) throw new HttpError(400, `Kein gültiges Ergebnis für Bo${e.bestOf || 1}.`);
+  // the order the player SAW: the page sends the first team's code
+  const codes = e.teams.map(t => t.code), first = codes.includes(body.first) ? body.first : codes[0];
+  const score = raw === null ? null : `${raw}@${first}`;
   const key = `evm:${slug}:${me}`, mine = (await env.LEAGUE.get(key, 'json')) || {}, old = mine[e.match] || null;
   if (score === null) delete mine[e.match]; else mine[e.match] = score;
   await env.LEAGUE.put(key, JSON.stringify(mine));
@@ -416,6 +425,31 @@ export async function eventAdmin(env, body) {
     return { message: `Teilnehmer gespeichert (${codes.length} Teams) — sie erscheinen mit dem nächsten Stats-Update (spätestens in 2 Stunden).` };
   }
   if (a === 'tipsLog') return { view: await tipsAdminView(env, slug) };
+  if (a === 'tipsAnchor') {
+    // tips saved before "@CODE" existed: body.first = { match: code that was
+    // first when they were made }; every other match: its current order
+    const { data: league } = await readLeague(env);
+    const ev = eventOf(league, slug), d = await eventData(env, slug, ev);
+    const byMatch = new Map((d.schedule || []).map(e => [e.match, e])), given = body.first || {};
+    const anchor = (m, t) => {
+      if (!t || String(t).includes('@')) return t;
+      const e = byMatch.get(m), code = given[m] || (e && S.tipKnown(e) ? e.teams[0].code : null);
+      return code ? `${t}@${code}` : t;
+    };
+    let n = 0;
+    for (const mg of league.managers || []) {
+      const key = `evm:${slug}:${mg.id}`, mine = (await env.LEAGUE.get(key, 'json')) || {};
+      let ch = false;
+      for (const [m, t] of Object.entries(mine)) { const v = anchor(m, t); if (v !== t) { mine[m] = v; ch = true; n++; await tipLog(env, slug, { k: 'anchor', m: mg.id, x: m, s: v, o: t }); } }
+      if (ch) await env.LEAGUE.put(key, JSON.stringify(mine));
+    }
+    await writeLeague(env, l => {
+      const v = l.events[slug];
+      for (const [m, tips] of Object.entries(v.tips || {})) for (const [mid, t] of Object.entries(tips)) tips[mid] = anchor(m, t);
+      return l;
+    }, `admin: Tipps mit Teamreihenfolge versehen (${slug})`);
+    return { message: `${n} Tipps verankert` };
+  }
   if (a === 'setTip') {
     // admin correction (e.g. a tip that came in by message): any match with
     // known teams, even after kickoff; logged as "Admin"
@@ -426,8 +460,9 @@ export async function eventAdmin(env, body) {
     if (!S.tipKnown(e)) throw new HttpError(409, 'Die Paarung steht noch nicht fest.');
     const mgr = String(body.manager || '');
     if (!(league.managers || []).some(m => m.id === mgr)) throw new HttpError(404, 'Unbekannter Manager.');
-    const score = body.score === null || body.score === '' ? null : String(body.score).trim();
-    if (score !== null && !S.tipValid(e.bestOf, score)) throw new HttpError(400, `Kein gültiges Ergebnis für Bo${e.bestOf || 1} (z. B. ${S.tipScores(e.bestOf).join(', ')}).`);
+    const raw = body.score === null || body.score === '' ? null : String(body.score).trim();
+    if (raw !== null && !S.tipValid(e.bestOf, raw)) throw new HttpError(400, `Kein gültiges Ergebnis für Bo${e.bestOf || 1} (z. B. ${S.tipScores(e.bestOf).join(', ')}).`);
+    const score = raw === null ? null : `${raw}@${e.teams[0].code}`;
     const key = `evm:${slug}:${mgr}`, mine = (await env.LEAGUE.get(key, 'json')) || {}, old = mine[e.match] || null;
     if (score === null) delete mine[e.match]; else mine[e.match] = score;
     await env.LEAGUE.put(key, JSON.stringify(mine));

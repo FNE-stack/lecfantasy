@@ -979,7 +979,7 @@ tests.match_tips = async () => {
   r = await tip('Ann', 'm3', '3:1');
   assert(r.status === 409 && /Paarung/.test(r.body.error), 'TBD match not open');
   r = await call('GET', '/api/event?slug=ev_2026', { token: tok.Ann });
-  assert(r.body.matchTips.m1 === '1:0' && r.body.matchTips.m2 === '2:1', 'own tips readable');
+  assert(r.body.matchTips.m1 === '1:0@AAA' && r.body.matchTips.m2 === '2:1@BBB', 'own tips readable, stored with their first team: ' + JSON.stringify(r.body.matchTips));
   assert(!JSON.stringify(league()).includes('2:1'), 'tips secret before kickoff');
   // m1 starts and ends: AAA wins; m2 starts, BBB wins 2:1; the knockout pairing appears
   Object.assign(EVENT.schedule[0], { start: iso(Date.now() - h), state: 'completed', teams: [{ code: 'AAA', wins: 1, outcome: 'win' }, { code: 'BBB', wins: 0, outcome: 'loss' }] });
@@ -991,7 +991,7 @@ tests.match_tips = async () => {
   assert(r.status === 200, 'knockout opens once the pairing is known');
   await worker.scheduled({}, env, { waitUntil() {} });
   const ev = league().events.ev_2026;
-  assert(ev.tips.m1[ids.Ann] === '1:0' && ev.tips.m2[ids.Ben] === '0:2' && !ev.tips.m3, 'started matches revealed, open ones stay secret');
+  assert(ev.tips.m1[ids.Ann] === '1:0@AAA' && ev.tips.m2[ids.Ben] === '0:2@BBB' && !ev.tips.m3, 'started matches revealed, open ones stay secret');
   const rows = S.eventStandings(league(), ev, EVENT);
   const ann = rows.find(x => x.manager === ids.Ann), ben = rows.find(x => x.manager === ids.Ben);
   // Ann: m1 right (Bo1 3) + m2 exact (2 + 2) = 7 ; Ben: both wrong = 0
@@ -1000,15 +1000,25 @@ tests.match_tips = async () => {
   Object.assign(EVENT.schedule[2], { start: iso(Date.now() - 0.2 * h), state: 'completed', teams: [{ code: 'AAA', wins: 3, outcome: 'win' }, { code: 'BBB', wins: 1, outcome: 'loss' }] });
   await worker.scheduled({}, env, { waitUntil() {} });
   assert(S.eventStandings(league(), league().events.ev_2026, EVENT).find(x => x.manager === ids.Ann).tips === 15, 'knockout x2');
+  // Riot swaps the team order (seen at Worlds kickoff): tips keep their team
+  EVENT.schedule.push({ match: 'm5', stage: 0, bestOf: 3, start: iso(Date.now() + 30 * h), state: 'unstarted', teams: [{ code: 'AAA' }, { code: 'CCC' }] });
+  await call('POST', '/api/event/tip', { token: tok.Ann, body: { slug: 'ev_2026', match: 'm5', score: '2:0', first: 'AAA' } });
+  Object.assign(EVENT.schedule[EVENT.schedule.length - 1], { start: iso(Date.now() - h), state: 'completed', teams: [{ code: 'CCC', wins: 0, outcome: 'loss' }, { code: 'AAA', wins: 2, outcome: 'win' }] });
+  await worker.scheduled({}, env, { waitUntil() {} });
+  const m5 = EVENT.schedule[EVENT.schedule.length - 1];
+  assert(S.tipPoints(league().events.ev_2026, EVENT, m5, league().events.ev_2026.tips.m5[ids.Ann]) === 4, 'AAA 2:0 still right after the swap: ' + league().events.ev_2026.tips.m5[ids.Ann]);
+  assert(S.tipPoints({}, EVENT, m5, '2:0') === 0 && S.tipPoints({}, EVENT, m5, '0:2') === 4, 'bare tips read in the current order');
+  EVENT.schedule.pop();
+  delete league().events.ev_2026.tips.m5;
   // admin control view + log
   EVENT.schedule.push({ match: 'm4', stage: 1, bestOf: 5, start: iso(Date.now() + 20 * h), state: 'unstarted', teams: [{ code: 'BBB' }, { code: 'CCC' }] });
   await tip('Ben', 'm4', '3:2');
   await worker.scheduled({}, env, { waitUntil() {} });   // result of m3 is logged the minute after its reveal
   let v = (await call('POST', '/api/admin/event', { token: a, body: { action: 'tipsLog', slug: 'ev_2026' } })).body;
   const L4 = v.log.map(x => [x.k, x.m === ids.Ann ? 'Ann' : x.m === ids.Ben ? 'Ben' : '', x.x, x.s === undefined ? '' : x.s, x.r || '']);
-  assert(L4.filter(x => x[0] === 'tip').length === 6, 'all tip changes logged: ' + JSON.stringify(L4));
+  assert(L4.filter(x => x[0] === 'tip').length === 7, 'all tip changes logged: ' + JSON.stringify(L4));
   assert(L4.some(x => x[0] === 'tip' && x[1] === 'Ann' && x[2] === 'm2' && x[3] === '2:1'), 'Ann m2 logged with score after kickoff');
-  assert(v.log.filter(x => x.k === 'reveal').length === 3 && v.log.filter(x => x.k === 'result').length === 3, 'reveals + results logged: ' + JSON.stringify(L4));
+  assert(v.log.filter(x => x.k === 'reveal').length === 4 && v.log.filter(x => x.k === 'result').length === 3, 'reveals + results logged: ' + JSON.stringify(L4));
   assert(v.log.find(x => x.k === 'result' && x.x === 'm3').pts[ids.Ann] === 8, 'result entry carries the points');
   assert(v.log.find(x => x.k === 'tip' && x.x === 'm4').s === '✓' && v.matches.find(x => x.match === 'm4').tips[ids.Ben] === '✓', 'open tips hidden from the admin too');
   assert(v.matches.find(x => x.match === 'm2').tips[ids.Ann] === '2:1' && v.warnings.length === 0, 'locked tips visible, no warnings: ' + JSON.stringify(v.warnings));

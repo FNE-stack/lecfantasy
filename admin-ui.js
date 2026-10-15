@@ -516,6 +516,7 @@ function tipsControl(slug) {
         return `<span class="${t ? '' : 'miss'}">${esc(g.name)} <b>${t ? esc(t) : '—'}</b>${pt !== undefined ? ` <span class="tippts ${pt > 0 ? 'ok' : ''}">${pt > 0 ? '+' + pt : '0'}</span>` : ''}</span>`; }).join('')}</div></div>`).join('');
   const txt = x => {
     if (x.k === 'tip') return `${x.by === 'admin' ? '<b>Admin</b> für ' : ''}<b>${esc(nm(x.m))}</b> ${x.s === null ? `löscht Tipp ${esc(lbl(x.x))}${x.o ? ' (war ' + esc(x.o) + ')' : ''}` : `tippt ${esc(lbl(x.x))} <b>${esc(x.s)}</b>${x.o ? ' (vorher ' + esc(x.o) + ')' : ''}`}`;
+    if (x.k === 'anchor') return `⚓ ${esc(nm(x.m))} ${esc(lbl(x.x))}: Tipp an Teamreihenfolge gebunden → <b>${esc(x.s)}</b>`;
     if (x.k === 'reveal') return `🔒 ${esc(lbl(x.x))} gesperrt &amp; aufgedeckt · ${x.n} Tipp${x.n === 1 ? '' : 's'}`;
     if (x.k === 'result') return `🏁 ${esc(lbl(x.x))} ${x.o ? `Ergebnis korrigiert ${esc(x.o)} → ` : 'Ergebnis '}<b>${esc(x.r)}</b>${x.odd ? ' <b style="color:#ff8b92">unplausibel</b>' : ''} · ${Object.entries(x.pts || {}).map(([id, pt]) => esc(nm(id)) + ' ' + (pt > 0 ? '+' + pt : '0')).join(', ') || 'keine Tipps'}`;
     return esc(JSON.stringify(x));
