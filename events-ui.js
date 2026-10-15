@@ -522,21 +522,37 @@ function evBingo(slug) {
     return `<div class="${cls}" title="${esc(sq.hint || '')}"><div class="bg-l">${esc(sq.label || key)}</div>
       <div class="bg-f">${rare ? '<span class="bg-star">★</span>' : '<span></span>'}${h.hit ? '<span class="bg-w">✓</span>' : `<span class="bg-r">${sq.rate ? Math.max(1, Math.round(sq.rate * 100)) + '%' : ''}</span>`}</div></div>`;
   }).join('')}</div>`;
-  // the moments: which game ticked which square, newest first
+  // The caller: like a real bingo, every stat of the POOL that happens is
+  // called out - newest first, numbered in the order it happened - with whose
+  // cards hold it and whose line it completed.
   const byGame = new Map();
   for (const r of d.games || []) { if (!byGame.has(r.game)) byGame.set(r.game, []); byGame.get(r.game).push(r); }
   const champ = id => ((app.D.champs || {}).names || {})[id] || id;
-  const moments = b.card.cells.filter(k => (hits[k] || {}).hit).map(k => ({ k, h: hits[k] }))
-    .sort((x, y) => String(y.h.at).localeCompare(String(x.h.at))).map(({ k, h }) => {
-      const sq = S.BINGO[k] || {}, g = byGame.get(h.game) || [];
-      const teams = [...new Set(g.map(x => x.team))], min = g[0] && g[0].dur ? Math.round(g[0].dur / 60) : null;
-      const w = g.find(x => x.win);
-      let who = '';
-      try { const x = sq.who && sq.who(g); if (x) who = `<b>${esc(x.ign || (evP(slug, x.player) || {}).name || '')}</b> (${esc(champ(x.champ))}) ${x.k}/${x.d}/${x.a}${x.cs >= 400 ? ' · ' + x.cs + ' CS' : ''} · `; } catch (e) { /* no detail */ }
-      return `<div class="row" style="gap:10px;padding:9px 16px;border-top:1px solid var(--line);align-items:flex-start">
-        <span style="font-size:16px">${(b.card.rare || []).includes(b.card.cells.indexOf(k)) ? '★' : '✓'}</span>
-        <div style="flex:1;min-width:0"><b>${esc(sq.label || k)}</b><div class="dim" style="font-size:12px">${who}${teams.map(c => evLogo(slug, c, 14) + ' ' + esc(c)).join(' vs ')}${min ? ' · ' + min + ' Min' : ''}${w ? ' · Sieg ' + esc(w.team) : ''}${h.at ? ' · ' + esc(new Date(h.at).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit' })) : ''}</div></div></div>`;
-    }).join('');
+  const order = k => { const h = hits[k] || {}, g = byGame.get(h.game) || []; return String(h.at || '') + '|' + String((g[0] || {}).n || 0).padStart(2, '0') + '|' + k; };
+  const called = Object.keys(S.BINGO).filter(k => (hits[k] || {}).hit).sort((x, y) => order(x).localeCompare(order(y)));
+  // which call finished a line (or the full card) on whose card
+  const bingoBy = {};
+  for (const x of Object.values(all)) {
+    for (const line of x.score.lineCells) {
+      const last = line.map(i => x.card.cells[i]).sort((p, q) => order(q).localeCompare(order(p)))[0];
+      (bingoBy[last] = bingoBy[last] || new Set()).add(x.manager);
+    }
+  }
+  const moments = called.map((k, n) => ({ k, n: n + 1 })).reverse().map(({ k, n }) => {
+    const h = hits[k], sq = S.BINGO[k] || {}, g = byGame.get(h.game) || [];
+    const teams = [...new Set(g.map(x => x.team))], min = g[0] && g[0].dur ? Math.round(g[0].dur / 60) : null;
+    const w = g.find(x => x.win);
+    let who = '';
+    try { const x = sq.who && sq.who(g); if (x) who = `<b>${esc(x.ign || (evP(slug, x.player) || {}).name || '')}</b> (${esc(champ(x.champ))}) ${x.k}/${x.d}/${x.a}${x.cs >= 400 ? ' · ' + x.cs + ' CS' : ''} · `; } catch (e) { /* no detail */ }
+    const holders = Object.values(all).filter(x => x.card.cells.includes(k)).map(x => x.manager);
+    const bingos = [...(bingoBy[k] || [])];
+    const rare = (sq.rate || 1) <= 0.03;
+    return `<div class="bgcall${bingos.length ? ' bingo' : ''}">
+      <span class="bgnum${rare ? ' rare' : ''}">${n}</span>
+      <div style="flex:1;min-width:0"><b>${rare ? '★ ' : ''}${esc(sq.label || k)}</b>${bingos.length ? ` <span class="pill live">BINGO: ${bingos.map(m => esc(mgrName(m))).join(', ')}</span>` : ''}
+        <div class="dim" style="font-size:12px">${who}${teams.map(c => evLogo(slug, c, 14) + ' ' + esc(c)).join(' vs ')}${g[0] && g[0].n ? ' · Spiel ' + g[0].n : ''}${min ? ' · ' + min + ' Min' : ''}${w ? ' · Sieg ' + esc(w.team) : ''}${h.at ? ' · ' + esc(new Date(h.at).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit' })) : ''}</div>
+        <div style="font-size:12px;margin-top:3px">${holders.length ? 'auf der Karte: ' + holders.map(m => `<span class="${m === me() ? 'bgme' : ''}">${esc(mgrName(m))}</span>`).join(', ') : '<span class="dim">auf keiner Karte</span>'}</div></div></div>`;
+  }).join('');
   const anyHit = Object.values(all).some(x => x.score.squares);
   const reshuffle = adminOnly() && !anyHit ? ` <button class="btn sm" id="bgShuffle">🎲 Neue Karten</button>` : '';
   const ranking = Object.values(all).sort((x, y) => y.score.points - x.score.points || y.score.lines - x.score.lines || y.score.squares - x.score.squares);
@@ -552,7 +568,7 @@ function evBingo(slug) {
      <div class="card-b dim" style="font-size:12px;border-top:1px solid var(--line)">Jeder hat seine eigene Karte aus demselben Pool von ${Object.keys(S.BINGO).length} Stats. Felder haken sich selbst ab, sobald ein Spiel sie erfüllt — auch rückwirkend.
        Jede volle Linie (Reihe, Spalte, Diagonale) auf <b>deiner</b> Karte: <b>+${b.cfg.line}</b>, volle Karte +${b.cfg.full}. ★ = selten — jede Reihe hat eins.</div>`, `+${b.cfg.line} pro Linie`)
     + card('Bingo-Tabelle', table, 'antippen = Karte ansehen')
-    + card(own ? 'Momente auf deiner Karte' : 'Momente auf dieser Karte', moments || '<div class="empty">Noch nichts abgehakt. Hier steht, welches Spiel welches Feld abgehakt hat.</div>');
+    + card('Ausrufer', moments || '<div class="empty">Noch nichts gezogen. Hier wird jede Stat aus dem Pool ausgerufen, sobald ein Spiel sie erfüllt — mit wem sie auf der Karte hat und wer damit Bingo macht.</div>', called.length ? `${called.length} von ${Object.keys(S.BINGO).length} gezogen` : '');
 }
 
 // ── Rift-Monopoly ─────────────────────────────────────────────────────────

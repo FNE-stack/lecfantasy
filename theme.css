@@ -627,3 +627,10 @@ table.lineup a:hover{text-decoration:underline!important}
 .tlt .miss b{color:#ff8b92}
 .tllog{max-height:420px;overflow-y:auto;padding:0 16px 12px;font-size:12px;line-height:1.6}
 .tllog>div{padding:3px 0;border-bottom:1px solid var(--line)}
+
+/* Bingo caller */
+.bgcall{display:flex;gap:10px;padding:9px 16px;border-top:1px solid var(--line);align-items:flex-start}
+.bgcall.bingo{background:var(--gold-soft)}
+.bgnum{flex:0 0 30px;height:30px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;font:700 13px var(--font);background:var(--surface-2);border:1px solid var(--line-2)}
+.bgnum.rare{border-color:var(--gold);color:var(--gold-hi)}
+.bgme{color:var(--gold-hi);font-weight:700}
