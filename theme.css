@@ -634,3 +634,8 @@ table.lineup a:hover{text-decoration:underline!important}
 .bgnum{flex:0 0 30px;height:30px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;font:700 13px var(--font);background:var(--surface-2);border:1px solid var(--line-2)}
 .bgnum.rare{border-color:var(--gold);color:var(--gold-hi)}
 .bgme{color:var(--gold-hi);font-weight:700}
+
+/* winners */
+.tipteam.w b{color:var(--gold-hi)}
+.tipteam.l{opacity:.55}
+.tipwin{font:700 10px var(--font);letter-spacing:.06em;text-transform:uppercase;color:var(--gold);border:1px solid var(--gold);border-radius:999px;padding:0 6px}

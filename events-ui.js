@@ -679,7 +679,7 @@ function evTips(slug) {
           return `<span><b>${esc(m.name)}</b> ${t ? esc(S.tipOriented(e, t)) : '—'}${p2 ? ` <span class="tippts ok">+${p2}</span>` : ''}</span>`; }).join('')}</div>` : '';
       return sep + `<div class="tiprow ${isOpen ? 'open' : 'locked'}" ${!isOpen ? `data-tipopen="${esc(e.match)}"` : ''}>
         <span class="tiptime">${time(e.start)}</span>
-        <span class="tipteam">${evLogo(slug, ta.code, 20)} <b>${esc(ta.code)}</b></span><span class="tipres">${res}</span><span class="tipteam r"><b>${esc(tb.code)}</b> ${evLogo(slug, tb.code, 20)}</span>
+        <span class="tipteam ${done ? (Number(ta.wins) > Number(tb.wins) ? 'w' : 'l') : ''}">${evLogo(slug, ta.code, 20)} <b>${esc(ta.code)}</b>${done && Number(ta.wins) > Number(tb.wins) ? ' <span class="tipwin">Sieg</span>' : ''}</span><span class="tipres">${res}</span><span class="tipteam r ${done ? (Number(tb.wins) > Number(ta.wins) ? 'w' : 'l') : ''}">${done && Number(tb.wins) > Number(ta.wins) ? '<span class="tipwin">Sieg</span> ' : ''}<b>${esc(tb.code)}</b> ${evLogo(slug, tb.code, 20)}</span>
         ${adminOnly() ? '' : `<div class="tipmine">${isOpen ? evTipChips(slug, e, myRaw, true) : `<span class="dim" style="font-size:12px">Dein Tipp: <b style="color:var(--text)">${my ? esc(my) : '—'}</b></span> ${badge}`}</div>`}
         ${others}</div>`;
     }).join('');
@@ -717,7 +717,7 @@ async function lvMatch(id) {
   const j = await lvJson(LGW + 'getEventDetails?hl=en-US&id=' + id, { 'x-api-key': LKEY });
   const m = j && j.data && j.data.event && j.data.event.match;
   if (!m) return;
-  LV.det[id] = { at: Date.now(), teams: (m.teams || []).map(t => ({ id: t.id, code: t.code })),
+  LV.det[id] = { at: Date.now(), teams: (m.teams || []).map(t => ({ id: t.id, code: t.code, wins: Number((t.result || {}).gameWins) || 0 })),
     games: (m.games || []).filter(g => g.state === 'completed' || g.state === 'inProgress').map(g => ({ id: g.id, n: g.number, state: g.state })) };
 }
 async function lvAt(gid, at) {
@@ -787,6 +787,34 @@ async function lvBans(gid, g, cb, cr) {
     }
   }
 }
+// Winner of every finished game of a match. lolesports only gives the series
+// score, not who won which game. 1) the stats file (2-hourly) knows it for
+// sure; 2) until then the series score decides: a sweep is clear, otherwise
+// the finished games are ranked by the final-frame margin (towers, inhibitors,
+// gold) - the same rule the stats job has used all season.
+function lvWinners(slug, mid) {
+  const det = LV.det[mid], out = {};
+  if (!det || det.teams.length !== 2) return out;
+  const d = evD(slug) || {}, done = det.games.filter(g => g.state === 'completed');
+  for (const g of done) { const r = (d.games || []).find(x => x.game === g.id && x.win); if (r) out[g.id] = r.team; }
+  const [A, B] = det.teams.map(t => t.code), open = done.filter(g => !out[g.id]);
+  if (!open.length) return out;
+  const left = c => (det.teams.find(t => t.code === c).wins) - done.filter(g => out[g.id] === c).length;
+  if (left(A) + left(B) !== open.length) return out;           // series score not updated yet
+  if (!left(A) || !left(B)) { for (const g of open) out[g.id] = left(A) ? A : B; return out; }
+  const margin = [];
+  for (const g of open) {
+    const x = LV.game[g.id];
+    if (!x || !x.done) return out;                              // final frames still loading
+    const blueIsA = (det.teams.find(t => t.id === x.meta.blueTeamMetadata.esportsTeamId) || {}).code === A;
+    const [fa, fb] = blueIsA ? [x.frame.blueTeam, x.frame.redTeam] : [x.frame.redTeam, x.frame.blueTeam];
+    margin.push({ id: g.id, m: [fa.towers - fb.towers, fa.inhibitors - fb.inhibitors, fa.totalGold - fb.totalGold] });
+  }
+  margin.sort((x, y) => y.m[0] - x.m[0] || y.m[1] - x.m[1] || y.m[2] - x.m[2]);
+  margin.forEach((x, i) => { out[x.id] = i < left(A) ? A : B; });
+  return out;
+}
+
 function evLive(slug) {
   const d = evD(slug), now = Date.now(), ev = L().events[slug];
   const day = iso => new Date(iso).toLocaleDateString('de-DE', { timeZone: 'Europe/Berlin', day: '2-digit', month: '2-digit' });
@@ -814,7 +842,9 @@ function evLive(slug) {
   const gm = det.games.find(g => g.id === gid), g = LV.game[gid];
   const finished = gm.state === 'completed' || !!ev.replay;
   if (!g || !g.done && now - g.at > 20000) lvKick('g' + gid, () => lvGame(gid, finished));
-  const gtabs = det.games.length > 1 || e.bestOf > 1 ? `<div class="chips" style="margin:0 0 12px">${det.games.map(x => `<button class="chip ${x.id === gid ? 'on' : ''}" data-lvg="${esc(x.id)}" data-lvmatch="${esc(e.match)}">${x.state === 'inProgress' ? '<span class="live-dot"></span> ' : ''}Spiel ${x.n}</button>`).join('')}</div>` : '';
+  for (const x of det.games) if (x.state === 'completed' && x.id !== gid && !(LV.game[x.id] && LV.game[x.id].done)) lvKick('g' + x.id, () => lvGame(x.id, true));
+  const wins = lvWinners(slug, e.match);
+  const gtabs = det.games.length > 1 || e.bestOf > 1 ? `<div class="chips" style="margin:0 0 12px">${det.games.map(x => `<button class="chip ${x.id === gid ? 'on' : ''}" data-lvg="${esc(x.id)}" data-lvmatch="${esc(e.match)}">${x.state === 'inProgress' ? '<span class="live-dot"></span> ' : ''}Spiel ${x.n}${wins[x.id] ? ` · ${evLogo(slug, wins[x.id], 14)} ${esc(wins[x.id])} ✓` : ''}</button>`).join('')}</div>` : '';
   return strip + `<div class="eyebrow" style="margin:4px 0 10px">${title}</div>` + gtabs + (g ? lvGameView(slug, e, gid, g, det) : card('Spiel ' + gm.n, `<div class="empty">${LV.tried['g' + gid] && !LV.busy['g' + gid] ? (finished ? 'Für dieses Spiel hat der Feed keine Daten.' : 'Der Live-Feed startet ein paar Minuten nach Spielbeginn — gleich geht es los.') : 'lädt Spieldaten …'}</div>`));
 }
 function lvGameView(slug, e, gid, g, det) {
@@ -825,8 +855,7 @@ function lvGameView(slug, e, gid, g, det) {
   const fileBans = (d.bans || {})[gid];
   if (g.done && !fileBans && !(LV.lp[gid] && LV.lp[gid].bans)) lvKick('b' + gid, () => lvBans(gid, g, cb, cr));
   const lp = LV.lp[gid] || {}, bans = fileBans || lp.bans || null;
-  const winRow = (d.games || []).find(r => r.game === gid && r.win);
-  const win = g.done ? (winRow ? winRow.team : lp.win || null) : null;
+  const win = g.done ? (lvWinners(slug, e.match)[gid] || lp.win || null) : null;
   const mins = Math.max(0, (Date.parse(frame.rfc460Timestamp) - g.t0) / 60e3);
   const clock = `${Math.floor(mins)}:${String(Math.floor(mins % 1 * 60)).padStart(2, '0')}`;
   const lag = Math.max(0, Math.round((Date.now() - Date.parse(frame.rfc460Timestamp)) / 60e3));
