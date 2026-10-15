@@ -539,7 +539,8 @@ function viewEventsAdmin() {
   const S = window.LECScoring, idx = ((ctx.D.eventsIndex || {}).events) || [], evs = A.league.events || {};
   evaCfg();
   if (!idx.length) return card('Events', '<div class="empty">Noch keine Event-Daten — die kommen mit dem nächsten Stats-Update (Stats → Jetzt aktualisieren).</div>');
-  return idx.map(info => {
+  // running / upcoming events first, finished ones at the end
+  return idx.slice().sort((x, y) => (x.done ? 1 : 0) - (y.done ? 1 : 0)).map(info => {
     const ev = evs[info.slug];
     const dates = `${new Date(info.start).toLocaleDateString('de-DE')} – ${new Date(info.end).toLocaleDateString('de-DE')}`;
     const head = `<div class="card-b row" style="gap:14px;flex-wrap:wrap">${info.logo ? `<img src="${esc(info.logo)}" alt="" style="height:40px;max-width:110px;object-fit:contain">` : ''}
