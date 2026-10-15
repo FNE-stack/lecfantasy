@@ -90,6 +90,86 @@ export async function eventState(env, me, slug) {
   return { stage, team, rounds, tips: pre.tips || {}, pickemLocked: !!pre.locked, pickemLockAt: pre.lockAt || null, matchTips };
 }
 
+// ── Tippspiel log ──────────────────────────────────────────────────────────
+// Every tip change and every server step (reveal, result) is one KV key, so
+// nothing is lost when people tip at the same moment. The entry sits in the
+// key's metadata: the admin view reads the whole log with list calls only.
+export async function tipLog(env, slug, entry) {
+  const t = new Date().toISOString(), meta = Object.assign({ t }, entry);
+  await env.LEAGUE.put(`evlog:${slug}:${t}:${Math.random().toString(36).slice(2, 6)}`, JSON.stringify(meta), { metadata: meta });
+}
+async function readTipLog(env, slug) {
+  const out = [];
+  let cursor;
+  do {
+    const r = await env.LEAGUE.list({ prefix: `evlog:${slug}:`, cursor });
+    for (const k of r.keys) out.push(k.metadata || await env.LEAGUE.get(k.name, 'json'));
+    cursor = r.list_complete ? null : r.cursor;
+  } while (cursor);
+  return out.filter(Boolean).sort((a, b) => a.t.localeCompare(b.t));
+}
+const scoreOf = e => `${Number(e.teams[0].wins) || 0}:${Number(e.teams[1].wins) || 0}`;
+// a finished series must have exactly one team on the needed wins
+function oddResult(e) {
+  const need = Math.ceil((e.bestOf || 1) / 2), w = e.teams.map(t => Number(t.wins) || 0);
+  return Math.max(...w) !== need || Math.min(...w) >= need;
+}
+// Admin control view: every match with every tip and its points, the data
+// sources, plausibility warnings and the log. Before kickoff the admin sees
+// THAT someone tipped, not what (same rule as the pick'em) - from kickoff on all.
+async function tipsAdminView(env, slug) {
+  const { data: league } = await readLeague(env);
+  const ev = eventOf(league, slug);
+  const raw = await publicData(env, `events/${slug}.json`, 120);
+  if (!raw) throw new HttpError(404, 'Für dieses Event gibt es noch keine Daten.');
+  let live = null, liveErr = null;
+  if (!ev.replay && raw.league) { try { live = await liveSchedule(raw.league); } catch (e) { liveErr = String(e.message || e); } }
+  const d = ev.replay ? S.eventReplay(raw, ev.replay) : live && live.length ? S.mergeLiveSchedule(raw, live) : raw;
+  const now = Date.now(), mgrs = league.managers || [], name = id => (mgrs.find(m => m.id === id) || {}).name || id;
+  const all = {};
+  for (const m of mgrs) all[m.id] = (await env.LEAGUE.get(`evm:${slug}:${m.id}`, 'json')) || {};
+  const liveBy = new Map((live || []).map(x => [x.match, x])), done = new Set(ev.tipsDone || []), warnings = [];
+  const label = e => `${e.teams[0].code}–${e.teams[1].code}`;
+  const matches = (d.schedule || []).map(e => {
+    const known = S.tipKnown(e), locked = !S.tipOpen(e, now), revealed = done.has(e.match), shown = (ev.tips || {})[e.match] || {};
+    const tips = {}, pts = {};
+    for (const m of mgrs) {
+      const t = revealed ? shown[m.id] : all[m.id][e.match];
+      if (t) tips[m.id] = locked ? t : '✓';
+      if (e.state === 'completed' && revealed) pts[m.id] = S.tipPoints(ev, d, e, shown[m.id]) || 0;
+      // a saved tip that differs from the revealed one should never happen
+      if (revealed && (all[m.id][e.match] || null) !== (shown[m.id] || null))
+        warnings.push(`${label(e)}: Tipp von ${name(m.id)} gespeichert ${all[m.id][e.match] || '—'}, aufgedeckt ${shown[m.id] || '—'}`);
+    }
+    if (known && e.state === 'completed' && oddResult(e)) warnings.push(`${label(e)}: Ergebnis ${scoreOf(e)} passt nicht zu Bo${e.bestOf || 1}`);
+    if (known && locked && !revealed && Date.parse(e.start) < now - 5 * 60e3) warnings.push(`${label(e)}: seit Spielbeginn nicht aufgedeckt (der Cron läuft jede Minute)`);
+    if (live && !ev.replay && !liveBy.has(e.match)) warnings.push(`Spiel ${e.match} fehlt im Live-Spielplan`);
+    return { match: e.match, start: e.start, state: e.state, stage: e.stage, bestOf: e.bestOf || 1, teams: e.teams, known, locked, revealed, tips, pts,
+      src: ev.replay ? 'replay' : liveBy.has(e.match) ? 'live' : 'datei' };
+  });
+  const log = await readTipLog(env, slug);
+  const open = new Set(matches.filter(m => !m.locked).map(m => m.match));
+  for (const x of log) if (x.k === 'tip' && open.has(x.x)) { if (x.s) x.s = '✓'; if (x.o) x.o = '✓'; }
+  return { now, replay: !!ev.replay, source: { file: raw.updated ? raw.updated * 1000 : null, live: live ? live.length : null, liveErr },
+    stages: (d.stages || []).map(s => s.name), matches, totals: S.eventTipTotals(league, ev, d), warnings, log: log.slice(-2000) };
+}
+// cron: one log entry per finished match (with everybody's points), again if
+// the result changes afterwards. evres:<slug> remembers what was logged.
+async function logResults(env, slug, ev, d) {
+  const key = `evres:${slug}`, seen = (await env.LEAGUE.get(key, 'json')) || {};
+  let changed = false;
+  for (const e of d.schedule || []) {
+    if (e.state !== 'completed' || !S.tipKnown(e) || !(ev.tipsDone || []).includes(e.match)) continue;
+    const r = scoreOf(e);
+    if (seen[e.match] === r) continue;
+    const pts = {};
+    for (const [mid, t] of Object.entries((ev.tips || {})[e.match] || {})) pts[mid] = S.tipPoints(ev, d, e, t) || 0;
+    await tipLog(env, slug, { k: 'result', x: e.match, r, o: seen[e.match] || null, pts, odd: oddResult(e) || undefined });
+    seen[e.match] = r; changed = true;
+  }
+  if (changed) await env.LEAGUE.put(key, JSON.stringify(seen));
+}
+
 // one match tip: { slug, match, score: "a:b" | null }. Only while the match is
 // open (both teams known, not started); secret until the match starts.
 export async function eventSaveTip(env, me, body) {
@@ -104,9 +184,10 @@ export async function eventSaveTip(env, me, body) {
   if (!S.tipOpen(e)) throw new HttpError(409, 'Das Spiel hat schon begonnen — Tipp gesperrt.');
   const score = body.score === null || body.score === '' ? null : String(body.score);
   if (score !== null && !S.tipValid(e.bestOf, score)) throw new HttpError(400, `Kein gültiges Ergebnis für Bo${e.bestOf || 1}.`);
-  const key = `evm:${slug}:${me}`, mine = (await env.LEAGUE.get(key, 'json')) || {};
+  const key = `evm:${slug}:${me}`, mine = (await env.LEAGUE.get(key, 'json')) || {}, old = mine[e.match] || null;
   if (score === null) delete mine[e.match]; else mine[e.match] = score;
   await env.LEAGUE.put(key, JSON.stringify(mine));
+  if (old !== score) await tipLog(env, slug, { k: 'tip', m: me, x: e.match, s: score, o: old });
   return { match: e.match, score };
 }
 
@@ -238,6 +319,7 @@ export async function eventCron(env, league) {
     // hall of fame once it is over - and only if anybody actually played it
     const played = Object.keys(ev.lineups || {}).length || Object.keys(ev.tips || {}).length || (ev.pickem && ev.pickem.revealed && Object.keys(ev.pickem.picks || {}).length) || S.eventMinigame(ev) === 'bingo';
     if (S.eventDone(d) && !(league.hall || {})['event_' + slug] && played && (league.managers || []).length) p.hall = { d };
+    if (S.eventTipsOn(ev)) await logResults(env, slug, ev, d).catch(() => null);
     if (Object.keys(p.stages).length || p.tips || p.hall || p.matchTips) patch[slug] = p;
   }
   await bingoNotices(env, league).catch(() => null);
@@ -273,6 +355,10 @@ export async function eventCron(env, league) {
     }
     return l;
   }, `events: ${Object.keys(patch).join(', ')} aufgedeckt/aktualisiert`);
+  if (res.changed) {
+    for (const [slug, p] of Object.entries(patch)) for (const [m, t] of Object.entries(p.matchTips || {}))
+      await tipLog(env, slug, { k: 'reveal', x: m, n: Object.keys(t).length }).catch(() => null);
+  }
   return res.changed ? Object.keys(patch) : null;
 }
 
@@ -320,6 +406,33 @@ export async function eventAdmin(env, body) {
       return c;
     }, `config: Teilnehmer ${slug} (${codes.length})`);
     return { message: `Teilnehmer gespeichert (${codes.length} Teams) — sie erscheinen mit dem nächsten Stats-Update (spätestens in 2 Stunden).` };
+  }
+  if (a === 'tipsLog') return { view: await tipsAdminView(env, slug) };
+  if (a === 'setTip') {
+    // admin correction (e.g. a tip that came in by message): any match with
+    // known teams, even after kickoff; logged as "Admin"
+    const { data: league } = await readLeague(env);
+    const ev = eventOf(league, slug), d = await eventData(env, slug, ev);
+    const e = (d.schedule || []).find(x => x.match === String(body.match || ''));
+    if (!e) throw new HttpError(404, 'Unbekanntes Spiel.');
+    if (!S.tipKnown(e)) throw new HttpError(409, 'Die Paarung steht noch nicht fest.');
+    const mgr = String(body.manager || '');
+    if (!(league.managers || []).some(m => m.id === mgr)) throw new HttpError(404, 'Unbekannter Manager.');
+    const score = body.score === null || body.score === '' ? null : String(body.score).trim();
+    if (score !== null && !S.tipValid(e.bestOf, score)) throw new HttpError(400, `Kein gültiges Ergebnis für Bo${e.bestOf || 1} (z. B. ${S.tipScores(e.bestOf).join(', ')}).`);
+    const key = `evm:${slug}:${mgr}`, mine = (await env.LEAGUE.get(key, 'json')) || {}, old = mine[e.match] || null;
+    if (score === null) delete mine[e.match]; else mine[e.match] = score;
+    await env.LEAGUE.put(key, JSON.stringify(mine));
+    if ((ev.tipsDone || []).includes(e.match)) {
+      await writeLeague(env, l => {
+        const v = l.events[slug];
+        v.tips = v.tips || {}; v.tips[e.match] = Object.assign({}, v.tips[e.match] || {});
+        if (score === null) delete v.tips[e.match][mgr]; else v.tips[e.match][mgr] = score;
+        return l;
+      }, `admin: Tipp korrigiert (${slug})`);
+    }
+    await tipLog(env, slug, { k: 'tip', m: mgr, x: e.match, s: score, o: old, by: 'admin' });
+    return { message: `Tipp ${score === null ? 'gelöscht' : 'gesetzt: ' + score} (${e.teams[0].code}–${e.teams[1].code})` };
   }
   let msg = '';
   if (a === 'create' || a === 'update' || a === 'pickem') await eventData(env, slug);     // data must exist
@@ -373,7 +486,8 @@ export async function eventAdmin(env, body) {
     return l;
   }, () => 'admin: ' + msg);
   if (a === 'delete') {
-    for (const pre of [`evt:${slug}:`, `evp:${slug}:`, `evm:${slug}:`]) {
+    await env.LEAGUE.delete(`evres:${slug}`);
+    for (const pre of [`evt:${slug}:`, `evp:${slug}:`, `evm:${slug}:`, `evlog:${slug}:`]) {
       const r = await env.LEAGUE.list({ prefix: pre });
       for (const k of r.keys) await env.LEAGUE.delete(k.name);
     }

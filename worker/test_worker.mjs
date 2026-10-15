@@ -1000,7 +1000,32 @@ tests.match_tips = async () => {
   Object.assign(EVENT.schedule[2], { start: iso(Date.now() - 0.2 * h), state: 'completed', teams: [{ code: 'AAA', wins: 3, outcome: 'win' }, { code: 'BBB', wins: 1, outcome: 'loss' }] });
   await worker.scheduled({}, env, { waitUntil() {} });
   assert(S.eventStandings(league(), league().events.ev_2026, EVENT).find(x => x.manager === ids.Ann).tips === 15, 'knockout x2');
-  return 'Bo1/Bo3/Bo5 scores validated, TBD + started matches locked, secret until kickoff, revealed by the cron, 3 / 2+2 points, knockouts x2';
+  // admin control view + log
+  EVENT.schedule.push({ match: 'm4', stage: 1, bestOf: 5, start: iso(Date.now() + 20 * h), state: 'unstarted', teams: [{ code: 'BBB' }, { code: 'CCC' }] });
+  await tip('Ben', 'm4', '3:2');
+  await worker.scheduled({}, env, { waitUntil() {} });   // result of m3 is logged the minute after its reveal
+  let v = (await call('POST', '/api/admin/event', { token: a, body: { action: 'tipsLog', slug: 'ev_2026' } })).body;
+  const L4 = v.log.map(x => [x.k, x.m === ids.Ann ? 'Ann' : x.m === ids.Ben ? 'Ben' : '', x.x, x.s === undefined ? '' : x.s, x.r || '']);
+  assert(L4.filter(x => x[0] === 'tip').length === 6, 'all tip changes logged: ' + JSON.stringify(L4));
+  assert(L4.some(x => x[0] === 'tip' && x[1] === 'Ann' && x[2] === 'm2' && x[3] === '2:1'), 'Ann m2 logged with score after kickoff');
+  assert(v.log.filter(x => x.k === 'reveal').length === 3 && v.log.filter(x => x.k === 'result').length === 3, 'reveals + results logged: ' + JSON.stringify(L4));
+  assert(v.log.find(x => x.k === 'result' && x.x === 'm3').pts[ids.Ann] === 8, 'result entry carries the points');
+  assert(v.log.find(x => x.k === 'tip' && x.x === 'm4').s === '✓' && v.matches.find(x => x.match === 'm4').tips[ids.Ben] === '✓', 'open tips hidden from the admin too');
+  assert(v.matches.find(x => x.match === 'm2').tips[ids.Ann] === '2:1' && v.warnings.length === 0, 'locked tips visible, no warnings: ' + JSON.stringify(v.warnings));
+  // correction: Ben said 1:0 for m1 by message -> 3 points, logged as admin
+  r = await call('POST', '/api/admin/event', { token: a, body: { action: 'setTip', slug: 'ev_2026', match: 'm1', manager: ids.Ben, score: '1:0' } });
+  assert(r.status === 200, 'admin sets a tip: ' + JSON.stringify(r.body));
+  assert(S.eventStandings(league(), league().events.ev_2026, EVENT).find(x => x.manager === ids.Ben).tips === 3, 'correction counts');
+  v = (await call('POST', '/api/admin/event', { token: a, body: { action: 'tipsLog', slug: 'ev_2026' } })).body;
+  assert(v.log.some(x => x.k === 'tip' && x.by === 'admin' && x.s === '1:0' && x.o === '0:1') && v.warnings.length === 0, 'admin correction logged');
+  r = await call('POST', '/api/admin/event', { token: a, body: { action: 'setTip', slug: 'ev_2026', match: 'm1', manager: ids.Ben, score: '2:0' } });
+  assert(r.status === 400, 'invalid score refused');
+  // a broken result shows up as a warning
+  EVENT.schedule[1].teams[1].wins = 2;
+  v = (await call('POST', '/api/admin/event', { token: a, body: { action: 'tipsLog', slug: 'ev_2026' } })).body;
+  assert(v.warnings.some(w => /passt nicht/.test(w)), 'odd result warned');
+  EVENT.schedule[1].teams[1].wins = 1;
+  return 'Bo1/Bo3/Bo5 scores validated, TBD + started matches locked, secret until kickoff, revealed by the cron, 3 / 2+2 points, knockouts x2; log of tips/reveals/results, admin view hides open tips, corrections + warnings';
 };
 
 tests.faab = async () => {

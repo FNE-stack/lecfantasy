@@ -120,6 +120,7 @@ async function route(request, env, ctx) {
     if (p === '/api/admin/hall' && method === 'POST') return hallAdmin(env, body);
     if (p === '/api/admin/event' && method === 'POST') {
       const r = await eventAdmin(env, body);
+      if (r.view) return r.view;
       if (body.action === 'pickem') await botEvents(env, r.league).catch(() => 0);
       return { message: r.message };
     }

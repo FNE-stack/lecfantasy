@@ -619,3 +619,11 @@ table.lineup a:hover{text-decoration:underline!important}
 .lvkda{display:flex;flex-direction:column;align-items:flex-end;font-variant-numeric:tabular-nums}.lvkda small{font-size:11px;white-space:nowrap}
 .lvitems{grid-column:2 / -1;display:flex;gap:3px;flex-wrap:wrap;line-height:0}
 .lvitems img{border-radius:4px;background:var(--surface-2)}
+
+/* Admin: Tippspiel-Kontrolle */
+.tlm{padding:9px 16px;border-top:1px solid var(--line)}
+.tlt{display:flex;flex-wrap:wrap;gap:4px 14px;font-size:12px;margin-top:4px;color:var(--muted)}
+.tlt b{color:var(--text)}
+.tlt .miss b{color:#ff8b92}
+.tllog{max-height:420px;overflow-y:auto;padding:0 16px 12px;font-size:12px;line-height:1.6}
+.tllog>div{padding:3px 0;border-bottom:1px solid var(--line)}

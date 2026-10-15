@@ -475,6 +475,66 @@ function tipStatusRows(slug, round) {
     <p class="muted" style="font-size:11px;margin:8px 0 0">Nur der Stand — die Tipps selbst sieht auch der Admin erst nach der Sperre.</p></div>`;
 }
 
+// ── Tippspiel-Kontrolle: everything that happened, to double-check ─────────
+// Data sources, warnings, points per manager, every match with every tip, the
+// full log (tips, changes, locks, results) and a correction form. Tips of
+// matches that have not started show only as ✓ - same rule as the pick'em.
+EVA.tl = {}; EVA.tlF = {};
+function evaTl(slug, force) {
+  if (!force && EVA.tl[slug] !== undefined) return EVA.tl[slug];
+  if (EVA.tl[slug] === undefined) EVA.tl[slug] = null;
+  api('/api/admin/event', { method: 'POST', body: { action: 'tipsLog', slug } })
+    .then(v => { EVA.tl[slug] = v; }).catch(e => { EVA.tl[slug] = { error: e.message }; }).finally(draw);
+  return EVA.tl[slug];
+}
+function tipsControl(slug) {
+  const v = evaTl(slug);
+  if (!v) return '<div class="empty">lädt …</div>';
+  if (v.error) return `<div class="card-b"><div class="msg err">${esc(v.error)}</div>${btn('Neu laden', 'tlReload', { slug })}</div>`;
+  const mgrs = A.league.managers || [], nm = id => (mgrs.find(m => m.id === id) || {}).name || id;
+  const byId = new Map(v.matches.map(m => [m.match, m]));
+  const lbl = id => { const m = byId.get(id); return m ? `${m.teams[0].code}–${m.teams[1].code}` : id; };
+  const dt = ms => new Date(ms).toLocaleString('de-DE', { timeZone: 'Europe/Berlin', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+  const dts = ms => new Date(ms).toLocaleString('de-DE', { timeZone: 'Europe/Berlin', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit' });
+  const f = EVA.tlF[slug] || (EVA.tlF[slug] = { mgr: '', all: false });
+  const src = `<div class="card-b" style="font-size:13px;line-height:1.7">
+      <div>Live-Spielplan (lolesports): ${v.replay ? 'Testmodus-Wiederholung' : v.source.liveErr ? `<b style="color:#ff8b92">nicht erreichbar — ${esc(v.source.liveErr)}</b> · es zählt die Event-Datei` : v.source.live !== null ? `<b style="color:#7ee787">OK</b> · ${v.source.live} Spiele` : '—'}</div>
+      <div>Event-Datei (Stats-Job, alle 2 h): Stand ${v.source.file ? dt(v.source.file) : '—'}</div>
+      <div class="row" style="gap:8px;flex-wrap:wrap"><span class="dim">Ansicht vom ${dts(v.now)}</span>${btn('Aktualisieren', 'tlReload', { slug })}</div></div>`;
+  const warn = `<div class="card-b" style="padding-top:0">${v.warnings.length ? `<div class="msg err" style="margin:0">⚠ ${v.warnings.map(esc).join('<br>⚠ ')}</div>` : '<span class="pill teal">Keine Auffälligkeiten ✓</span>'}</div>`;
+  const open = v.matches.filter(m => m.known && !m.locked);
+  const tot = `<table class="tight"><thead><tr><th>Manager</th><th class="num">Punkte</th><th class="num">richtig</th><th class="num">exakt</th><th class="num">ohne Tipp</th></tr></thead><tbody>${mgrs.map(m => {
+      const t = v.totals[m.id] || {}, miss = open.filter(x => !x.tips[m.id]).length;
+      return `<tr><td class="fill"><b>${esc(m.name)}</b></td><td class="num">${t.pts || 0}</td><td class="num">${t.right || 0}</td><td class="num">${t.exact || 0}</td><td class="num">${miss ? `<span class="pill live">${miss}</span>` : '0'}</td></tr>`; }).join('')}</tbody></table>`;
+  const started = v.matches.filter(m => m.known && m.locked).sort((a, b) => b.start.localeCompare(a.start));
+  const upcoming = v.matches.filter(m => m.known && !m.locked).sort((a, b) => a.start.localeCompare(b.start));
+  const list = (f.all ? upcoming : upcoming.slice(0, 4)).slice().reverse().concat(f.all ? started : started.slice(0, 8));
+  const res = m => m.state === 'completed' ? `<b>${m.teams[0].wins ?? 0}:${m.teams[1].wins ?? 0}</b>` : m.locked ? '<span class="pill live">läuft</span>' : '<span class="dim">offen</span>';
+  const rows = list.map(m => `<div class="tlm"><div class="row" style="gap:8px;flex-wrap:wrap;align-items:baseline"><span class="dim" style="font-size:12px">${dt(m.start)}</span><b>${esc(m.teams[0].code)}–${esc(m.teams[1].code)}</b> ${res(m)}
+      <span class="dim" style="font-size:11px">Bo${m.bestOf} · ${esc(v.stages[m.stage] || '')} · Quelle ${esc(m.src)}${m.locked && !m.revealed ? ' · <b style="color:#ff8b92">nicht aufgedeckt</b>' : ''}</span></div>
+      <div class="tlt">${mgrs.map(g => { const t = m.tips[g.id], pt = m.pts[g.id];
+        return `<span class="${t ? '' : 'miss'}">${esc(g.name)} <b>${t ? esc(t) : '—'}</b>${pt !== undefined ? ` <span class="tippts ${pt > 0 ? 'ok' : ''}">${pt > 0 ? '+' + pt : '0'}</span>` : ''}</span>`; }).join('')}</div></div>`).join('');
+  const txt = x => {
+    if (x.k === 'tip') return `${x.by === 'admin' ? '<b>Admin</b> für ' : ''}<b>${esc(nm(x.m))}</b> ${x.s === null ? `löscht Tipp ${esc(lbl(x.x))}${x.o ? ' (war ' + esc(x.o) + ')' : ''}` : `tippt ${esc(lbl(x.x))} <b>${esc(x.s)}</b>${x.o ? ' (vorher ' + esc(x.o) + ')' : ''}`}`;
+    if (x.k === 'reveal') return `🔒 ${esc(lbl(x.x))} gesperrt &amp; aufgedeckt · ${x.n} Tipp${x.n === 1 ? '' : 's'}`;
+    if (x.k === 'result') return `🏁 ${esc(lbl(x.x))} ${x.o ? `Ergebnis korrigiert ${esc(x.o)} → ` : 'Ergebnis '}<b>${esc(x.r)}</b>${x.odd ? ' <b style="color:#ff8b92">unplausibel</b>' : ''} · ${Object.entries(x.pts || {}).map(([id, pt]) => esc(nm(id)) + ' ' + (pt > 0 ? '+' + pt : '0')).join(', ') || 'keine Tipps'}`;
+    return esc(JSON.stringify(x));
+  };
+  const logs = v.log.filter(x => !f.mgr || x.m === f.mgr || (x.k === 'result' && x.pts && f.mgr in x.pts)).slice(-300).reverse();
+  const logH = `<div class="row" style="gap:6px;flex-wrap:wrap;margin:0 16px 8px">${[['', 'Alle'], ...mgrs.map(m => [m.id, m.name])].map(([id, n]) => btn(esc(n), 'tlF', { slug, mgr: id }, f.mgr === id ? 'gold' : '')).join('')}</div>
+    <div class="tllog">${logs.map(x => `<div><span class="dim">${dts(Date.parse(x.t))}</span> ${txt(x)}</div>`).join('') || '<div class="dim">Noch nichts passiert.</div>'}</div>`;
+  const known = v.matches.filter(m => m.known).sort((a, b) => a.start.localeCompare(b.start));
+  const fix = `<div class="card-b"><p class="muted" style="font-size:12px;margin-top:0">Tipp für jemanden setzen oder löschen, z. B. wenn er per Nachricht kam. Geht auch nach Spielbeginn und wird als „Admin" protokolliert. Leer = löschen.</p>
+    <div class="row" style="gap:8px;flex-wrap:wrap"><select id="tlMgr_${slug}">${mgrs.map(m => `<option value="${esc(m.id)}">${esc(m.name)}</option>`).join('')}</select>
+    <select id="tlMatch_${slug}" style="flex:1;min-width:180px">${known.map(m => `<option value="${esc(m.match)}">${dt(m.start)} ${esc(m.teams[0].code)}–${esc(m.teams[1].code)} (Bo${m.bestOf})</option>`).join('')}</select>
+    <input id="tlScore_${slug}" placeholder="z. B. 3:1" style="width:90px">${btn('Setzen', 'tlSet', { slug })}</div></div>`;
+  const sec = (t, extra) => `<div class="card-b row" style="justify-content:space-between;gap:8px;flex-wrap:wrap;border-top:1px solid var(--line)"><b style="font-size:13px">${t}</b>${extra || ''}</div>`;
+  return src + warn + sec('Stand pro Manager') + tot
+    + sec('Spiele &amp; Tipps', btn(f.all ? 'Nur aktuelle' : 'Alle Spiele', 'tlAll', { slug })) + (rows || '<div class="empty">Noch keine Paarungen.</div>')
+    + sec('Protokoll', '<span class="dim" style="font-size:12px">neueste zuerst · Zeit Berlin · offene Tipps als ✓</span>') + logH
+    + sec('Korrektur') + fix;
+}
+
 function viewEventsAdmin() {
   const S = window.LECScoring, idx = ((ctx.D.eventsIndex || {}).events) || [], evs = A.league.events || {};
   evaCfg();
@@ -515,7 +575,9 @@ function viewEventsAdmin() {
     };
     const pk = pkSection('pre', "Pick'em · vor dem Event", 'Sperrt beim ersten Spiel und läuft bis zum Finale — Punkte gibt es, wenn das Event vorbei ist. Reicht allein: Turnierbaum-Fragen (Halbfinale, Finale, Sieger) sind schon dabei. Teams mit „pro Treffer": mehrere Teams wählen, Punkte für jedes richtige.')
       + pkSection('ko', "Pick'em · vor der K.-o.-Phase (optional)", 'Nur nötig, wenn du den Turnierbaum erst nach der Swiss-Phase tippen lassen willst. Zeigt nur Fragen, die nicht schon in Runde 1 stehen. Sperrt beim ersten K.-o.-Spiel.');
+    const tlv = EVA.tl[info.slug];
     return card(esc(ev.name), head
+      + (S.eventTipsOn(ev) ? fold('Tippspiel · Kontrolle', !tlv ? 'Tipps, Ergebnisse, Protokoll' : tlv.error ? '⚠ Fehler' : tlv.warnings.length ? `⚠ ${tlv.warnings.length} Auffälligkeit${tlv.warnings.length === 1 ? '' : 'en'}` : `alles ok · ${tlv.log.length} Einträge`, tipsControl(info.slug), info.slug + '_tl') : '')
       + fold('Einstellungen', `Budget ${c.budget} · Kapitän ×${c.captain}${ev.video ? ' · Video' : ''}`, `<div class="card-b"><div class="grid g-2" style="gap:10px">
           <label style="margin:0">Name<input id="evn_${info.slug}" value="${esc(ev.name)}" style="width:100%"></label>
           <label style="margin:0">Budget<input id="evb_${info.slug}" type="number" value="${c.budget}" style="width:100%"></label>
@@ -756,6 +818,17 @@ async function act(a, d, el) {
       busy = true; draw();
       try { const r = await api('/api/admin/test', { method: 'POST', body }); flash = { ok: true, text: r.message }; } catch (e) { flash = { ok: false, text: e.message }; }
       busy = false; return load();
+    }
+    case 'tlReload': evaTl(d.slug, true); return draw();
+    case 'tlAll': EVA.tlF[d.slug].all = !EVA.tlF[d.slug].all; return draw();
+    case 'tlF': EVA.tlF[d.slug].mgr = d.mgr || ''; return draw();
+    case 'tlSet': {
+      const slug = d.slug, score = val('tlScore_' + slug).trim();
+      const mSel = document.getElementById('tlMatch_' + slug), gSel = document.getElementById('tlMgr_' + slug);
+      if (!mSel || !gSel || !mSel.value) return;
+      if (!window.confirm(`${gSel.selectedOptions[0].text}: ${mSel.selectedOptions[0].text} → ${score || 'Tipp löschen'}?`)) return;
+      try { const r = await api('/api/admin/event', { method: 'POST', body: { action: 'setTip', slug, match: mSel.value, manager: gSel.value, score: score || null } }); flash = { ok: true, text: r.message }; } catch (e) { flash = { ok: false, text: e.message }; }
+      evaTl(slug, true); return draw();
     }
     case 'evTeams':
       try { const r = await api('/api/admin/event', { method: 'POST', body: { action: 'teams', slug: d.slug, teams: val('evt_' + d.slug) } }); flash = { ok: true, text: r.message }; EVA.cfg = undefined; } catch (e) { flash = { ok: false, text: e.message }; }

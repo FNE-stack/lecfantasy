@@ -11,6 +11,7 @@ import { S, HttpError, readLeagueFresh, writeLeague, publicData, playerIndex, se
 import { backupNow, backupRestore, backupGet } from './backup.js';
 import { tradeAction } from './draft.js';
 import { chatPost } from './extras.js';
+import { tipLog } from './events.js';
 
 const BOT_NAMES = ['Bot Anna', 'Bot Ben', 'Bot Chris', 'Bot Dana', 'Bot Emil'];
 const pickOne = list => list[Math.floor(Math.random() * list.length)];
@@ -152,7 +153,7 @@ export async function botEvents(env, league) {
       if (S.eventTipsOn(ev)) {
         const key = `evm:${slug}:${bot}`, mine = (await env.LEAGUE.get(key, 'json')) || {};
         let add = 0;
-        for (const e of d.schedule || []) if (S.tipOpen(e) && !mine[e.match]) { mine[e.match] = pickOne(S.tipScores(e.bestOf)); add++; }
+        for (const e of d.schedule || []) if (S.tipOpen(e) && !mine[e.match]) { mine[e.match] = pickOne(S.tipScores(e.bestOf)); add++; await tipLog(env, slug, { k: 'tip', m: bot, x: e.match, s: mine[e.match], o: null }); }
         if (add) { await env.LEAGUE.put(key, JSON.stringify(mine)); n++; }
       }
       for (const round of ['pre', 'ko']) {
