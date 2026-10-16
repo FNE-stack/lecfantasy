@@ -68,39 +68,56 @@ try {
 } catch (e) { wErr = e.message; }
 ok('worlds_without_data', !wErr, wErr ? 'wirft: ' + wErr : `Worlds (0 Teams, ${wGames} Spiele) rendert ohne Fehler`);
 
-// ── one shared card: everyone sees and scores the same ────────────────────
-// Bingo was redesigned to be "ein Spass-Extra, kein Wettbewerb": a single card
-// per event, identical for every manager, and a finished line pays everyone.
-// These tests pin that, so a future change back to per-manager cards cannot
-// happen silently.
+// ── own card per manager, exactly one rare square per line ────────────────
+// Bingo moved from one shared board to a real card per player, drawn from a
+// 40-stat pool, with the rare squares spread so every row, column and both
+// diagonals contain exactly one. These tests pin that, because both halves are
+// easy to break by accident: a seed that forgets the manager gives everyone the
+// same card, and a naive shuffle buries three rares in one line.
 {
   const lg = JSON.parse(JSON.stringify(league));
-  lg.managers = [{ id: 'm1', name: 'M1' }, { id: 'm2', name: 'M2' }];
+  lg.managers = [{ id: 'm1', name: 'M1' }, { id: 'm2', name: 'M2' }, { id: 'm3', name: 'M3' }];
   lg.events = lg.events || {};
   lg.events['msi_2026'] = Object.assign({ slug: 'msi_2026' }, lg.events['msi_2026'] || {});
   const evCfg = lg.events['msi_2026'];
 
-  const shared = S.eventBingo(lg, evCfg, ev);
-  ok('shared_card_exists', !!(shared && shared.card && shared.card.cells.length === 25),
-     `ein gemeinsames 5x5-Board (${shared.card.cells.length} Felder)`);
+  const all = S.eventBingoAll(lg, evCfg, ev);
+  const cards = lg.managers.map(m => all[m.id]);
+  ok('card_per_manager', cards.every(c => c && c.card.cells.length === 25),
+     `${cards.length} eigene 5x5-Karten`);
+  ok('cards_differ', new Set(cards.map(c => c.card.cells.join())).size === cards.length,
+     'jeder Manager hat eine andere Karte');
 
+  const sameAgain = S.eventBingo(lg, evCfg, ev, 'm1');
+  ok('card_stable', sameAgain.card.cells.join() === all.m1.card.cells.join(),
+     'dieselbe Karte bei jedem Aufruf');
+
+  // exactly one rare square per row, column and diagonal
+  const RARE = k => (S.BINGO[k] || {}).rate <= 0.03;
+  let worst = null;
+  for (const c of cards) {
+    const n = c.card.size, lines = [];
+    for (let r = 0; r < n; r++) lines.push([...Array(n)].map((_, i) => r * n + i));
+    for (let col = 0; col < n; col++) lines.push([...Array(n)].map((_, i) => i * n + col));
+    lines.push([...Array(n)].map((_, i) => i * n + i));
+    lines.push([...Array(n)].map((_, i) => i * n + (n - 1 - i)));
+    for (const l of lines) {
+      const r = l.filter(i => RARE(c.card.cells[i])).length;
+      if (r !== 1) { worst = r; break; }
+    }
+    if (worst !== null) break;
+  }
+  ok('one_rare_per_line', worst === null,
+     worst === null ? 'jede Reihe, Spalte und Diagonale hat genau ein seltenes Feld'
+                    : `eine Linie hat ${worst} seltene Felder`);
+
+  // standings score each manager's own card
   const srows = S.eventStandings(lg, evCfg, ev);
-  const m1 = srows.find(r => r.manager === 'm1'), m2 = srows.find(r => r.manager === 'm2');
-  ok('everyone_same_bingo', m1.bingo === m2.bingo && m1.bingo === shared.score.points,
-     `beide Manager ${m1.bingo} Punkte = Board-Wertung ${shared.score.points}`);
-  ok('bingo_in_total', m1.total >= m1.bingo,
-     `total ${m1.total} enthaelt die Bingo-Punkte`);
-
-  // the same event must always produce the same board (no reshuffle on reload)
-  const again = S.eventBingo(lg, evCfg, ev);
-  ok('board_stable', again.card.cells.join() === shared.card.cells.join(),
-     'zweimal geladen = dasselbe Board');
-
-  // a different event gets a different board
-  const other = Object.assign({}, evCfg, { slug: 'first_stand_2026' });
-  const b2 = S.eventBingo(lg, other, ev);
-  ok('board_per_event', b2.card.cells.join() !== shared.card.cells.join(),
-     'anderes Event = anderes Board');
+  const byId = Object.fromEntries(srows.map(r => [r.manager, r]));
+  ok('standings_use_own_card', lg.managers.every(m => byId[m.id].bingo === all[m.id].score.points),
+     lg.managers.map(m => `${m.name} ${byId[m.id].bingo}`).join(', '));
+  ok('scores_can_differ', new Set(lg.managers.map(m => byId[m.id].bingo)).size > 1,
+     'unterschiedliche Karten -> unterschiedliche Punkte');
 }
 
 console.log(`\n${fails ? fails + ' FAILED' : 'all bingo-ui tests passed'}`);
