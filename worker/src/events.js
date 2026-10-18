@@ -147,6 +147,11 @@ async function tipsAdminView(env, slug) {
     return { match: e.match, start: e.start, state: e.state, stage: e.stage, bestOf: e.bestOf || 1, teams: e.teams, known, locked, revealed, tips, pts,
       src: ev.replay ? 'replay' : liveBy.has(e.match) ? 'live' : 'datei' };
   });
+  // the stats job is the safety net (games for bingo/pick'em, pairings if the
+  // live schedule fails) - a step that dies silently must show up here
+  const age = raw.updated ? (now - raw.updated * 1000) / 36e5 : null;
+  if (!ev.replay && age !== null && age > 3 && Date.parse(raw.start) <= now && Date.parse(raw.end) + 864e5 >= now)
+    warnings.unshift(`Event-Datei seit ${Math.round(age)} h nicht aktualisiert — der Stats-Job (alle 2 h) schreibt sie nicht. GitHub → Actions → update-stats → Schritt „Fetch special events" prüfen.`);
   const log = await readTipLog(env, slug);
   const open = new Set(matches.filter(m => !m.locked).map(m => m.match)), byMatch = new Map((d.schedule || []).map(e => [e.match, e]));
   for (const x of log) {
