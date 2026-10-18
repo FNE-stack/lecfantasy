@@ -938,8 +938,17 @@ function evTour(slug) {
     const played = ranked.some(([, r]) => r.w || r.l);
     const note = s.done ? 'beendet' : s.lock ? (s.lock > Date.now() ? 'ab ' + esc(new Date(s.lock).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit' })) : 'läuft') : '';
 
-    if (isKo) return card(esc(s.name), evBracket(slug, ev) || '<div class="empty">—</div>', note);
-    if (isSwiss) return card(esc(s.name), evSwiss(slug, ev, ranked) || '<div class="empty">—</div>', note);
+    // a finished phase folds away (tap to open) - the running one stays open
+    const fold = body => s.done ? `<details class="evstage" data-tourst="${s.i}" ${(EVX.tourOpen || {})[s.i] ? 'open' : ''}><summary class="evstage-s">Ergebnisse anzeigen</summary>${body}</details>` : body;
+    if (isKo) return card(esc(s.name), fold(evBracket(slug, ev) || '<div class="empty">—</div>'), note);
+    if (isSwiss) {
+      // the drawn matches first - that is what gets tipped - then the records
+      const known = ev.filter(e => e.teams.every(t => t.code && t.code !== 'TBD')), pending = ev.length - known.length;
+      const games = `<div class="evpanel"><div class="evpanel-h">Spiele <span class="dim">· ${known.length} von ${ev.length} ausgelost</span></div>
+        ${known.length ? `<div class="evmatches">${known.map(mt).join('')}</div>` : ''}
+        ${pending ? `<div class="dim" style="font-size:12px;padding:8px 2px">${pending} weitere Spiele — die Paarungen werden nach jeder Runde neu ausgelost und erscheinen dann hier und im Tippspiel.</div>` : ''}</div>`;
+      return card(esc(s.name), fold(games + (evSwiss(slug, ev, ranked) || '')), note);
+    }
 
     // Standings and schedule are two different things - give each its own
     // panel with a heading instead of mashing them into one gapless grid.
@@ -950,7 +959,7 @@ function evTour(slug) {
         <div class="evpanel-h">Spiele <span class="dim">· ${ev.length}</span></div>
         <div class="evmatches">${ev.map(mt).join('')}</div></div>` : '';
     const body = table && list ? `<div class="evtour">${table}${list}</div>` : (table || list);
-    return card(esc(s.name), body || '<div class="empty">—</div>', note);
+    return card(esc(s.name), fold(body || '<div class="empty">—</div>'), note);
   }).join('');
 }
 
@@ -1061,6 +1070,7 @@ function bindEvent() {
     try { await api('/api/event/tip', { method: 'POST', body: { slug, match, score, first } }); }
     catch (e) { if (cur) EVX.mt[slug][match] = cur; else delete EVX.mt[slug][match]; render(); toast(`<span style="color:#ffb1b3">${esc(e.message)}</span>`); }
   });
+  document.querySelectorAll('details[data-tourst]').forEach(x => x.ontoggle = () => { (EVX.tourOpen = EVX.tourOpen || {})[x.dataset.tourst] = x.open; });
   document.querySelectorAll('[data-bgcard]').forEach(r => r.onclick = () => { EVX.bingoCard = r.dataset.bgcard; render(); });
   document.querySelectorAll('[data-lvm]').forEach(b => b.onclick = () => { LV.match = b.dataset.lvm; LV.pinned = true; render(); });
   document.querySelectorAll('[data-lvg]').forEach(b => b.onclick = () => { LV.sel[b.dataset.lvmatch] = b.dataset.lvg; LV.selUser[b.dataset.lvmatch] = true; render(); });

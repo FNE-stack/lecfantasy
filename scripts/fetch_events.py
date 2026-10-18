@@ -262,7 +262,13 @@ def main():
         if all_teams is None:
             all_teams = F.gw("getTeams")["teams"]
         teams, players = rosters(sched, all_teams, (cfg.get("eventTeams") or {}).get(slug, []))
-        games, fresh, skipped = F.fetch_games(t["id"], known, slug) if any(e["state"] == "completed" for e in sched) else ([], 0, 0)
+        # the schedule (pairings, results) must ALWAYS be written - if the game
+        # stats fail for any reason, keep the games we already have
+        try:
+            games, fresh, skipped = F.fetch_games(t["id"], known, slug) if any(e["state"] == "completed" for e in sched) else ([], 0, 0)
+        except Exception as e:
+            print(f"  ! game stats failed ({e}) - keeping {len(old.get('games', []))} cached rows, schedule still updated", file=sys.stderr)
+            games, fresh, skipped = old.get("games", []), 0, 0
         # substitutes who played but are not on a roster
         ids = {p["id"] for p in players}
         for g in games:

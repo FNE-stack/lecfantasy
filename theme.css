@@ -639,3 +639,10 @@ table.lineup a:hover{text-decoration:underline!important}
 .tipteam.w b{color:var(--gold-hi)}
 .tipteam.l{opacity:.55}
 .tipwin{font:700 10px var(--font);letter-spacing:.06em;text-transform:uppercase;color:var(--gold);border:1px solid var(--gold);border-radius:999px;padding:0 6px}
+
+/* folded finished phases */
+.evstage-s{cursor:pointer;padding:12px 16px;font:600 13px var(--font);color:var(--gold);list-style:none}
+.evstage-s::-webkit-details-marker{display:none}
+.evstage-s::before{content:'▸ ';display:inline-block}
+details[open]>.evstage-s::before{content:'▾ '}
+details[open]>.evstage-s{border-bottom:1px solid var(--line)}

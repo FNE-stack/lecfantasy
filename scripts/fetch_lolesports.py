@@ -190,9 +190,20 @@ def final_frame(game_id):
     # stops, and every later startingTime returns that same last frame. A
     # last frame that stops moving IS the end, so accept it.
     prev_ts = None
+    # never ask for a moment that is not in the feed yet: a game that ended
+    # less than ~70 min after its start would otherwise answer HTTP 400 and
+    # (seen 2026-10-18, Worlds Play-Ins) crash the whole run. Such a game is
+    # simply fetched by the next run.
+    latest = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(minutes=3)
     for minutes in (70, 100, 140):
-        at = _round10(t0 + datetime.timedelta(minutes=minutes)).strftime("%Y-%m-%dT%H:%M:%SZ")
-        w = _get(FEED + f"window/{game_id}?startingTime={at}")
+        when = t0 + datetime.timedelta(minutes=minutes)
+        if when > latest:
+            break
+        at = _round10(when).strftime("%Y-%m-%dT%H:%M:%SZ")
+        try:
+            w = _get(FEED + f"window/{game_id}?startingTime={at}")
+        except urllib.error.HTTPError:
+            w = None
         if not (w and w.get("frames")):
             continue
         last = w["frames"][-1]
