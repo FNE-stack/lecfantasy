@@ -591,7 +591,8 @@ function viewEventsAdmin() {
           <label style="margin:0">Minispiel<select id="evg_${info.slug}" style="width:100%">${[['bingo', 'Bingo (eigene Karte pro Spieler)'], ['monopoly', 'Rift-Monopoly (Test, ohne Punkte)'], ['none', 'keins']].map(([v, l]) => `<option value="${v}" ${S.eventMinigame(ev) === v ? 'selected' : ''}>${l}</option>`).join('')}</select></label></div>
         <label style="margin-top:10px">Teilnehmer (Kürzel, falls Riot sie noch nicht im Spielplan hat)<input id="evt_${info.slug}" value="${esc(((EVA.cfg || {}).eventTeams || {})[info.slug] ? EVA.cfg.eventTeams[info.slug].join(', ') : '')}" placeholder="z. B. T1, GEN, G2" style="width:100%"></label>
         <div class="row" style="gap:8px;margin-top:6px;flex-wrap:wrap">${btn('Teilnehmer speichern', 'evTeams', { slug: info.slug })}<span class="muted" style="font-size:12px">${d && d.teams ? d.teams.length + ' Teams in den Daten' : ''}</span></div>
-        <div class="row" style="margin-top:12px;gap:8px;flex-wrap:wrap">${btn('Speichern', 'evSave', { slug: info.slug }, 'gold')}${btn('Event löschen', 'evDelete', { slug: info.slug })}</div></div>`, info.slug + '_set')
+        <div class="row" style="margin-top:12px;gap:8px;flex-wrap:wrap">${btn('Speichern', 'evSave', { slug: info.slug }, 'gold')}${btn('Bingo neu mischen', 'evReshuffle', { slug: info.slug })}${btn('Event löschen', 'evDelete', { slug: info.slug })}</div>
+        <p class="muted" style="font-size:11px;margin:8px 0 0">Neu mischen gibt jedem Spieler eine neue Karte — bisherige Linien und Punkte aus der alten Karte sind dann weg.</p></div>`, info.slug + '_set')
       + (S.eventSquadOn(ev) ? fold('Team-Preise', d && (d.teams || []).length ? d.teams.length + ' Teams' : 'Teams stehen noch nicht fest', prices, info.slug + '_price') : '')
       + `<div class="card-b" style="border-top:1px solid var(--line)"><a class="btn sm" href="#/event/${esc(info.slug)}">Event-Seite öffnen →</a></div>`
       + pk);
@@ -835,10 +836,14 @@ async function act(a, d, el) {
     case 'evTeams':
       try { const r = await api('/api/admin/event', { method: 'POST', body: { action: 'teams', slug: d.slug, teams: val('evt_' + d.slug) } }); flash = { ok: true, text: r.message }; EVA.cfg = undefined; } catch (e) { flash = { ok: false, text: e.message }; }
       return draw();
-    case 'evCreate': case 'evSave': case 'evPickem': case 'evAnswer': case 'evDelete': {
+    case 'evCreate': case 'evSave': case 'evPickem': case 'evAnswer': case 'evDelete': case 'evReshuffle': {
       const slug = d.slug, v = id => val(id + '_' + slug);
       let body;
       if (a === 'evCreate') body = { action: 'create', slug, name: v('evn'), video: v('evv') };
+      if (a === 'evReshuffle') {
+        if (!window.confirm('Allen Spielern eine neue Bingo-Karte geben?\n\nDie Linien und Punkte der alten Karten verfallen.')) return;
+        body = { action: 'update', slug, reshuffle: true };
+      }
       if (a === 'evSave') {
         const prices = {};
         root.querySelectorAll('[data-evprice]').forEach(el => { prices[el.dataset.evprice] = +el.value; });

@@ -30,8 +30,20 @@ ok('playin_matches_schedule', playIn.every(t => piCodes.has(t.code)),
 
 ok('champion_all_teams', S.eventQuestionTeams(w, 'champion').length === all.length,
    `Turniersieger: alle ${all.length} Teams waehlbar`);
-ok('swiss_not_drawn_yet', S.eventQuestionTeams(w, 'swiss30s').length === all.length,
-   'Swiss noch nicht ausgelost -> ganzes Feld (ehrlich statt falsch gefiltert)');
+// Before the Swiss draw the honest answer is the whole field; once it is drawn
+// the list must narrow to the teams actually in it. Which of the two applies
+// depends on the day, so assert the rule rather than a frozen snapshot.
+const swissNamed = new Set();
+for (const e of w.schedule) {
+  if (!/swiss/i.test(String((w.stages[e.stage] || {}).name || ''))) continue;
+  for (const t of (e.teams || [])) if (t && t.code && t.code !== 'TBD') swissNamed.add(t.code);
+}
+const swissPick = S.eventQuestionTeams(w, 'swiss30s');
+ok('swiss_field_is_honest',
+   swissNamed.size ? swissPick.every(t => swissNamed.has(t.code)) : swissPick.length === all.length,
+   swissNamed.size
+     ? `Swiss ausgelost -> nur die ${swissPick.length} Teams der Phase (von ${all.length})`
+     : 'Swiss noch nicht ausgelost -> ganzes Feld (ehrlich statt falsch gefiltert)');
 
 // ── 2) Swiss standings are derivable from played games ────────────────────
 // Worlds has no results yet, so the shape is checked on a finished event.
@@ -63,8 +75,10 @@ for (const e of wsw) for (const t of (e.teams || [])) {
   if (!t.code || t.code === 'TBD') continue;
   (recW[t.code] = recW[t.code] || { w: 0, l: 0 });
 }
-ok('worlds_swiss_empty_is_fine', Object.keys(recW).length === 0 && wsw.length > 0,
-   `${wsw.length} Swiss-Partien, alle noch TBD -> Ansicht zeigt den Hinweis statt einer leeren Tabelle`);
+ok('worlds_swiss_renders', wsw.length > 0,
+   Object.keys(recW).length
+     ? `${wsw.length} Swiss-Partien, ${Object.keys(recW).length} Teams gesetzt -> Bilanz-Gruppen`
+     : `${wsw.length} Swiss-Partien, alle noch TBD -> Ansicht zeigt den Hinweis statt einer leeren Tabelle`);
 
 console.log(`\n${fails ? fails + ' FAILED' : 'all pick-teams/swiss tests passed'}`);
 process.exit(fails ? 1 : 0);

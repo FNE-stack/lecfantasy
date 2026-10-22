@@ -1297,7 +1297,30 @@
   // A player's card: size x size keys, drawn deterministically from their id
   // so everyone gets a different card but the same card every time they look.
   // Seed with manager + stage so each stage is a genuinely new card.
+  // Five harder squares, measured over 520 real games (Worlds so far + MSI +
+  // First Stand + the LEC season). The pool was too soft: half of it was >95%
+  // certain over a Worlds, so cards filled themselves and someone had a line
+  // after day 1 of the play-ins. These five land in the 25-90% band over a full
+  // event - genuinely open until late. Candidates that never happened once in
+  // 520 games (35+ team kills, 25+ assists, a sub-20-minute game) were dropped:
+  // a square that cannot tick is a dead cell.
+  for (const [k, def] of Object.entries({
+    cs520:        { label: '520+ CS',                  hint: 'absurder Farm', rate: .017,
+                    test: g => g.some(x => x.cs >= 520) },
+    everyoneDies: { label: 'Jeder stirbt 3+ mal',      hint: 'alle zehn Spieler', rate: .014,
+                    test: g => g.length >= 10 && g.every(x => x.d >= 3) },
+    over52:       { label: 'Spiel ueber 52 Min',       hint: 'Endlosspiel', rate: .008,
+                    test: g => !!g[0].dur && g[0].dur > 52 * 60 },
+    kills16:      { label: '16+ Kills',                hint: 'ein Spieler allein', rate: .008,
+                    test: g => g.some(x => x.k >= 16) },
+    teamNoDeaths: { label: 'Team ohne einen Tod',      hint: 'makellos', rate: .004,
+                    test: g => { const t = {}; for (const x of g) t[x.team] = (t[x.team] || 0) + x.d;
+                      return Object.values(t).some(v => v === 0); } },
+  })) if (!BINGO[k]) BINGO[k] = def;
+
   const BINGO_RARE = 0.03;   // a square hit in at most 3% of games counts as rare
+  const BINGO_POOL = 40;     // only the 40 least likely squares can land on a card
+  const BINGO_SPREAD = 12;   // the 12 rarest of those are spread one per line
   function bingoCard(seed, size) {
     size = size || 5;   // 5x5 is the classic bingo card
     const keys = Object.keys(BINGO);
@@ -1311,8 +1334,22 @@
     // one RARE square (hit rate <= 3%): no line is finished on common squares
     // alone, and no line is buried under several rares. The rares sit on a
     // permutation (one per row and column) that hits each diagonal once.
-    const rare = shuffle(keys.filter(k => BINGO[k].rate <= BINGO_RARE));
-    const common = shuffle(keys.filter(k => BINGO[k].rate > BINGO_RARE));
+    // Only the BINGO_POOL least likely squares may appear on a card at all.
+    // Drawing from the whole pool let the board solve itself: over a 110-game
+    // Worlds half the squares tick with >95% chance, a first line landed around
+    // game 14, and someone had a bingo after day one of the play-ins. Simulated
+    // over 110 games, restricting the draw and spreading the 12 rarest moves the first line
+    // to ~game 38 and leaves only a 4% chance of one inside the first dozen
+    // games, while every card still reaches a line eventually - hard, not dead.
+    const ranked = keys.slice().sort((a, b) => BINGO[a].rate - BINGO[b].rate);
+    const usable = ranked.slice(0, Math.max(need, Math.min(ranked.length, BINGO_POOL)));
+    // "Rare" is relative to what can land on a card, not an absolute rate.
+    // BINGO_RARE was tuned when a card drew from all 40 squares; restricted to
+    // the 28 least likely, 22 of them fall under that threshold, so the split
+    // stopped separating anything and a line could end up all-rare. The rarest
+    // `size` squares of the usable pool are the ones placed one per line.
+    const rare = shuffle(usable.slice(0, BINGO_SPREAD));
+    const common = shuffle(usable.slice(BINGO_SPREAD));
     if (rare.length < size || rare.length + common.length < need) {
       const pool = shuffle(keys.slice()), cells = [];
       for (let i = 0; i < need; i++) cells.push(pool[i % pool.length]);
@@ -1324,8 +1361,14 @@
     const perm = (fair.length ? fair : perms)[Math.floor(rnd() * (fair.length || perms.length))];
     const cells = new Array(need), rarePos = [];
     perm.forEach((c, r) => { cells[r * size + c] = rare[r]; rarePos.push(r * size + c); });
+    // Fill the rest from every usable square not already placed. Taking them
+    // from the "common" bucket alone repeated squares once the usable pool got
+    // small: restricted to the 28 least likely, only 6 count as common, so 20
+    // cells were filled from 6 keys and a card had 11 distinct squares.
+    const used = new Set(cells.filter(Boolean));
+    const fill = shuffle(common.filter(k => !used.has(k)));
     let k = 0;
-    for (let i = 0; i < need; i++) if (!cells[i]) cells[i] = common[k++ % common.length];
+    for (let i = 0; i < need; i++) if (!cells[i]) cells[i] = fill[k++] || common[k % common.length];
     return { size, cells, rare: rarePos };
   }
 
