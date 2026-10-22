@@ -13,7 +13,7 @@ window.LECEventsInit = function (app) {
 'use strict';
 const { L, S, U, esc, fmt, card, loggedIn, adminOnly, me, api, toast, render, store, path, scoring } = app;
 const $ = id => document.getElementById(id);
-const EVX = { data: {}, loading: {}, mine: {}, form: {}, tips: {}, mt: {}, openMatch: null, tab: 'tips', role: 'TOP', q: '', team: '', open: null, player: null, playerSlug: null, entered: {}, ytReady: null, bingoStage: null };
+const EVX = { data: {}, loading: {}, mine: {}, form: {}, tips: {}, mt: {}, openMatch: null, tab: 'tips', role: 'TOP', q: '', team: '', open: null, player: null, playerSlug: null, entered: {}, ytReady: null, bingoStage: null, bingoRun: null };
 const EV_ROLES = ['TOP', 'JNG', 'MID', 'BOT', 'SUP'];
 // Colors per event (the font is the same on the whole site, theme.css).
 // Worlds: Riot's League/Worlds Hextech palette - gold on deep blue, teal.
@@ -508,14 +508,28 @@ const mgrName = id => (((L() && L().managers) || []).find(m => m.id === id) || {
 function evBingo(slug) {
   const d = evD(slug), ev = L().events[slug];
   if (!d) return card('Bingo', '<div class="empty">lädt …</div>');
-  const all = S.eventBingoAll(L(), ev, d), mgrs = L().managers || [];
+  const mgrs = L().managers || [];
   if (!mgrs.length) return card('Event-Bingo', '<div class="empty">Noch keine Mitspieler.</div>');
+  // Several boards per event: the Play-Ins board stays as a finished result,
+  // the main event runs on a fresh one. Without picking a run here the page
+  // silently showed run #1 forever - so a "new round" looked like nothing had
+  // happened, and the old board looked like it had vanished.
+  const runs = S.eventBingoRuns(ev, d);
+  const openRun = runs.filter(r => !r.closed).pop() || runs[runs.length - 1];
+  if (!EVX.bingoRun || !runs.some(r => r.id === EVX.bingoRun)) EVX.bingoRun = openRun.id;
+  const run = runs.find(r => r.id === EVX.bingoRun) || openRun;
+  const all = S.eventBingoAll(L(), ev, d, run);
+  // Only the games of THIS run - the caller and the counter must not show
+  // Play-Ins games under the Swiss board.
+  const runRows = S.bingoRunRows(d, run);
+  const runTabs = runs.length > 1 ? `<div class="chips" style="margin:0 0 14px">${runs.map(r =>
+    `<button class="chip ${r.id === run.id ? 'on' : ''}" data-bgrun="${esc(r.id)}">${esc(r.name)}${r.closed ? ' ✓' : ''}</button>`).join('')}</div>` : '';
   // whose card: my own; the admin (and anyone who taps the table) can look at the others
   if (!EVX.bingoCard || !all[EVX.bingoCard]) EVX.bingoCard = all[me()] ? me() : mgrs[0].id;
   const who = EVX.bingoCard, own = who === me();
   const b = all[who], sc = b.score, hits = b.hits;
   const inLine = new Set(sc.lineCells.flat());
-  const games = new Set((d.games || []).map(g => g.game)).size;
+  const games = new Set(runRows.map(g => g.game)).size;
   const grid = `<div class="bingo">${b.card.cells.map((key, i) => {
     const sq = S.BINGO[key] || {}, h = hits[key] || {}, rare = (b.card.rare || []).includes(i);
     const cls = 'bg-cell' + (h.hit ? ' on' : '') + (inLine.has(i) ? ' line' : '') + (rare ? ' rare' : '');
@@ -526,7 +540,7 @@ function evBingo(slug) {
   // called out - newest first, numbered in the order it happened - with whose
   // cards hold it and whose line it completed.
   const byGame = new Map();
-  for (const r of d.games || []) { if (!byGame.has(r.game)) byGame.set(r.game, []); byGame.get(r.game).push(r); }
+  for (const r of runRows) { if (!byGame.has(r.game)) byGame.set(r.game, []); byGame.get(r.game).push(r); }
   const champ = id => ((app.D.champs || {}).names || {})[id] || id;
   const order = k => { const h = hits[k] || {}, g = byGame.get(h.game) || []; return String(h.at || '') + '|' + String((g[0] || {}).n || 0).padStart(2, '0') + '|' + k; };
   const called = Object.keys(S.BINGO).filter(k => (hits[k] || {}).hit).sort((x, y) => order(x).localeCompare(order(y)));
@@ -560,7 +574,8 @@ function evBingo(slug) {
       `<tr class="${x.manager === me() ? 'me' : ''}" data-bgcard="${esc(x.manager)}" style="cursor:pointer"><td class="rank r${i + 1}">${i + 1}</td>
         <td class="fill"><b>${esc(mgrName(x.manager))}</b>${x.manager === who ? ' <span class="pill gold">angezeigt</span>' : ''}${x.score.full ? ' <span class="pill live">VOLL</span>' : ''}</td>
         <td class="num">${x.score.lines}</td><td class="num">${x.score.squares}</td><td class="num pts">${fmt(x.score.points)}</td></tr>`).join('')}</tbody></table>`;
-  return card(own ? 'Meine Bingo-Karte' : 'Bingo-Karte von ' + esc(mgrName(who)), `<div class="card-b row" style="gap:14px;flex-wrap:wrap;align-items:baseline">
+  return runTabs + (run.closed ? '<div class="note" style="margin-bottom:14px">Diese Runde ist abgeschlossen — die Punkte zählen weiter, es kommt nichts mehr dazu.</div>' : '')
+    + card(own ? 'Meine Bingo-Karte' : 'Bingo-Karte von ' + esc(mgrName(who)), `<div class="card-b row" style="gap:14px;flex-wrap:wrap;align-items:baseline">
        <span><b style="font-size:20px">${sc.lines}</b> <span class="dim">${sc.lines === 1 ? 'Linie' : 'Linien'}</span></span>
        <span><b>${sc.squares}</b><span class="dim">/25 Felder</span></span>
        <span><b class="pts">+${fmt(sc.points)}</b> <span class="dim">Punkte</span></span>${sc.full ? '<span class="pill live">VOLLE KARTE</span>' : ''}
@@ -1072,6 +1087,7 @@ function bindEvent() {
   });
   document.querySelectorAll('details[data-tourst]').forEach(x => x.ontoggle = () => { (EVX.tourOpen = EVX.tourOpen || {})[x.dataset.tourst] = x.open; });
   document.querySelectorAll('[data-bgcard]').forEach(r => r.onclick = () => { EVX.bingoCard = r.dataset.bgcard; render(); });
+  document.querySelectorAll('[data-bgrun]').forEach(b => b.onclick = () => { EVX.bingoRun = b.dataset.bgrun; render(); });
   document.querySelectorAll('[data-lvm]').forEach(b => b.onclick = () => { LV.match = b.dataset.lvm; LV.pinned = true; render(); });
   document.querySelectorAll('[data-lvg]').forEach(b => b.onclick = () => { LV.sel[b.dataset.lvmatch] = b.dataset.lvg; LV.selUser[b.dataset.lvmatch] = true; render(); });
   document.querySelectorAll('[data-tipopen]').forEach(r => r.onclick = () => { EVX.openMatch = EVX.openMatch === r.dataset.tipopen ? null : r.dataset.tipopen; render(); });

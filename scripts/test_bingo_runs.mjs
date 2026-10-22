@@ -93,12 +93,52 @@ ok('standings_use_total', row && Math.abs(row.bingo - S.eventBingoTotal(lg, two,
   const a = S.eventBingo(league, cfg, msi, m, null, rr[0]).score.points;
   const b = S.eventBingo(league, cfg, msi, m, null, rr[1]).score.points;
   const tot = S.eventBingoTotal(league, cfg, msi, m);
-  ok('closed_run_keeps_its_points', a > 0,
-     `abgeschlossene Runde traegt ${a} Punkte bei (nicht 0)`);
+  // The board is deliberately hard now, so a short stage may well end with no
+  // completed line at all. What matters is that the closed run still CONTRIBUTES
+  // whatever it scored - not that it scored something.
+  const closedRows = S.bingoRunRows(msi, rr[0]).length;
+  ok('closed_run_still_counted', closedRows > 0 && a >= 0 && Number.isFinite(a),
+     `abgeschlossene Runde wertet ${closedRows} Zeilen -> ${a} Punkte`);
   ok('sum_with_real_points', Math.abs(tot - (a + b)) < 0.01, `${a} + ${b} = ${tot}`);
   const rows1 = S.bingoRunRows(msi, rr[0]).length, rows2 = S.bingoRunRows(msi, rr[1]).length;
   ok('each_run_only_its_stages', rows1 > 0 && rows2 > 0 && rows1 + rows2 === msi.games.length,
      `${rows1} + ${rows2} = ${msi.games.length} Spielzeilen, sauber aufgeteilt`);
+}
+
+// ── the page must show the OPEN run, not run #1 ───────────────────────────
+// eventBingoAll without a run argument falls back to the first run. The page
+// did exactly that, so after starting a new round everyone still saw the
+// Play-Ins board - which looked like the new round had done nothing and the
+// old board had vanished at the same time.
+{
+  const cfg = { slug: 'worlds_2026', name: 'Worlds', minigame: 'bingo', bingoRuns: [
+    { id: 'r1', name: 'Play-Ins', seed: 's1', stages: [0], closed: true },
+    { id: 'r2', name: 'Swiss', seed: 's2', stages: [1, 2], closed: false } ] };
+  const rr = S.eventBingoRuns(cfg, ev);
+  const fallback = Object.values(S.eventBingoAll(league, cfg, ev))[0];
+  ok('default_is_first_run', fallback.run.id === 'r1',
+     'ohne Argument liefert eventBingoAll weiterhin Runde 1 - die Seite muss selbst waehlen');
+  const open = rr.filter(r => !r.closed).pop();
+  ok('open_run_is_findable', open && open.id === 'r2',
+     `die offene Runde ist eindeutig bestimmbar (${open ? open.name : '-'})`);
+  const openCard = Object.values(S.eventBingoAll(league, cfg, ev, open))[0];
+  const ticked = Object.values(openCard.hits).filter(h => h.hit).length;
+  const closedRows = S.bingoRunRows(ev, rr[0]).length;
+  ok('open_run_ignores_closed_games', closedRows > 0 && ticked === 0,
+     `${closedRows} Play-Ins-Zeilen, aber 0 Felder auf dem neuen Board - nichts leckt hinueber`);
+}
+
+// ── every card square must be one of the rarer ones ───────────────────────
+// A "new, rarer" board that still carries 14.7%-squares is not rarer. The
+// draw is limited to the least likely squares, so cap what can appear.
+{
+  const cap = 0.09;
+  for (const m of mgrs.slice(0, 3)) {
+    const c = S.bingoCard('event|worlds_2026|x|' + m);
+    const worst = Math.max(...c.cells.map(k => S.BINGO[k].rate));
+    ok('card_has_no_common_square_' + m.slice(-4), worst <= cap,
+       `haeufigstes Feld ${(worst * 100).toFixed(1)}% pro Spiel (Grenze ${(cap * 100).toFixed(0)}%)`);
+  }
 }
 
 console.log(`\n${fails ? fails + ' FAILED' : 'all bingo-run tests passed'}`);

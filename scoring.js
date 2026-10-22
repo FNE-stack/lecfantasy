@@ -1357,7 +1357,7 @@
   })) if (!BINGO[k]) BINGO[k] = def;
 
   const BINGO_RARE = 0.03;   // a square hit in at most 3% of games counts as rare
-  const BINGO_POOL = 40;     // only the 40 least likely squares can land on a card
+  const BINGO_POOL = 32;     // only the 32 least likely squares can land on a card
   const BINGO_SPREAD = 12;   // the 12 rarest of those are spread one per line
   function bingoCard(seed, size) {
     size = size || 5;   // 5x5 is the classic bingo card
@@ -1376,8 +1376,8 @@
     // Drawing from the whole pool let the board solve itself: over a 110-game
     // Worlds half the squares tick with >95% chance, a first line landed around
     // game 14, and someone had a bingo after day one of the play-ins. Simulated
-    // over 110 games, restricting the draw and spreading the 12 rarest moves the first line
-    // to ~game 38 and leaves only a 4% chance of one inside the first dozen
+    // over 110 games, restricting the draw to the 32 least likely and spreading the 12 rarest moves the first line
+    // to ~game 43, caps the most frequent square at 7.8% per game (was 14.7%) and leaves a 2% chance of a line inside the first dozen
     // games, while every card still reaches a line eventually - hard, not dead.
     const ranked = keys.slice().sort((a, b) => BINGO[a].rate - BINGO[b].rate);
     const usable = ranked.slice(0, Math.max(need, Math.min(ranked.length, BINGO_POOL)));
