@@ -21,7 +21,7 @@
 }
 *{box-sizing:border-box}
 html{scroll-behavior:smooth}
-body{margin:0;min-height:100vh;color:var(--text);font:14px/1.5 var(--font);
+body{margin:0;min-height:100vh;min-height:100dvh;color:var(--text);font:14px/1.5 var(--font);
   background:
     radial-gradient(1200px 500px at 15% -10%,rgba(199,158,87,.10),transparent 60%),
     radial-gradient(900px 420px at 95% -5%,rgba(0,200,200,.07),transparent 60%),
@@ -45,8 +45,15 @@ img{display:inline-block}
 /* ── top bar ────────────────────────────────────────────────────────────── */
 .topbar{position:sticky;top:0;z-index:30;background:rgba(7,7,8,.86);
   backdrop-filter:saturate(1.4) blur(12px);-webkit-backdrop-filter:saturate(1.4) blur(12px);
-  border-bottom:1px solid var(--line)}
-.topbar-in{max-width:1240px;margin:0 auto;padding:0 20px;height:62px;display:flex;
+  border-bottom:1px solid var(--line);
+  /* Added to the home screen, iOS draws the page behind the notch
+     (apple-mobile-web-app-status-bar-style: black-translucent +
+     viewport-fit=cover). Without this the logo sits under the Dynamic Island.
+     In the browser the inset is 0, so nothing changes there. */
+  padding-top:env(safe-area-inset-top,0px)}
+.topbar-in{max-width:1240px;margin:0 auto;
+  padding:0 calc(20px + env(safe-area-inset-right,0px)) 0 calc(20px + env(safe-area-inset-left,0px));
+  height:62px;display:flex;
   align-items:center;gap:26px}
 .brand{display:flex;align-items:center;gap:10px;color:var(--text)!important;flex-shrink:0}
 .brand img{height:26px;width:auto}
@@ -75,7 +82,8 @@ img{display:inline-block}
 @keyframes glow{50%{filter:brightness(1.12)}}
 
 /* ── layout ─────────────────────────────────────────────────────────────── */
-.wrap{max-width:1240px;margin:0 auto;padding:28px 20px 90px}
+.wrap{max-width:1240px;margin:0 auto;
+  padding:28px calc(20px + env(safe-area-inset-right,0px)) 90px calc(20px + env(safe-area-inset-left,0px))}
 .grid{display:grid;gap:18px}
 .g-main{grid-template-columns:minmax(0,1fr) 360px}
 .g-2{grid-template-columns:repeat(2,minmax(0,1fr))}
@@ -149,7 +157,10 @@ tr.me td:first-child{box-shadow:inset 3px 0 0 var(--gold)}
 .chip:hover{color:var(--text)}
 .chip.on{background:var(--text);border-color:var(--text);color:#000}
 input[type=checkbox],input[type=radio]{accent-color:var(--gold);width:16px;height:16px}
-input,select{font:14px var(--font);background:var(--bg-2);border:1px solid var(--line-2);
+/* 16px is not a style choice: Safari on iOS zooms the entire page in when a
+   focused field is smaller, and never zooms back out - which is what makes an
+   app added to the home screen suddenly feel like the resolution broke. */
+input,select,textarea{font:16px var(--font);background:var(--bg-2);border:1px solid var(--line-2);
   color:var(--text);border-radius:var(--r);padding:10px 12px}
 input:focus,select:focus{outline:none;border-color:var(--teal)}
 label{display:block;font-size:12px;color:var(--muted);margin:12px 0 5px}
@@ -342,11 +353,14 @@ td.fill b{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:inli
    same bottom tab bar as phones. */
 @media (max-width:900px){
   .nav{display:none}
-  .wrap{padding-bottom:100px}
-  .toasts{left:12px;right:12px;bottom:76px}
-  .tabbar{display:flex;position:fixed;bottom:0;left:0;right:0;z-index:40;height:64px;
+  .wrap{padding-bottom:calc(100px + env(safe-area-inset-bottom,0px))}
+  .toasts{left:12px;right:12px;bottom:calc(76px + env(safe-area-inset-bottom,0px))}
+  /* height + padding, not height alone: with only padding the 64px of tabs
+     get squeezed into the strip above the home indicator. */
+  .tabbar{display:flex;position:fixed;bottom:0;left:0;right:0;z-index:40;
+    height:calc(64px + env(safe-area-inset-bottom,0px));
     background:rgba(10,10,11,.95);backdrop-filter:blur(10px);border-top:1px solid var(--line);
-    padding-bottom:env(safe-area-inset-bottom)}
+    padding-bottom:env(safe-area-inset-bottom,0px)}
   .tabbar a{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;
     gap:3px;color:var(--dim);font-family:var(--display);font-weight:600;font-size:12px;
     letter-spacing:.06em;text-transform:uppercase;position:relative}
@@ -404,7 +418,7 @@ body.ev-on .evhero h1{font-size:clamp(21px,6vw,44px);overflow-wrap:normal !impor
   background:linear-gradient(90deg,var(--gold) var(--v,70%),rgba(255,255,255,.2) var(--v,70%));touch-action:none}
 .evctl input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:20px;height:20px;border-radius:50%;background:var(--gold-hi);border:0;box-shadow:0 1px 4px rgba(0,0,0,.5)}
 .evctl input[type=range]::-moz-range-thumb{width:20px;height:20px;border-radius:50%;background:var(--gold-hi);border:0}
-@media (max-width:899px){.evctl{bottom:calc(76px + env(safe-area-inset-bottom));right:12px}.evctl input[type=range]{width:90px}}
+@media (max-width:899px){.evctl{bottom:calc(76px + env(safe-area-inset-bottom,0px));right:12px}.evctl input[type=range]{width:90px}}
 
 /* multi pick (event pick'em) */
 .evmulti{display:flex;flex-wrap:wrap;gap:6px}
@@ -646,3 +660,15 @@ table.lineup a:hover{text-decoration:underline!important}
 .evstage-s::before{content:'▸ ';display:inline-block}
 details[open]>.evstage-s::before{content:'▾ '}
 details[open]>.evstage-s{border-bottom:1px solid var(--line)}
+
+/* ── Als App auf dem Homescreen ────────────────────────────────────────────
+   Nur im Standalone-Modus, im Browser aendert sich nichts. */
+@media (display-mode: standalone) {
+  /* Kein Gummiband-Scrollen ueber den Rand hinaus - das ist das, was eine
+     Webseite im Vollbild sofort als Webseite verraet. */
+  html, body { overscroll-behavior-y: none; }
+  /* Blaues Aufblitzen beim Antippen weg, aber Text weiter markierbar. */
+  a, button, .chip, .tg, .ic, .bg-cell, .tabbar a { -webkit-tap-highlight-color: transparent; }
+}
+/* Langes Tippen auf Bedienelemente soll nicht die Textauswahl oeffnen. */
+.tabbar a, .chip, .btn, .bg-cell { -webkit-touch-callout: none; user-select: none; }
