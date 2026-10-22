@@ -536,6 +536,30 @@ function tipsControl(slug) {
     + sec('Korrektur') + fix;
 }
 
+// Bingo over several boards. Worlds is a month long with three very different
+// phases, so one board for the whole thing means the Play-Ins decide it. A new
+// run closes the current board (its points stay) and starts a fresh one from a
+// chosen stage - the new board only sees that stage onwards, so it cannot open
+// half-ticked from games that already paid out.
+function bingoRuns(slug, ev, d) {
+  const S = window.LECScoring;
+  if (!ev || S.eventMinigame(ev) !== 'bingo') return '';
+  if (!d || !(d.stages || []).length) return '<p class="muted" style="font-size:11px;margin:8px 0 0">Bingo-Runden: Spielplan wird noch geladen.</p>';
+  const runs = S.eventBingoRuns(ev, d);
+  const list = runs.map(r => `<li>${esc(r.name)}${r.closed ? ' <span class="pill teal">abgeschlossen</span>' : ' <span class="pill gold">läuft</span>'}</li>`).join('');
+  const opts = d.stages.map((st, i) => `<option value="${i}">${esc(st.name || ('Phase ' + (i + 1)))}</option>`).join('');
+  return `<div class="card-b" style="border-top:1px solid var(--line);margin-top:12px">
+    <b style="font-size:13px">Bingo-Runden</b>
+    <ul style="margin:6px 0 10px 18px;font-size:12px;line-height:1.7">${list}</ul>
+    <div class="row" style="gap:8px;flex-wrap:wrap;align-items:center">
+      <label style="margin:0;display:flex;gap:6px;align-items:center;font-size:12px">Neue Karten ab
+        <select id="bgfrom_${esc(slug)}">${opts}</select></label>
+      ${btn('Neue Runde starten', 'evBingoRun', { slug }, 'gold')}
+    </div>
+    <p class="muted" style="font-size:11px;margin:8px 0 0">Die laufende Runde wird abgeschlossen und behält ihre Punkte.
+      Alle bekommen eine neue Karte, die nur Spiele ab der gewählten Phase wertet.</p></div>`;
+}
+
 function viewEventsAdmin() {
   const S = window.LECScoring, idx = ((ctx.D.eventsIndex || {}).events) || [], evs = A.league.events || {};
   evaCfg();
@@ -591,8 +615,8 @@ function viewEventsAdmin() {
           <label style="margin:0">Minispiel<select id="evg_${info.slug}" style="width:100%">${[['bingo', 'Bingo (eigene Karte pro Spieler)'], ['monopoly', 'Rift-Monopoly (Test, ohne Punkte)'], ['none', 'keins']].map(([v, l]) => `<option value="${v}" ${S.eventMinigame(ev) === v ? 'selected' : ''}>${l}</option>`).join('')}</select></label></div>
         <label style="margin-top:10px">Teilnehmer (Kürzel, falls Riot sie noch nicht im Spielplan hat)<input id="evt_${info.slug}" value="${esc(((EVA.cfg || {}).eventTeams || {})[info.slug] ? EVA.cfg.eventTeams[info.slug].join(', ') : '')}" placeholder="z. B. T1, GEN, G2" style="width:100%"></label>
         <div class="row" style="gap:8px;margin-top:6px;flex-wrap:wrap">${btn('Teilnehmer speichern', 'evTeams', { slug: info.slug })}<span class="muted" style="font-size:12px">${d && d.teams ? d.teams.length + ' Teams in den Daten' : ''}</span></div>
-        <div class="row" style="margin-top:12px;gap:8px;flex-wrap:wrap">${btn('Speichern', 'evSave', { slug: info.slug }, 'gold')}${btn('Bingo neu mischen', 'evReshuffle', { slug: info.slug })}${btn('Event löschen', 'evDelete', { slug: info.slug })}</div>
-        <p class="muted" style="font-size:11px;margin:8px 0 0">Neu mischen gibt jedem Spieler eine neue Karte — bisherige Linien und Punkte aus der alten Karte sind dann weg.</p></div>`, info.slug + '_set')
+        <div class="row" style="margin-top:12px;gap:8px;flex-wrap:wrap">${btn('Speichern', 'evSave', { slug: info.slug }, 'gold')}${btn('Event löschen', 'evDelete', { slug: info.slug })}</div>
+        ${bingoRuns(info.slug, ev, d)}</div>`, info.slug + '_set')
       + (S.eventSquadOn(ev) ? fold('Team-Preise', d && (d.teams || []).length ? d.teams.length + ' Teams' : 'Teams stehen noch nicht fest', prices, info.slug + '_price') : '')
       + `<div class="card-b" style="border-top:1px solid var(--line)"><a class="btn sm" href="#/event/${esc(info.slug)}">Event-Seite öffnen →</a></div>`
       + pk);
@@ -836,13 +860,14 @@ async function act(a, d, el) {
     case 'evTeams':
       try { const r = await api('/api/admin/event', { method: 'POST', body: { action: 'teams', slug: d.slug, teams: val('evt_' + d.slug) } }); flash = { ok: true, text: r.message }; EVA.cfg = undefined; } catch (e) { flash = { ok: false, text: e.message }; }
       return draw();
-    case 'evCreate': case 'evSave': case 'evPickem': case 'evAnswer': case 'evDelete': case 'evReshuffle': {
+    case 'evCreate': case 'evSave': case 'evPickem': case 'evAnswer': case 'evDelete': case 'evBingoRun': {
       const slug = d.slug, v = id => val(id + '_' + slug);
       let body;
       if (a === 'evCreate') body = { action: 'create', slug, name: v('evn'), video: v('evv') };
-      if (a === 'evReshuffle') {
-        if (!window.confirm('Allen Spielern eine neue Bingo-Karte geben?\n\nDie Linien und Punkte der alten Karten verfallen.')) return;
-        body = { action: 'update', slug, reshuffle: true };
+      if (a === 'evBingoRun') {
+        const from = +((document.getElementById('bgfrom_' + slug) || {}).value || 0);
+        if (!window.confirm('Neue Bingo-Karten ab dieser Phase?\n\nDie laufende Runde wird abgeschlossen und behält ihre Punkte.')) return;
+        body = { action: 'update', slug, bingoNewRun: true, fromStage: from };
       }
       if (a === 'evSave') {
         const prices = {};

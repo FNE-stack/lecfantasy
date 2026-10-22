@@ -1236,18 +1236,56 @@
   // the first games still catches up - fair, the draw is random for everyone.
   // Points per own line + full card; kept small next to the Tippspiel.
   const BINGO_DEFAULT = { line: 3, full: 10 };
-  function eventBingo(league, ev, evData, manager, hits) {
-    const cfg = Object.assign({}, BINGO_DEFAULT, (ev && ev.bingo) || {});
-    const card = bingoCard('event|' + ((ev && ev.slug) || (evData && evData.slug) || '') + '|' + ((ev && ev.bingoSeed) || '') + '|' + (manager || ''));
-    hits = hits || bingoHits((evData && evData.games) || []);
-    const sc = bingoScore(card, hits, { square: 0, line: cfg.line, full: cfg.full });
-    return { card, hits, cfg, score: sc, manager };
+  // Bingo RUNS. A run is one board over one slice of the event: a name, a seed
+  // and the stages it scores. Worlds wants two - the Play-Ins board stays as a
+  // finished result, and the main event starts fresh - so a run must not see
+  // games outside its own stages, or the new board would open half-ticked from
+  // results that were already paid out.
+  //
+  // ev.bingoRuns = [{ id, name, seed, stages:[i], closed? }]
+  // No runs configured = one implicit run over the whole event (old behaviour).
+  function eventBingoRuns(ev, evData) {
+    const defined = (ev && ev.bingoRuns) || [];
+    if (defined.length) {
+      return defined.map((r, i) => ({
+        id: r.id || ('r' + i),
+        name: r.name || ('Runde ' + (i + 1)),
+        seed: r.seed || '',
+        stages: Array.isArray(r.stages) ? r.stages : null,   // null = all
+        closed: !!r.closed,
+      }));
+    }
+    return [{ id: 'all', name: (ev && ev.name) || 'Bingo', seed: (ev && ev.bingoSeed) || '', stages: null, closed: false }];
   }
-  // every manager's card, the games evaluated once: { [manager]: eventBingo }
-  function eventBingoAll(league, ev, evData) {
-    const hits = bingoHits((evData && evData.games) || []), out = {};
-    for (const m of (league && league.managers) || []) out[m.id] = eventBingo(league, ev, evData, m.id, hits);
+  // The games of one run: only the stages it covers.
+  function bingoRunRows(evData, run) {
+    const rows = (evData && evData.games) || [];
+    if (!run || !run.stages) return rows;
+    const want = new Set(run.stages);
+    const stageOf = new Map(((evData && evData.schedule) || []).map(e => [e.match, e.stage]));
+    return rows.filter(g => want.has(stageOf.get(g.match)));
+  }
+  function eventBingo(league, ev, evData, manager, hits, run) {
+    const cfg = Object.assign({}, BINGO_DEFAULT, (ev && ev.bingo) || {});
+    run = run || eventBingoRuns(ev, evData)[0];
+    const card = bingoCard('event|' + ((ev && ev.slug) || (evData && evData.slug) || '') + '|' + (run.seed || '') + '|' + (manager || ''));
+    hits = hits || bingoHits(bingoRunRows(evData, run));
+    const sc = bingoScore(card, hits, { square: 0, line: cfg.line, full: cfg.full });
+    return { card, hits, cfg, score: sc, manager, run };
+  }
+  // every manager's card for one run, the games evaluated once
+  function eventBingoAll(league, ev, evData, run) {
+    run = run || eventBingoRuns(ev, evData)[0];
+    const hits = bingoHits(bingoRunRows(evData, run)), out = {};
+    for (const m of (league && league.managers) || []) out[m.id] = eventBingo(league, ev, evData, m.id, hits, run);
     return out;
+  }
+  // Points over ALL runs - a closed run keeps counting, that is the point of
+  // closing it rather than resetting the board.
+  function eventBingoTotal(league, ev, evData, manager) {
+    let t = 0;
+    for (const run of eventBingoRuns(ev, evData)) t += eventBingo(league, ev, evData, manager, null, run).score.points;
+    return r2(t);
   }
 
   // Which squares are already ticked, given the games of an event (or season).
@@ -1518,7 +1556,9 @@
     const stageOf = new Map(((evData && evData.schedule) || []).map(e => [e.match, e.stage]));
     const rounds = [ev.pickem, ev.pickemKo].filter(x => x && x.revealed);
     const truth = rounds.length && eventDone(evData) ? eventTruth(evData, sc) : null;
-    const bingoAll = evData && eventMinigame(ev) === 'bingo' ? eventBingoAll(league, ev, evData) : null;
+    // Sum over every bingo run: a closed run (e.g. the Play-Ins board) keeps
+    // its points when a new board starts for the main event.
+    const bingoOn = evData && eventMinigame(ev) === 'bingo';
     const tipTotals = eventTipTotals(league, ev, evData);
     const rows = (league.managers || []).map(m => {
       const r = { manager: m.id, name: m.name, players: 0, pickem: 0, bingo: 0, total: 0, byStage: {}, perPlayer: {}, correct: [] };
@@ -1539,7 +1579,7 @@
       }
       // Bingo: one card per manager per stage, scored from the games of that
       // stage. Opt-in via league.bingo.enabled so an event can run without it.
-      if (bingoAll && bingoAll[m.id]) r.bingo = bingoAll[m.id].score.points;
+      if (bingoOn) r.bingo = eventBingoTotal(league, ev, evData, m.id);
       const tt = tipTotals[m.id] || { pts: 0 };
       r.tips = tt.pts; r.tipStats = tt;
       r.players = r2(r.players); r.total = r2(r.players + r.pickem + r.bingo + (r.tips || 0));
@@ -1794,7 +1834,7 @@
     suggestedCapacity, calendar, blockKey, lineupConfig, lineupFor, lineupPreview, scoreBook, autoWindows, faabLeft,
     PICKEM_TYPES, pickemTruth, pickemPoints, pickemLock, splitDone,
     weekRecap, hallEntry, hallDue, statTruth, scoreTips,
-    BINGO, bingoHits, bingoCard, bingoScore, bingoStageRows, eventBingo, eventBingoAll, eventMonopoly, monoBoard, MONO_CARDS, eventMinigame, eventSquadOn, eventPickemCatalog, tipScores, tipValid, tipOriented, tipOpen, tipKnown, tipPoints, tipConfig, eventTipsOn, eventTipTotals, mergeLiveSchedule,
+    BINGO, bingoHits, bingoCard, bingoScore, bingoStageRows, eventBingo, eventBingoAll, eventBingoRuns, bingoRunRows, eventBingoTotal, eventMonopoly, monoBoard, MONO_CARDS, eventMinigame, eventSquadOn, eventPickemCatalog, tipScores, tipValid, tipOriented, tipOpen, tipKnown, tipPoints, tipConfig, eventTipsOn, eventTipTotals, mergeLiveSchedule,
     EVENT_TYPES, eventConfig, eventQuestionTeams, eventTeamPrice, eventPrice, eventPlayer, eventStages, eventOpenStage, eventDone, eventTeamError, eventLineup, eventTruth, eventStandings, eventReplay, eventReplayPlan, eventLevels, eventTeamLevel, eventFinalScores
   };
 // `this` is undefined in an ES module, so a Cloudflare Worker importing this

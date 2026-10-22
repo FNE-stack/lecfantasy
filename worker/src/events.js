@@ -484,7 +484,8 @@ export async function eventAdmin(env, body) {
   }
   let msg = '';
   if (a === 'create' || a === 'update' || a === 'pickem') await eventData(env, slug);     // data must exist
-  const d = a === 'pickem' ? await eventData(env, slug) : null;   // the round catalog needs the format
+  // the round catalog and a new bingo run both need the event's stage list
+  const d = (a === 'pickem' || (a === 'update' && body.bingoNewRun)) ? await eventData(env, slug) : null;
   const res = await writeLeague(env, l => {
     l.events = l.events || {};
     const ev = l.events[slug];
@@ -501,6 +502,39 @@ export async function eventAdmin(env, body) {
       if (body.video !== undefined) ev.video = youtubeId(body.video);
       if (body.videoStart !== undefined) ev.videoStart = Math.max(0, Math.floor(Number(body.videoStart) || 0));
       if (body.reshuffle) ev.bingoSeed = Math.random().toString(36).slice(2, 8);
+      // Start a NEW bingo board from a stage onwards, keeping the finished one.
+      // Reshuffling alone would wipe the Play-Ins result; here the old run is
+      // closed (its points stay) and a fresh board covers the stages from
+      // `fromStage` on, so it cannot open half-ticked from games already played.
+      if (body.bingoNewRun) {
+        const stages = (d.stages || []).map((st, i) => i);
+        const from = Math.max(0, Math.min(stages.length - 1, Number(body.fromStage) || 0));
+        if (!stages.length) throw new HttpError(400, 'Event hat keine Phasen');
+        const runs = Array.isArray(ev.bingoRuns) && ev.bingoRuns.length ? ev.bingoRuns.slice() : null;
+        const name = i => (d.stages[i] || {}).name || ('Phase ' + (i + 1));
+        if (!runs) {
+          // first split: everything before `from` becomes the closed run
+          const before = stages.filter(i => i < from);
+          if (!before.length) throw new HttpError(400, 'Vor dieser Phase liegt nichts, was abgeschlossen werden könnte');
+          ev.bingoRuns = [
+            { id: 'r1', name: before.map(name).join(' + '), seed: ev.bingoSeed || 'r1', stages: before, closed: true },
+            { id: 'r2', name: stages.filter(i => i >= from).map(name).join(' + '),
+              seed: Math.random().toString(36).slice(2, 8), stages: stages.filter(i => i >= from), closed: false },
+          ];
+        } else {
+          const open = runs[runs.length - 1];
+          const keep = (open.stages || stages).filter(i => i < from);
+          const next = (open.stages || stages).filter(i => i >= from);
+          if (!next.length) throw new HttpError(400, 'Ab dieser Phase ist nichts mehr übrig');
+          if (keep.length) { open.stages = keep; open.name = keep.map(name).join(' + '); }
+          open.closed = true;
+          if (!keep.length) runs.pop();
+          runs.push({ id: 'r' + (runs.length + 1), name: next.map(name).join(' + '),
+            seed: Math.random().toString(36).slice(2, 8), stages: next, closed: false });
+          ev.bingoRuns = runs;
+        }
+        msg = `Neue Bingo-Karten ab „${name(from)}" — die abgeschlossene Runde behält ihre Punkte`;
+      }
       if (body.squad !== undefined) ev.squad = !!body.squad;
       if (body.minigame !== undefined) { if (!['bingo', 'monopoly', 'none'].includes(body.minigame)) throw new HttpError(400, 'Minispiel: bingo, monopoly oder none'); ev.minigame = body.minigame; }
       if (body.prices) {
