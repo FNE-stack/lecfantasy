@@ -387,6 +387,27 @@
         "115660588583171794",
         "115660588583171798",
         "116299649498303884"
+      ],
+      "bingoRuns": [
+        {
+          "id": "r1",
+          "name": "Play-Ins",
+          "seed": "pzdeja",
+          "stages": [
+            0
+          ],
+          "closed": true
+        },
+        {
+          "id": "r2",
+          "name": "Swiss + Knockouts",
+          "seed": "f7m796",
+          "stages": [
+            1,
+            2
+          ],
+          "closed": false
+        }
       ]
     }
   }
