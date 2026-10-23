@@ -434,7 +434,8 @@
             1,
             2
           ],
-          "closed": false
+          "closed": false,
+          "cardV": 2
         }
       ]
     }
