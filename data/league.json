@@ -46,6 +46,11 @@
       "id": "m41cdc303",
       "name": "Dalurox",
       "joined": "2026-10-13T18:20:52.912Z"
+    },
+    {
+      "id": "mf98a5d14",
+      "name": "QA Bingo",
+      "joined": "2026-10-23T20:15:52.788Z"
     }
   ],
   "draft": {
@@ -53,7 +58,8 @@
       "m02595135",
       "m2f334af7",
       "m3d462247",
-      "m41cdc303"
+      "m41cdc303",
+      "mf98a5d14"
     ],
     "snake": true,
     "picks": [],
