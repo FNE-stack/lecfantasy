@@ -121,11 +121,17 @@ ok('standings_use_total', row && Math.abs(row.bingo - S.eventBingoTotal(lg, two,
   const open = rr.filter(r => !r.closed).pop();
   ok('open_run_is_findable', open && open.id === 'r2',
      `die offene Runde ist eindeutig bestimmbar (${open ? open.name : '-'})`);
+  // Not "0 ticked" - that only holds until the first game of the new run.
+  // What must hold forever: every ticked square came from a game of the new
+  // run's own stages, never from a closed run.
   const openCard = Object.values(S.eventBingoAll(league, cfg, ev, open))[0];
-  const ticked = Object.values(openCard.hits).filter(h => h.hit).length;
   const closedRows = S.bingoRunRows(ev, rr[0]).length;
-  ok('open_run_ignores_closed_games', closedRows > 0 && ticked === 0,
-     `${closedRows} Play-Ins-Zeilen, aber 0 Felder auf dem neuen Board - nichts leckt hinueber`);
+  const stageOf = new Map(ev.schedule.map(e => [e.match, e.stage]));
+  const matchOf = new Map(ev.games.map(g => [g.game, g.match]));
+  const ticked = Object.values(openCard.hits).filter(h => h.hit);
+  const leaked = ticked.filter(h => !open.stages.includes(stageOf.get(matchOf.get(h.game))));
+  ok('open_run_ignores_closed_games', closedRows > 0 && leaked.length === 0,
+     `${closedRows} Play-Ins-Zeilen; ${ticked.length} Felder auf dem neuen Board, alle aus dessen eigenen Phasen - nichts leckt hinueber`);
 }
 
 // ── every card square must be one of the rarer ones ───────────────────────
@@ -139,6 +145,28 @@ ok('standings_use_total', row && Math.abs(row.bingo - S.eventBingoTotal(lg, two,
     ok('card_has_no_common_square_' + m.slice(-4), worst <= cap,
        `haeufigstes Feld ${(worst * 100).toFixed(1)}% pro Spiel (Grenze ${(cap * 100).toFixed(0)}%)`);
   }
+}
+
+// ── card version 2: no duplicate stats, no family twice in a line ─────────
+{
+  const lines = S.bingoLines(5);
+  let clash = 0, dup = 0, distinct = 1e9, rarePerLine = true, pool2 = new Set(S.bingoPool(2));
+  for (let n = 0; n < 400; n++) {
+    const c = S.bingoCard('event|worlds_2026|v2test|' + n, 5, 2);
+    distinct = Math.min(distinct, new Set(c.cells).size);
+    if (c.cells.some(k => k === 'teamNoDeaths' || k === 'everyoneDies' || !pool2.has(k))) dup++;
+    for (const l of lines) {
+      const fam = l.map(i => S.BINGO_FAMILY[c.cells[i]]).filter(Boolean);
+      if (new Set(fam).size !== fam.length) clash++;
+      if (l.filter(i => c.rare.includes(i)).length !== 1) rarePerLine = false;
+    }
+  }
+  ok('v2_no_duplicates', dup === 0, '400 Karten: keine doppelte Stat (Team ohne Tod / alle 3+ Tode), alles aus dem v2-Pool');
+  ok('v2_no_family_in_a_line', clash === 0, `400 Karten x 12 Linien: ${clash} Linien mit zwei Feldern derselben Sorte`);
+  ok('v2_card_shape', distinct === 25 && rarePerLine, `immer 25 verschiedene Felder, genau ein ★ je Linie`);
+  // a round without cardV keeps its old cards
+  const v1 = S.bingoCard('event|worlds_2026|pzdeja|x');
+  ok('v1_unchanged', JSON.stringify(S.bingoCard('event|worlds_2026|pzdeja|x', 5, 1)) === JSON.stringify(v1), 'Runden ohne Version behalten ihre Karten');
 }
 
 console.log(`\n${fails ? fails + ' FAILED' : 'all bingo-run tests passed'}`);

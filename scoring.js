@@ -1135,7 +1135,7 @@
                    test: (g) => g.some(x => x.cs >= 450) },
     kills50game: { label: '50+ Kills im Spiel',          hint: 'beide Teams zusammen', rate: .034,
                    test: (g) => g.reduce((t, x) => t + x.k, 0) >= 50 },
-    over45:      { label: 'Spiel ueber 45 Min',          hint: 'Marathon', rate: .026,
+    over45:      { label: 'Spiel über 45 Min',          hint: 'Marathon', rate: .026,
                    test: (g) => !!g[0].dur && g[0].dur > 45 * 60 },
     deaths10:    { label: 'Spieler mit 10+ Toden',       hint: 'ganz schwerer Tag', rate: .026,
                    test: (g) => g.some(x => x.d >= 10) },
@@ -1145,7 +1145,7 @@
                    test: (g) => g.reduce((t, x) => t + x.k, 0) >= 55 },
     under22:     { label: 'Spiel unter 22 Min',          hint: 'absoluter Stomp', rate: .009,
                    test: (g) => !!g[0].dur && g[0].dur < 22 * 60 },
-    over50:      { label: 'Spiel ueber 50 Min',          hint: 'nie endender Krieg', rate: .009,
+    over50:      { label: 'Spiel über 50 Min',          hint: 'nie endender Krieg', rate: .009,
                    test: (g) => !!g[0].dur && g[0].dur > 50 * 60 },
     teamDeaths2: { label: 'Team mit max. 2 Toden',       hint: 'im ganzen Spiel', rate: .009,
                    test: (g) => { const t = {}; for (const x of g) t[x.team] = (t[x.team] || 0) + x.d;
@@ -1177,17 +1177,17 @@
                    test: (g) => { const m = Math.max(...g.map(x => x.k)); return m > 0 && g.some(x => x.role === 'TOP' && x.k === m); } },
     jglNoKills:  { label: 'Jungler ohne einen Kill',     hint: '0 Kills im ganzen Spiel', rate: .147,
                    test: (g) => g.some(x => x.role === 'JNG' && x.k === 0) },
-    over38:      { label: 'Spiel ueber 38 Min',          hint: 'zieht sich', rate: .138,
+    over38:      { label: 'Spiel über 38 Min',          hint: 'zieht sich', rate: .138,
                    test: (g) => !!g[0].dur && g[0].dur > 38 * 60 },
     teamDeaths4: { label: 'Team mit max. 4 Toden',       hint: 'saubere Runde', rate: .129,
                    test: (g) => { const t = {}; for (const x of g) t[x.team] = (t[x.team] || 0) + x.d;
                      return Object.values(t).some(v => v <= 4); } },
-    supAssists20:{ label: 'Support mit 20+ Assists',     hint: 'ueberall dabei', rate: .103,
+    supAssists20:{ label: 'Support mit 20+ Assists',     hint: 'überall dabei', rate: .103,
                    test: (g) => g.some(x => x.role === 'SUP' && x.a >= 20) },
     bothTeams20: { label: 'Beide Teams 20+ Kills',       hint: 'offene Schlacht', rate: .078,
                    test: (g) => { const t = {}; for (const x of g) t[x.team] = (t[x.team] || 0) + x.k;
                      const v = Object.values(t); return v.length === 2 && v.every(k => k >= 20); } },
-    shutout:     { label: 'Team mit max. 3 Kills',       hint: 'komplett ueberrannt', rate: .069,
+    shutout:     { label: 'Team mit max. 3 Kills',       hint: 'komplett überrannt', rate: .069,
                    test: (g) => { const t = {}; for (const x of g) t[x.team] = (t[x.team] || 0) + x.k;
                      return Object.values(t).some(k => k <= 3); } },
     kda20:       { label: 'K+A 20+ ohne Tod',            hint: 'perfektes Spiel', rate: .069,
@@ -1253,9 +1253,10 @@
         seed: r.seed || '',
         stages: Array.isArray(r.stages) ? r.stages : null,   // null = all
         closed: !!r.closed,
+        cardV: Number(r.cardV) || 1,
       }));
     }
-    return [{ id: 'all', name: (ev && ev.name) || 'Bingo', seed: (ev && ev.bingoSeed) || '', stages: null, closed: false }];
+    return [{ id: 'all', name: (ev && ev.name) || 'Bingo', seed: (ev && ev.bingoSeed) || '', stages: null, closed: false, cardV: Number(ev && ev.bingoCardV) || 1 }];
   }
   // The games of one run: only the stages it covers.
   function bingoRunRows(evData, run) {
@@ -1268,7 +1269,7 @@
   function eventBingo(league, ev, evData, manager, hits, run) {
     const cfg = Object.assign({}, BINGO_DEFAULT, (ev && ev.bingo) || {});
     run = run || eventBingoRuns(ev, evData)[0];
-    const card = bingoCard('event|' + ((ev && ev.slug) || (evData && evData.slug) || '') + '|' + (run.seed || '') + '|' + (manager || ''));
+    const card = bingoCard('event|' + ((ev && ev.slug) || (evData && evData.slug) || '') + '|' + (run.seed || '') + '|' + (manager || ''), 5, run.cardV);
     hits = hits || bingoHits(bingoRunRows(evData, run));
     const sc = bingoScore(card, hits, { square: 0, line: cfg.line, full: cfg.full });
     return { card, hits, cfg, score: sc, manager, run };
@@ -1347,7 +1348,7 @@
                     test: g => g.some(x => x.cs >= 520) },
     everyoneDies: { label: 'Jeder stirbt 3+ mal',      hint: 'alle zehn Spieler', rate: .014,
                     test: g => g.length >= 10 && g.every(x => x.d >= 3) },
-    over52:       { label: 'Spiel ueber 52 Min',       hint: 'Endlosspiel', rate: .008,
+    over52:       { label: 'Spiel über 52 Min',       hint: 'Endlosspiel', rate: .008,
                     test: g => !!g[0].dur && g[0].dur > 52 * 60 },
     kills16:      { label: '16+ Kills',                hint: 'ein Spieler allein', rate: .008,
                     test: g => g.some(x => x.k >= 16) },
@@ -1356,12 +1357,54 @@
                       return Object.values(t).some(v => v === 0); } },
   })) if (!BINGO[k]) BINGO[k] = def;
 
+  // Card version 2 (Worlds 2026 Swiss onwards; a round without `cardV` keeps
+  // version 1 so a finished board never changes after the fact):
+  // - two pairs were the SAME stat under two names (teamNoDeaths = perfectGame,
+  //   everyoneDies = allDie3) - one game ticked two squares; the copies are out.
+  // - the pool is mostly ladders of one stat (game over 45/50/52/55 min, 15/16/18
+  //   kills, ...). One long game ticked a whole ladder at once, so a line could
+  //   fall to a single game. A v2 card never holds two squares of one family in
+  //   the same line (row, column, diagonal).
+  const BINGO_DUP = new Set(['teamNoDeaths', 'everyoneDies']);
+  const BINGO_FAMILY = {
+    over38: 'long', over45: 'long', over50: 'long', over52: 'long', over55: 'long', mid3540: 'long',
+    under22: 'short', under25: 'short',
+    kills50game: 'gameKills', kills55game: 'gameKills', kills60game: 'gameKills', bothTeams20: 'gameKills', team30Kills: 'gameKills',
+    kills12: 'playerKills', kills15: 'playerKills', kills16: 'playerKills', kills18: 'playerKills',
+    cs400: 'cs', cs450: 'cs', cs500: 'cs', cs520: 'cs',
+    perfectGame: 'fewDeaths', teamNoDeaths: 'fewDeaths', teamDeaths1: 'fewDeaths', teamDeaths2: 'fewDeaths', teamDeaths4: 'fewDeaths',
+    teamNoKills: 'fewKills', shutout: 'fewKills',
+    allDie3: 'allDie', everyoneDies: 'allDie',
+    supCarry: 'support', supTopKiller: 'support', supAssists20: 'support',
+    halfKillsWin: 'fewerKillsWin', fewerKillsWin: 'fewerKillsWin',
+  };
+  // the squares that can land on a card of version v (what the caller calls)
+  function bingoPool(v) {
+    const keys = Object.keys(BINGO).filter(k => !(v >= 2 && BINGO_DUP.has(k)));
+    const ranked = keys.sort((a, b) => BINGO[a].rate - BINGO[b].rate);
+    return ranked.slice(0, Math.max(25, Math.min(ranked.length, BINGO_POOL)));
+  }
+  function bingoLines(n) {
+    const lines = [];
+    for (let r = 0; r < n; r++) { const l = []; for (let c = 0; c < n; c++) l.push(r * n + c); lines.push(l); }
+    for (let c = 0; c < n; c++) { const l = []; for (let r = 0; r < n; r++) l.push(r * n + c); lines.push(l); }
+    const d1 = [], d2 = [];
+    for (let i = 0; i < n; i++) { d1.push(i * n + i); d2.push(i * n + (n - 1 - i)); }
+    lines.push(d1); lines.push(d2);
+    return lines;
+  }
+  const bingoFamilyClash = (cells, n) => bingoLines(n).some(l => {
+    const seen = new Set();
+    for (const i of l) { const f = BINGO_FAMILY[cells[i]]; if (!f) continue; if (seen.has(f)) return true; seen.add(f); }
+    return false;
+  });
+
   const BINGO_RARE = 0.03;   // a square hit in at most 3% of games counts as rare
   const BINGO_POOL = 32;     // only the 32 least likely squares can land on a card
   const BINGO_SPREAD = 12;   // the 12 rarest of those are spread one per line
-  function bingoCard(seed, size) {
+  function bingoCard(seed, size, v) {
     size = size || 5;   // 5x5 is the classic bingo card
-    const keys = Object.keys(BINGO);
+    const keys = Object.keys(BINGO).filter(k => !(v >= 2 && BINGO_DUP.has(k)));
     const need = size * size;
     let h = 2166136261;
     const str = String(seed);
@@ -1380,6 +1423,9 @@
     // to ~game 43, caps the most frequent square at 7.8% per game (was 14.7%) and leaves a 2% chance of a line inside the first dozen
     // games, while every card still reaches a line eventually - hard, not dead.
     const ranked = keys.slice().sort((a, b) => BINGO[a].rate - BINGO[b].rate);
+    // v2: draw again (deterministically, the generator just runs on) until no
+    // line holds two squares of the same family - see BINGO_FAMILY
+    for (let attempt = 0; attempt < (v >= 2 ? 60 : 1); attempt++) {
     const usable = ranked.slice(0, Math.max(need, Math.min(ranked.length, BINGO_POOL)));
     // "Rare" is relative to what can land on a card, not an absolute rate.
     // BINGO_RARE was tuned when a card drew from all 40 squares; restricted to
@@ -1405,9 +1451,54 @@
     // cells were filled from 6 keys and a card had 11 distinct squares.
     const used = new Set(cells.filter(Boolean));
     const fill = shuffle(common.filter(k => !used.has(k)));
+    if (v >= 2) {
+      // place square by square, backing up when a line would get a family
+      // twice (random retries almost never find such a card). Big families
+      // first - they are the hard ones to fit.
+      const famSize = {};
+      for (const key of fill) { const f = BINGO_FAMILY[key]; if (f) famSize[f] = (famSize[f] || 0) + 1; }
+      const order = fill.slice().sort((x, y) => (famSize[BINGO_FAMILY[y]] || 0) - (famSize[BINGO_FAMILY[x]] || 0));
+      if (bingoPlace(cells, order, size)) return { size, cells, rare: rarePos };
+      continue;   // this rare layout cannot be completed - draw another
+    }
     let k = 0;
     for (let i = 0; i < need; i++) if (!cells[i]) cells[i] = fill[k++] || common[k % common.length];
     return { size, cells, rare: rarePos };
+    }
+    return bingoCard(seed + '|fallback', size, 1);
+  }
+  // fill the empty cells with `keys` so that no line holds one family twice
+  function bingoPlace(cells, keys, n) {
+    const lines = bingoLines(n), lineOf = Array.from({ length: n * n }, () => []);
+    lines.forEach((l, li) => l.forEach(i => lineOf[i].push(li)));
+    const fam = lines.map(l => new Set(l.map(i => BINGO_FAMILY[cells[i]]).filter(Boolean)));
+    const empty = [];
+    for (let i = 0; i < n * n; i++) if (!cells[i]) empty.push(i);
+    const usedKey = keys.map(() => false);
+    let steps = 0;
+    const rec = pos => {
+      if (pos === empty.length) return true;
+      if (++steps > 50000) return false;
+      // most constrained cell first: the one the fewest keys still fit
+      let best = -1, bestFit = null;
+      for (let p = pos; p < empty.length; p++) {
+        const cell = empty[p], fit = [];
+        keys.forEach((key, j) => { if (!usedKey[j]) { const f = BINGO_FAMILY[key]; if (!f || !lineOf[cell].some(li => fam[li].has(f))) fit.push(j); } });
+        if (best < 0 || fit.length < bestFit.length) { best = p; bestFit = fit; if (!fit.length) break; }
+      }
+      if (!bestFit.length) return false;
+      [empty[pos], empty[best]] = [empty[best], empty[pos]];
+      const cell = empty[pos];
+      for (const j of bestFit) {
+        const f = BINGO_FAMILY[keys[j]];
+        usedKey[j] = true; cells[cell] = keys[j]; if (f) lineOf[cell].forEach(li => fam[li].add(f));
+        if (rec(pos + 1)) return true;
+        usedKey[j] = false; cells[cell] = undefined; if (f) lineOf[cell].forEach(li => fam[li].delete(f));
+      }
+      [empty[pos], empty[best]] = [empty[best], empty[pos]];
+      return false;
+    };
+    return rec(0);
   }
 
   // Score a card: points per square, per completed line, plus a full-house bonus.
@@ -1834,7 +1925,7 @@
     suggestedCapacity, calendar, blockKey, lineupConfig, lineupFor, lineupPreview, scoreBook, autoWindows, faabLeft,
     PICKEM_TYPES, pickemTruth, pickemPoints, pickemLock, splitDone,
     weekRecap, hallEntry, hallDue, statTruth, scoreTips,
-    BINGO, bingoHits, bingoCard, bingoScore, bingoStageRows, eventBingo, eventBingoAll, eventBingoRuns, bingoRunRows, eventBingoTotal, eventMonopoly, monoBoard, MONO_CARDS, eventMinigame, eventSquadOn, eventPickemCatalog, tipScores, tipValid, tipOriented, tipOpen, tipKnown, tipPoints, tipConfig, eventTipsOn, eventTipTotals, mergeLiveSchedule,
+    BINGO, bingoHits, bingoCard, bingoPool, bingoLines, BINGO_FAMILY, bingoScore, bingoStageRows, eventBingo, eventBingoAll, eventBingoRuns, bingoRunRows, eventBingoTotal, eventMonopoly, monoBoard, MONO_CARDS, eventMinigame, eventSquadOn, eventPickemCatalog, tipScores, tipValid, tipOriented, tipOpen, tipKnown, tipPoints, tipConfig, eventTipsOn, eventTipTotals, mergeLiveSchedule,
     EVENT_TYPES, eventConfig, eventQuestionTeams, eventTeamPrice, eventPrice, eventPlayer, eventStages, eventOpenStage, eventDone, eventTeamError, eventLineup, eventTruth, eventStandings, eventReplay, eventReplayPlan, eventLevels, eventTeamLevel, eventFinalScores
   };
 // `this` is undefined in an ES module, so a Cloudflare Worker importing this

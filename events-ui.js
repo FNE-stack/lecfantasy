@@ -543,7 +543,8 @@ function evBingo(slug) {
   for (const r of runRows) { if (!byGame.has(r.game)) byGame.set(r.game, []); byGame.get(r.game).push(r); }
   const champ = id => ((app.D.champs || {}).names || {})[id] || id;
   const order = k => { const h = hits[k] || {}, g = byGame.get(h.game) || []; return String(h.at || '') + '|' + String((g[0] || {}).n || 0).padStart(2, '0') + '|' + k; };
-  const called = Object.keys(S.BINGO).filter(k => (hits[k] || {}).hit).sort((x, y) => order(x).localeCompare(order(y)));
+  const pool = S.bingoPool(run.cardV);   // only what can be on a card gets called
+  const called = pool.filter(k => (hits[k] || {}).hit).sort((x, y) => order(x).localeCompare(order(y)));
   // which call finished a line (or the full card) on whose card
   const bingoBy = {};
   for (const x of Object.values(all)) {
@@ -573,17 +574,17 @@ function evBingo(slug) {
   const table = `<table><thead><tr><th>#</th><th>Karte</th><th class="num">Linien</th><th class="num">Felder</th><th class="num">Punkte</th></tr></thead><tbody>${ranking.map((x, i) =>
       `<tr class="${x.manager === me() ? 'me' : ''}" data-bgcard="${esc(x.manager)}" style="cursor:pointer"><td class="rank r${i + 1}">${i + 1}</td>
         <td class="fill"><b>${esc(mgrName(x.manager))}</b>${x.manager === who ? ' <span class="pill gold">angezeigt</span>' : ''}${x.score.full ? ' <span class="pill live">VOLL</span>' : ''}</td>
-        <td class="num">${x.score.lines}</td><td class="num">${x.score.squares}</td><td class="num pts">${fmt(x.score.points)}</td></tr>`).join('')}</tbody></table>`;
+        <td class="num">${x.score.lines}</td><td class="num">${x.score.squares}</td><td class="num pts">${x.score.points}</td></tr>`).join('')}</tbody></table>`;
   return runTabs + (run.closed ? '<div class="note" style="margin-bottom:14px">Diese Runde ist abgeschlossen — die Punkte zählen weiter, es kommt nichts mehr dazu.</div>' : '')
     + card(own ? 'Meine Bingo-Karte' : 'Bingo-Karte von ' + esc(mgrName(who)), `<div class="card-b row" style="gap:14px;flex-wrap:wrap;align-items:baseline">
        <span><b style="font-size:20px">${sc.lines}</b> <span class="dim">${sc.lines === 1 ? 'Linie' : 'Linien'}</span></span>
        <span><b>${sc.squares}</b><span class="dim">/25 Felder</span></span>
-       <span><b class="pts">+${fmt(sc.points)}</b> <span class="dim">Punkte</span></span>${sc.full ? '<span class="pill live">VOLLE KARTE</span>' : ''}
-       <span class="dim" style="font-size:12px;flex:1;text-align:right">${games ? games + ' Spiele' : 'noch kein Spiel'}${reshuffle}</span></div>${grid}
-     <div class="card-b dim" style="font-size:12px;border-top:1px solid var(--line)">Jeder hat seine eigene Karte aus demselben Pool von ${Object.keys(S.BINGO).length} Stats. Felder haken sich selbst ab, sobald ein Spiel sie erfüllt — auch rückwirkend.
+       <span><b class="pts">+${sc.points}</b> <span class="dim">Punkte</span></span>${sc.full ? '<span class="pill live">VOLLE KARTE</span>' : ''}
+       <span class="dim" style="font-size:12px;flex:1;text-align:right">${games ? games + (games === 1 ? ' Spiel' : ' Spiele') : 'noch kein Spiel'}${reshuffle}</span></div>${grid}
+     <div class="card-b dim" style="font-size:12px;border-top:1px solid var(--line)">Jeder hat seine eigene Karte aus demselben Pool von ${pool.length} Stats.${run.cardV >= 2 ? ' Keine Linie hat zwei Felder derselben Sorte (z. B. zwei Spieldauern).' : ''} Felder haken sich selbst ab, sobald ein Spiel sie erfüllt — auch rückwirkend.
        Jede volle Linie (Reihe, Spalte, Diagonale) auf <b>deiner</b> Karte: <b>+${b.cfg.line}</b>, volle Karte +${b.cfg.full}. ★ = selten — jede Reihe hat eins.</div>`, `+${b.cfg.line} pro Linie`)
     + card('Bingo-Tabelle', table, 'antippen = Karte ansehen')
-    + card('Ausrufer', moments || '<div class="empty">Noch nichts gezogen. Hier wird jede Stat aus dem Pool ausgerufen, sobald ein Spiel sie erfüllt — mit wem sie auf der Karte hat und wer damit Bingo macht.</div>', called.length ? `${called.length} von ${Object.keys(S.BINGO).length} gezogen` : '');
+    + card('Ausrufer', moments || '<div class="empty">Noch nichts gezogen. Hier wird jede Stat aus dem Pool ausgerufen, sobald ein Spiel sie erfüllt — mit wem sie auf der Karte hat und wer damit Bingo macht.</div>', called.length ? `${called.length} von ${pool.length} gezogen` : '');
 }
 
 // ── Rift-Monopoly ─────────────────────────────────────────────────────────

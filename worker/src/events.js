@@ -377,32 +377,36 @@ export async function eventCron(env, league) {
 }
 
 // a new bingo line on someone's card: push to that manager (once per line).
-// KV bingo:<slug>:<seed> = { [manager]: lines seen } - one read per event.
+// Only OPEN rounds - a closed round cannot change. KV bingo:<slug>:<run seed>
+// = { [manager]: lines seen } - one read per open round.
 async function bingoNotices(env, league) {
   for (const [slug, ev] of Object.entries(league.events || {})) {
     if (S.eventMinigame(ev) !== 'bingo') continue;
     const raw = await publicData(env, `events/${slug}.json`, 120);
     if (!raw) continue;
     const d = ev.replay ? S.eventReplay(raw, ev.replay) : raw;
-    const all = S.eventBingoAll(league, ev, d);
-    const key = `bingo:${slug}:${ev.bingoSeed || ''}`;
-    let seen = {};
-    try { const v = JSON.parse((await env.LEAGUE.get(key)) || '{}'); if (v && typeof v === 'object') seen = v; } catch (e) { /* old format: a number */ }
-    let changed = false;
-    for (const [mid, b] of Object.entries(all)) {
-      const lines = b.score.lines, was = Number(seen[mid]) || 0;
-      if (lines === was) continue;
-      seen[mid] = lines; changed = true;
-      if (lines < was) continue;
-      // the square that finished it: the newest hit inside a finished line
-      const inLine = new Set(b.score.lineCells.flat());
-      const last = b.card.cells.filter((k, i) => inLine.has(i) && b.hits[k].hit).sort((x, y) => String(b.hits[y].at).localeCompare(String(b.hits[x].at)))[0];
-      const sq = S.BINGO[last] || {};
-      await notify(env, [mid], { title: b.score.full ? '🎉 VOLLE BINGO-KARTE!' : '🎉 BINGO!',
-        body: `${ev.name}: ${lines === 1 ? 'deine erste Linie' : 'deine ' + lines + '. Linie'} — +${b.score.full ? b.cfg.full : b.cfg.line} Punkte.${sq.label ? ' Letztes Feld: ' + sq.label + '.' : ''}`,
-        url: `./#/event/${slug}`, tag: 'bingo-' + slug }).catch(() => null);
+    const runs = S.eventBingoRuns(ev, d), many = runs.length > 1;
+    for (const run of runs.filter(r => !r.closed)) {
+      const all = S.eventBingoAll(league, ev, d, run);
+      const key = `bingo:${slug}:${run.seed || ''}`;
+      let seen = {};
+      try { const v = JSON.parse((await env.LEAGUE.get(key)) || '{}'); if (v && typeof v === 'object') seen = v; } catch (e) { /* old format: a number */ }
+      let changed = false;
+      for (const [mid, b] of Object.entries(all)) {
+        const lines = b.score.lines, was = Number(seen[mid]) || 0;
+        if (lines === was) continue;
+        seen[mid] = lines; changed = true;
+        if (lines < was) continue;
+        // the square that finished it: the newest hit inside a finished line
+        const inLine = new Set(b.score.lineCells.flat());
+        const last = b.card.cells.filter((k, i) => inLine.has(i) && b.hits[k].hit).sort((x, y) => String(b.hits[y].at).localeCompare(String(b.hits[x].at)))[0];
+        const sq = S.BINGO[last] || {};
+        await notify(env, [mid], { title: b.score.full ? '🎉 VOLLE BINGO-KARTE!' : '🎉 BINGO!',
+          body: `${ev.name}${many ? ' · ' + run.name : ''}: ${lines === 1 ? 'deine erste Linie' : 'deine ' + lines + '. Linie'} — +${b.score.full ? b.cfg.full : b.cfg.line} Punkte.${sq.label ? ' Letztes Feld: ' + sq.label + '.' : ''}`,
+          url: `./#/event/${slug}`, tag: 'bingo-' + slug }).catch(() => null);
+      }
+      if (changed) await env.LEAGUE.put(key, JSON.stringify(seen));
     }
-    if (changed) await env.LEAGUE.put(key, JSON.stringify(seen));
   }
 }
 
@@ -519,7 +523,7 @@ export async function eventAdmin(env, body) {
           ev.bingoRuns = [
             { id: 'r1', name: before.map(name).join(' + '), seed: ev.bingoSeed || 'r1', stages: before, closed: true },
             { id: 'r2', name: stages.filter(i => i >= from).map(name).join(' + '),
-              seed: Math.random().toString(36).slice(2, 8), stages: stages.filter(i => i >= from), closed: false },
+              seed: Math.random().toString(36).slice(2, 8), stages: stages.filter(i => i >= from), closed: false, cardV: 2 },
           ];
         } else {
           const open = runs[runs.length - 1];
@@ -530,10 +534,17 @@ export async function eventAdmin(env, body) {
           open.closed = true;
           if (!keep.length) runs.pop();
           runs.push({ id: 'r' + (runs.length + 1), name: next.map(name).join(' + '),
-            seed: Math.random().toString(36).slice(2, 8), stages: next, closed: false });
+            seed: Math.random().toString(36).slice(2, 8), stages: next, closed: false, cardV: 2 });
           ev.bingoRuns = runs;
         }
         msg = `Neue Bingo-Karten ab „${name(from)}" — die abgeschlossene Runde behält ihre Punkte`;
+      }
+      if (body.bingoCardV) {
+        const r = (ev.bingoRuns || []).find(x => x.id === body.bingoCardV.run);
+        if (!r) throw new HttpError(404, 'Bingo-Runde unbekannt');
+        if (r.closed) throw new HttpError(409, 'Eine abgeschlossene Runde bleibt, wie sie ist');
+        r.cardV = Math.max(1, Math.min(2, Number(body.bingoCardV.v) || 2));
+        msg = `Bingo-Runde ${r.name}: Kartenversion ${r.cardV}`;
       }
       if (body.squad !== undefined) ev.squad = !!body.squad;
       if (body.minigame !== undefined) { if (!['bingo', 'monopoly', 'none'].includes(body.minigame)) throw new HttpError(400, 'Minispiel: bingo, monopoly oder none'); ev.minigame = body.minigame; }
