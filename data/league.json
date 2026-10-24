@@ -452,7 +452,8 @@
           "stages": [
             0
           ],
-          "closed": true
+          "closed": true,
+          "cardV": 0
         },
         {
           "id": "r2",
