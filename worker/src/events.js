@@ -542,8 +542,11 @@ export async function eventAdmin(env, body) {
       if (body.bingoCardV) {
         const r = (ev.bingoRuns || []).find(x => x.id === body.bingoCardV.run);
         if (!r) throw new HttpError(404, 'Bingo-Runde unbekannt');
-        if (r.closed) throw new HttpError(409, 'Eine abgeschlossene Runde bleibt, wie sie ist');
-        r.cardV = Math.max(1, Math.min(2, Number(body.bingoCardV.v) || 2));
+        const v = Number(body.bingoCardV.v);
+        if (![0, 1, 2].includes(v)) throw new HttpError(400, 'Kartenversion 0, 1 oder 2');
+        // a played board may only be put BACK on the cards it was played with (v0)
+        if (r.closed && v !== 0) throw new HttpError(409, 'Eine abgeschlossene Runde bleibt, wie sie ist');
+        r.cardV = v;
         msg = `Bingo-Runde ${r.name}: Kartenversion ${r.cardV}`;
       }
       if (body.squad !== undefined) ev.squad = !!body.squad;

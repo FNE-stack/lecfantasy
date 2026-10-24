@@ -169,5 +169,21 @@ ok('standings_use_total', row && Math.abs(row.bingo - S.eventBingoTotal(lg, two,
   ok('v1_unchanged', JSON.stringify(S.bingoCard('event|worlds_2026|pzdeja|x', 5, 1)) === JSON.stringify(v1), 'Runden ohne Version behalten ihre Karten');
 }
 
+// ── the Play-Ins board must be the one that was PLAYED ────────────────────
+// b8f51eb dealt it; on 22.10. a change to the draw redealt it and wiped its
+// squares and Max's line. Version 0 reproduces those cards exactly.
+{
+  const run0 = { id: 'r1', seed: 'pzdeja', stages: [0], closed: true, cardV: 0 };
+  const evd = Object.assign({}, league.events.worlds_2026, { bingoRuns: [run0] });
+  const all = S.eventBingoAll(league, evd, ev, S.eventBingoRuns(evd, ev)[0]);
+  const byName = Object.fromEntries(league.managers.map(m => [m.name, all[m.id]]));
+  ok('v0_cards_have_old_pool', Object.values(all).every(b => b.card.cells.every(k => S.bingoPool(0).includes(k)) && new Set(b.card.cells).size === 25),
+     'Play-Ins-Karten nur aus den 40 Original-Feldern, je 25 verschieden');
+  ok('v0_restores_max_line', byName.Max && byName.Max.score.lines === 1 && byName.Max.score.points === 3,
+     `Max hat seine Play-Ins-Linie wieder (${byName.Max ? byName.Max.score.lines + ' Linie, ' + byName.Max.score.points + ' Punkte' : '-'})`);
+  ok('v0_squares_back', Object.values(all).every(b => b.score.squares >= 15),
+     'alle wieder bei 15-16 Feldern: ' + Object.entries(byName).map(([n, b]) => n + ' ' + b.score.squares).join(', '));
+}
+
 console.log(`\n${fails ? fails + ' FAILED' : 'all bingo-run tests passed'}`);
 process.exit(fails ? 1 : 0);

@@ -1253,7 +1253,7 @@
         seed: r.seed || '',
         stages: Array.isArray(r.stages) ? r.stages : null,   // null = all
         closed: !!r.closed,
-        cardV: Number(r.cardV) || 1,
+        cardV: r.cardV === 0 ? 0 : (Number(r.cardV) || 1),
       }));
     }
     return [{ id: 'all', name: (ev && ev.name) || 'Bingo', seed: (ev && ev.bingoSeed) || '', stages: null, closed: false, cardV: Number(ev && ev.bingoCardV) || 1 }];
@@ -1378,8 +1378,38 @@
     supCarry: 'support', supTopKiller: 'support', supAssists20: 'support',
     halfKillsWin: 'fewerKillsWin', fewerKillsWin: 'fewerKillsWin',
   };
+  // Card version 0: the draw exactly as the Worlds 2026 Play-Ins were PLAYED
+  // (15.10.-22.10., code b8f51eb). On 22.10. the draw was changed for every
+  // round (2e2861a) - the finished Play-Ins board was redealt and lost its
+  // squares and a line. Frozen here, keys AND order, so no later change to the
+  // pool can ever touch a board that was already played again.
+  const BINGO_V0_KEYS = ['kills12', 'cs400', 'under25', 'zeroKA', 'cs450', 'kills50game', 'over45', 'deaths10', 'kills15', 'kills55game',
+    'under22', 'over50', 'teamDeaths2', 'perfect18', 'fewerKillsWin', 'jglMostKills', 'supCarry', 'soloHalf', 'botDeaths6', 'mid3540',
+    'topMostKills', 'jglNoKills', 'over38', 'teamDeaths4', 'supAssists20', 'bothTeams20', 'shutout', 'kda20', 'team30Kills', 'perfectGame',
+    'teamNoKills', 'kills60game', 'over55', 'supTopKiller', 'kills18', 'allDie3', 'cs500', 'teamDeaths1', 'adcZeroWin', 'halfKillsWin'];
+  function bingoCardV0(seed, size) {
+    size = size || 5;
+    const keys = BINGO_V0_KEYS.slice(), need = size * size;
+    let h = 2166136261;
+    const str = String(seed);
+    for (let i = 0; i < str.length; i++) { h ^= str.charCodeAt(i); h = Math.imul(h, 16777619); }
+    const rnd = () => { h ^= h << 13; h ^= h >>> 17; h ^= h << 5; return ((h >>> 0) % 100000) / 100000; };
+    const shuffle = a => { for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(rnd() * (i + 1)); const t = a[i]; a[i] = a[j]; a[j] = t; } return a; };
+    const rare = shuffle(keys.filter(k => BINGO[k].rate <= 0.03));
+    const common = shuffle(keys.filter(k => BINGO[k].rate > 0.03));
+    const perms = [], walk = (pre, left) => { if (!left.length) { perms.push(pre); return; } left.forEach((c, i) => walk(pre.concat(c), left.filter((_, j) => j !== i))); };
+    walk([], [...Array(size).keys()]);
+    const fair = perms.filter(p => p.filter((c, r) => c === r).length === 1 && p.filter((c, r) => c === size - 1 - r).length === 1);
+    const perm = (fair.length ? fair : perms)[Math.floor(rnd() * (fair.length || perms.length))];
+    const cells = new Array(need), rarePos = [];
+    perm.forEach((c, r) => { cells[r * size + c] = rare[r]; rarePos.push(r * size + c); });
+    let k = 0;
+    for (let i = 0; i < need; i++) if (!cells[i]) cells[i] = common[k++ % common.length];
+    return { size, cells, rare: rarePos };
+  }
   // the squares that can land on a card of version v (what the caller calls)
   function bingoPool(v) {
+    if (v === 0) return BINGO_V0_KEYS.slice();
     const keys = Object.keys(BINGO).filter(k => !(v >= 2 && BINGO_DUP.has(k)));
     const ranked = keys.sort((a, b) => BINGO[a].rate - BINGO[b].rate);
     return ranked.slice(0, Math.max(25, Math.min(ranked.length, BINGO_POOL)));
@@ -1403,6 +1433,7 @@
   const BINGO_POOL = 32;     // only the 32 least likely squares can land on a card
   const BINGO_SPREAD = 12;   // the 12 rarest of those are spread one per line
   function bingoCard(seed, size, v) {
+    if (v === 0) return bingoCardV0(seed, size);
     size = size || 5;   // 5x5 is the classic bingo card
     const keys = Object.keys(BINGO).filter(k => !(v >= 2 && BINGO_DUP.has(k)));
     const need = size * size;
