@@ -582,13 +582,13 @@ table.lineup a:hover{text-decoration:underline!important}
 
 /* Tippspiel */
 .tipday{padding:8px 16px 4px;font:600 11px var(--font);letter-spacing:.12em;text-transform:uppercase;color:var(--gold);border-top:1px solid var(--line)}
-.tiprow{display:grid;grid-template-columns:44px 1fr auto 1fr;align-items:center;gap:6px 8px;padding:9px 16px;border-top:1px solid var(--line)}
+.tiprow{display:grid;grid-template-columns:44px minmax(0,1fr) 64px minmax(0,1fr);align-items:center;gap:6px 8px;padding:9px 16px;border-top:1px solid var(--line)}
 .tiprow.locked{cursor:pointer}
 .tiprow.tbd{grid-template-columns:44px 1fr;opacity:.6}
 .tiptime{font-size:12px;color:var(--muted);font-variant-numeric:tabular-nums}
-.tipteam{display:flex;align-items:center;gap:6px;min-width:0}
-.tipteam.r{justify-content:flex-end}
-.tipres{text-align:center;min-width:48px}
+.tipteam{display:flex;align-items:center;justify-content:flex-end;gap:6px;min-width:0}
+.tipteam.r{justify-content:flex-start}
+.tipres{text-align:center;width:64px}
 .tipmine{grid-column:1 / -1;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
 .tipchips{display:flex;gap:6px;flex-wrap:wrap;width:100%}
 .tipchip{flex:1;min-width:0;padding:8px 6px;border-radius:8px;border:1px solid var(--line-2);background:var(--surface-2);color:var(--text);
@@ -652,7 +652,7 @@ table.lineup a:hover{text-decoration:underline!important}
 /* winners */
 .tipteam.w b{color:var(--gold-hi)}
 .tipteam.l{opacity:.55}
-.tipwin{font:700 10px var(--font);letter-spacing:.06em;text-transform:uppercase;color:var(--gold);border:1px solid var(--gold);border-radius:999px;padding:0 6px}
+.tipwin{font:700 12px var(--font);color:var(--gold)}
 
 /* folded finished phases */
 .evstage-s{cursor:pointer;padding:12px 16px;font:600 13px var(--font);color:var(--gold);list-style:none}
@@ -672,3 +672,15 @@ details[open]>.evstage-s{border-bottom:1px solid var(--line)}
 }
 /* Langes Tippen auf Bedienelemente soll nicht die Textauswahl oeffnen. */
 .tabbar a, .chip, .btn, .bg-cell { -webkit-touch-callout: none; user-select: none; }
+
+/* Tippspiel: one tab per match day */
+.tipdays{display:flex;gap:6px;overflow-x:auto;padding:2px 0 10px;margin:0 0 6px;scrollbar-width:thin;scroll-behavior:smooth}
+.tipdaybtn{flex:0 0 auto;min-width:64px;display:flex;flex-direction:column;align-items:center;gap:2px;padding:7px 9px;border-radius:10px;border:1px solid var(--line-2);background:var(--surface-2);color:var(--text);font:600 12px var(--font);cursor:pointer}
+.tipdaybtn small{font-size:10px;color:var(--muted);display:flex;align-items:center;gap:4px;min-height:14px}
+.tipdaybtn.on{border-color:var(--gold);background:var(--gold-soft);color:var(--gold-hi)}
+.tipdaybtn.done:not(.on){opacity:.6}
+.tipdue{background:#c8414b;color:#fff;border-radius:999px;padding:0 6px;font-weight:700}
+.tipdone>summary{cursor:pointer;padding:10px 16px;font:600 12px var(--font);color:var(--gold);list-style:none;border-top:1px solid var(--line)}
+.tipdone>summary::-webkit-details-marker{display:none}
+.tipdone>summary::before{content:'▸ '}
+.tipdone[open]>summary::before{content:'▾ '}

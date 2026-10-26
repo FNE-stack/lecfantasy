@@ -676,32 +676,59 @@ function evTips(slug) {
       <span style="flex:1;text-align:right">${missing ? `<span class="pill live">${missing} offen zu tippen</span>` : open.length ? '<span class="pill teal">alles getippt ✓</span>' : ''}</span></div>
     <div class="card-b dim" style="font-size:12px;border-top:1px solid var(--line)">Bo1: richtiger Sieger ${c.bo1} · Bo3/Bo5: richtiger Sieger ${c.winner}, genaues Ergebnis +${c.exact} · K.-o.-Phase ×${c.koFactor}.
       Tippen bis zum Spielbeginn, danach sehen alle die Tipps. Neue Paarungen erscheinen von selbst.</div>`);
-  const day = iso => new Date(iso).toLocaleDateString('de-DE', { timeZone: 'Europe/Berlin', weekday: 'short', day: '2-digit', month: '2-digit' });
   const time = iso => new Date(iso).toLocaleTimeString('de-DE', { timeZone: 'Europe/Berlin', hour: '2-digit', minute: '2-digit' });
-  const body = stages.map(st => {
-    const ms = (d.schedule || []).filter(e => e.stage === st.i).sort((x, y) => x.start.localeCompare(y.start));
-    if (!ms.length) return '';
-    const known = ms.filter(S.tipKnown).length, openN = ms.filter(e => S.tipOpen(e, now)).length;
-    let lastDay = '';
-    const list = ms.map(e => {
-      const k = S.tipKnown(e), isOpen = S.tipOpen(e, now), myRaw = mine[e.match] || (revealed[e.match] || {})[me()], my = S.tipOriented(e, myRaw);
-      const pts = S.tipPoints(ev, d, e, myRaw);
-      const dd = day(e.start), sep = dd !== lastDay ? `<div class="tipday">${esc(dd)}</div>` : ''; lastDay = dd;
-      if (!k) return sep + `<div class="tiprow tbd"><span class="tiptime">${time(e.start)}</span><span class="dim">Paarung steht noch nicht fest · Bo${e.bestOf || 1}</span></div>`;
-      const [ta, tb] = e.teams, done = e.state === 'completed', live = !done && !isOpen;
-      const res = done ? `<b class="num">${ta.wins ?? ''}:${tb.wins ?? ''}</b>` : live ? '<span class="pill live">läuft</span>' : `<span class="dim">Bo${e.bestOf || 1}</span>`;
-      const badge = pts === null ? '' : `<span class="tippts ${pts > 0 ? 'ok' : ''}">${pts > 0 ? '+' + pts : '0'}</span>`;
-      const others = !isOpen && EVX.openMatch === e.match ? `<div class="tipothers">${(L().managers || []).map(m => { const t = (revealed[e.match] || {})[m.id], p2 = S.tipPoints(ev, d, e, t);
-          return `<span><b>${esc(m.name)}</b> ${t ? esc(S.tipOriented(e, t)) : '—'}${p2 ? ` <span class="tippts ok">+${p2}</span>` : ''}</span>`; }).join('')}</div>` : '';
-      return sep + `<div class="tiprow ${isOpen ? 'open' : 'locked'}" ${!isOpen ? `data-tipopen="${esc(e.match)}"` : ''}>
-        <span class="tiptime">${time(e.start)}</span>
-        <span class="tipteam ${done ? (Number(ta.wins) > Number(tb.wins) ? 'w' : 'l') : ''}">${evLogo(slug, ta.code, 20)} <b>${esc(ta.code)}</b>${done && Number(ta.wins) > Number(tb.wins) ? ' <span class="tipwin">Sieg</span>' : ''}</span><span class="tipres">${res}</span><span class="tipteam r ${done ? (Number(tb.wins) > Number(ta.wins) ? 'w' : 'l') : ''}">${done && Number(tb.wins) > Number(ta.wins) ? '<span class="tipwin">Sieg</span> ' : ''}<b>${esc(tb.code)}</b> ${evLogo(slug, tb.code, 20)}</span>
-        ${adminOnly() ? '' : `<div class="tipmine">${isOpen ? evTipChips(slug, e, myRaw, true) : `<span class="dim" style="font-size:12px">Dein Tipp: <b style="color:var(--text)">${my ? esc(my) : '—'}</b></span> ${badge}`}</div>`}
-        ${others}</div>`;
-    }).join('');
-    return card(esc(st.name), list, openN ? `${openN} offen` : known < ms.length ? 'Paarungen folgen' : st.done ? 'beendet' : '');
-  }).join('');
-  return head + body;
+  // A match DAY, not a calendar date: a broadcast runs past midnight (Swiss
+  // games at 00:00-02:00 belong to the evening before), so the day flips at
+  // 06:00 Berlin time.
+  const gday = iso => new Date(Date.parse(iso) - 6 * 36e5).toLocaleDateString('sv-SE', { timeZone: 'Europe/Berlin' });
+  const dayLabel = (key, long) => new Date(key + 'T12:00:00Z').toLocaleDateString('de-DE', { timeZone: 'Europe/Berlin', weekday: long ? 'long' : 'short', day: '2-digit', month: '2-digit' });
+  const stageName = i => ((stages.find(x => x.i === i) || {}).name || '');
+  const all = (d.schedule || []).slice().sort((x, y) => x.start.localeCompare(y.start));
+  const byDay = new Map();
+  for (const e of all) { const k = gday(e.start); if (!byDay.has(k)) byDay.set(k, []); byDay.get(k).push(e); }
+  const days = [...byDay.keys()];
+  const info = k => { const ms = byDay.get(k);
+    return { ms, done: ms.every(e => e.state === 'completed'), live: ms.some(e => e.state === 'inProgress' || (S.tipKnown(e) && e.state !== 'completed' && !S.tipOpen(e, now) && Date.parse(e.start) <= now)),
+      todo: adminOnly() ? 0 : ms.filter(e => S.tipOpen(e, now) && !mine[e.match]).length }; };
+  // the day shown: the user's pick, else the running day, else the next one with games left, else the last
+  if (!EVX.tipDayUser || !byDay.has(EVX.tipDay)) EVX.tipDay = days.find(k => info(k).live) || days.find(k => !info(k).done) || days[days.length - 1];
+  const strip = days.length ? `<div class="tipdays">${days.map(k => { const x = info(k);
+      return `<button class="tipdaybtn ${k === EVX.tipDay ? 'on' : ''} ${x.done ? 'done' : ''}" data-tipday="${k}">
+        <span>${esc(dayLabel(k).replace(',', ''))}</span>
+        <small>${x.live ? '<span class="live-dot"></span> live' : x.done ? '✓' : x.todo ? `<span class="tipdue">${x.todo}</span>` : x.ms.some(e => !S.tipKnown(e)) && !x.ms.some(S.tipKnown) ? 'offen' : '·'}</small></button>`; }).join('')}</div>` : '';
+  const row = e => {
+    const k = S.tipKnown(e), isOpen = S.tipOpen(e, now), myRaw = mine[e.match] || (revealed[e.match] || {})[me()], my = S.tipOriented(e, myRaw);
+    const pts = S.tipPoints(ev, d, e, myRaw);
+    if (!k) return `<div class="tiprow tbd"><span class="tiptime">${time(e.start)}</span><span class="dim">Paarung steht noch nicht fest · Bo${e.bestOf || 1}</span></div>`;
+    const [ta, tb] = e.teams, done = e.state === 'completed', live = !done && !isOpen;
+    const wa = done && Number(ta.wins) > Number(tb.wins), wb = done && Number(tb.wins) > Number(ta.wins);
+    const res = done ? `<b class="num">${ta.wins ?? ''}:${tb.wins ?? ''}</b>` : live ? '<span class="pill live">läuft</span>' : `<span class="dim">Bo${e.bestOf || 1}</span>`;
+    const badge = pts === null ? '' : `<span class="tippts ${pts > 0 ? 'ok' : ''}">${pts > 0 ? '+' + pts : '0'}</span>`;
+    const others = !isOpen && EVX.openMatch === e.match ? `<div class="tipothers">${(L().managers || []).map(m => { const t = (revealed[e.match] || {})[m.id], p2 = S.tipPoints(ev, d, e, t);
+        return `<span><b>${esc(m.name)}</b> ${t ? esc(S.tipOriented(e, t)) : '—'}${p2 ? ` <span class="tippts ok">+${p2}</span>` : ''}</span>`; }).join('')}</div>` : '';
+    // fixed columns: the codes sit right next to the score, logos inside, the
+    // winner tick on the OUTER side - nothing shifts with the code length
+    return `<div class="tiprow ${isOpen ? 'open' : 'locked'}" ${!isOpen ? `data-tipopen="${esc(e.match)}"` : ''}>
+      <span class="tiptime">${time(e.start)}</span>
+      <span class="tipteam ${done ? (wa ? 'w' : 'l') : ''}">${wa ? '<span class="tipwin">✓</span>' : ''}<b>${esc(ta.code)}</b>${evLogo(slug, ta.code, 20)}</span>
+      <span class="tipres">${res}</span>
+      <span class="tipteam r ${done ? (wb ? 'w' : 'l') : ''}">${evLogo(slug, tb.code, 20)}<b>${esc(tb.code)}</b>${wb ? '<span class="tipwin">✓</span>' : ''}</span>
+      ${adminOnly() ? '' : `<div class="tipmine">${isOpen ? evTipChips(slug, e, myRaw, true) : `<span class="dim" style="font-size:12px">Dein Tipp: <b style="color:var(--text)">${my ? esc(my) : '—'}</b></span> ${badge}`}</div>`}
+      ${others}</div>`;
+  };
+  let body = '';
+  if (EVX.tipDay) {
+    const x = info(EVX.tipDay), doneMs = x.ms.filter(e => e.state === 'completed'), rest = x.ms.filter(e => e.state !== 'completed');
+    // finished games fold away while the day still has games to come
+    const doneHtml = !doneMs.length ? '' : rest.length
+      ? `<details class="tipdone" data-tipdone="${EVX.tipDay}" ${(EVX.tipDoneOpen || {})[EVX.tipDay] ? 'open' : ''}><summary>${doneMs.length} beendete${doneMs.length === 1 ? 's Spiel' : ' Spiele'} anzeigen</summary>${doneMs.map(row).join('')}</details>`
+      : doneMs.map(row).join('');
+    const names = [...new Set(x.ms.map(e => stageName(e.stage)).filter(Boolean))].join(' · ');
+    const openN = x.ms.filter(e => S.tipOpen(e, now)).length;
+    body = card(esc(dayLabel(EVX.tipDay, true)) + (names ? ` <span class="dim" style="font-weight:400">· ${esc(names)}</span>` : ''),
+      doneHtml + rest.map(row).join(''), x.done ? 'beendet' : openN ? `${openN} offen` : x.live ? 'läuft' : '');
+  }
+  return head + strip + body;
 }
 
 // ── Live: every game of the event, straight from the lolesports feed ─────
@@ -1091,6 +1118,10 @@ function bindEvent() {
   document.querySelectorAll('[data-bgrun]').forEach(b => b.onclick = () => { EVX.bingoRun = b.dataset.bgrun; render(); });
   document.querySelectorAll('[data-lvm]').forEach(b => b.onclick = () => { LV.match = b.dataset.lvm; LV.pinned = true; render(); });
   document.querySelectorAll('[data-lvg]').forEach(b => b.onclick = () => { LV.sel[b.dataset.lvmatch] = b.dataset.lvg; LV.selUser[b.dataset.lvmatch] = true; render(); });
+  document.querySelectorAll('[data-tipday]').forEach(x => x.onclick = () => { EVX.tipDay = x.dataset.tipday; EVX.tipDayUser = true; render(); });
+  document.querySelectorAll('details[data-tipdone]').forEach(x => x.ontoggle = () => { (EVX.tipDoneOpen = EVX.tipDoneOpen || {})[x.dataset.tipdone] = x.open; });
+  const tdStrip = document.querySelector('.tipdays'), tdOn = tdStrip && tdStrip.querySelector('.on');
+  if (tdOn) tdStrip.scrollLeft = tdOn.offsetLeft - tdStrip.clientWidth / 2 + tdOn.offsetWidth / 2;
   document.querySelectorAll('[data-tipopen]').forEach(r => r.onclick = () => { EVX.openMatch = EVX.openMatch === r.dataset.tipopen ? null : r.dataset.tipopen; render(); });
   const mp = $('monoPilotSave'); if (mp) mp.onclick = async () => {
     try { await api('/api/event/mono', { method: 'POST', body: { slug, pilot: $('monoPilot').value } }); toast('Pilot gesetzt — gilt ab dem nächsten Spiel.'); await app.refresh(); } catch (e) { toast(`<span style="color:#ffb1b3">${esc(e.message)}</span>`); }
