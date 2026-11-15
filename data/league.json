@@ -145,6 +145,47 @@
           "pickem": 0
         }
       ]
+    },
+    "event_worlds_2026": {
+      "event": true,
+      "slug": "worlds_2026",
+      "name": "Worlds 2026",
+      "logo": "https://static.lolesports.com/leagues/1592594612171_WorldsDarkBG.png",
+      "at": "2026-11-15T00:06:45.592Z",
+      "table": [
+        {
+          "manager": "m02595135",
+          "name": "Fabi",
+          "pts": 98,
+          "tips": 82,
+          "players": 0,
+          "pickem": 16
+        },
+        {
+          "manager": "m3d462247",
+          "name": "Sacres",
+          "pts": 95,
+          "tips": 85,
+          "players": 0,
+          "pickem": 10
+        },
+        {
+          "manager": "m2f334af7",
+          "name": "Max",
+          "pts": 84,
+          "tips": 71,
+          "players": 0,
+          "pickem": 10
+        },
+        {
+          "manager": "m41cdc303",
+          "name": "Dalurox",
+          "pts": 82,
+          "tips": 68,
+          "players": 0,
+          "pickem": 14
+        }
+      ]
     }
   },
   "events": {
