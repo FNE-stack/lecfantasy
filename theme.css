@@ -684,3 +684,25 @@ details[open]>.evstage-s{border-bottom:1px solid var(--line)}
 .tipdone>summary::-webkit-details-marker{display:none}
 .tipdone>summary::before{content:'▸ '}
 .tipdone[open]>summary::before{content:'▾ '}
+
+/* ── transfer ticker (LEC tab) ──────────────────────────────────────────── */
+.ticker{display:flex;align-items:stretch;margin:0 0 14px;border:1px solid var(--line-2);border-radius:var(--r);
+  background:var(--surface);overflow:hidden;min-width:0}
+.tk-lbl{flex:none;cursor:pointer;border:0;padding:0 12px;background:var(--gold);color:#000;
+  font:700 11px var(--font);letter-spacing:.08em;text-transform:uppercase}
+.tk-vp{flex:1;min-width:0;overflow:hidden;mask-image:linear-gradient(90deg,transparent,#000 24px,#000 calc(100% - 24px),transparent)}
+.tk-track{display:flex;width:max-content;animation:tkRun linear infinite}
+.ticker:hover .tk-track,.ticker:focus-within .tk-track{animation-play-state:paused}
+.tk-run{display:flex;align-items:center;white-space:nowrap;padding:9px 0}
+.tk-i{display:inline-flex;align-items:center;gap:5px;color:var(--text);padding:0 4px;border-radius:4px}
+.tk-i:hover{color:var(--text);background:var(--surface-2)}
+.tk-i .tlogo{vertical-align:middle}
+.tk-i.mine b{color:var(--gold-hi)}
+.tk-d{color:var(--dim);font-variant-numeric:tabular-nums;font-size:12px}
+.tk-sep{color:var(--dim);padding:0 12px}
+.tk-sheep{font-size:11px;font-weight:600;color:var(--teal);border:1px solid var(--teal-soft);border-radius:999px;padding:1px 7px}
+.tk-row{padding:9px 16px;border-bottom:1px solid var(--line)}
+.tk-row .tk-i{display:block;white-space:normal;padding:0}
+.tk-row.mine{background:var(--gold-soft)}
+@keyframes tkRun{to{transform:translateX(-50%)}}
+@media (prefers-reduced-motion:reduce){.tk-track{animation:none}.tk-vp{overflow-x:auto}.tk-run[aria-hidden]{display:none}}

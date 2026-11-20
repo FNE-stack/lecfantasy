@@ -802,7 +802,53 @@ function viewPlayer(id) {
 }
 
 // ── LEC: schedule, table, playoffs, teams ─────────────────────────────────
-const lecUi = { tab: 'plan', split: null, team: '', mine: false };
+const lecUi = { tab: 'plan', split: null, team: '', mine: false, news: false };
+
+// ── Transfer ticker (data/transfers.json, from Leaguepedia) ──
+const TICKER_DAYS = 21;
+function myPlayerNames() {
+  if (!loggedIn()) return new Set();
+  return new Set((S.rosters(L())[me()] || []).map(id => ((D.P.get(id) || {}).name || '').toLowerCase()).filter(Boolean));
+}
+function transferText(i) {
+  const who = `<b>${esc(i.player)}</b>${i.role ? ` <span class="dim">(${esc(i.role)})</span>` : ''}`;
+  const lec = i.team ? `${logo(i.team, 16)} ${esc(i.team)}` : esc(i.teamName);
+  if (i.kind === 'move') return `${who} wechselt ${i.fromTeam ? `${logo(i.fromTeam, 16)} ${esc(i.fromTeam)}` : esc(i.from)} → ${lec}`;
+  if (i.kind === 'join') return `${who} kommt zu ${lec}${i.from ? ` <span class="dim">(von ${esc(i.from)})</span>` : ''}`;
+  return `${who} verlässt ${lec}${i.to ? ` <span class="dim">→ ${esc(i.to)}</span>` : ''}`;
+}
+const tDate = d => { const [, m, dd] = d.split('-'); return `${dd}.${m}.`; };
+const KIND_ICON = { join: '🟢', leave: '🔴', move: '🔁' };
+function transferItem(i, mine) {
+  const src = (i.src || [])[0];
+  const sheep = (i.src || []).some(x => x.sheep);
+  const hl = mine.has(i.player.toLowerCase());
+  const inner = `<span class="tk-d">${tDate(i.date)}</span> ${KIND_ICON[i.kind] || ''} ${transferText(i)}${sheep ? ' <span class="tk-sheep" title="zuerst berichtet von Sheep Esports">🐑 Sheep Esports</span>' : ''}`;
+  return src ? `<a class="tk-i${hl ? ' mine' : ''}" href="${esc(src.url)}" target="_blank" rel="noopener" title="Quelle: ${esc(src.label || src.domain)}">${inner}</a>`
+    : `<span class="tk-i${hl ? ' mine' : ''}">${inner}</span>`;
+}
+function transferTicker() {
+  const all = (D.transfers && D.transfers.items) || [];
+  if (!all.length) return '';
+  const mine = myPlayerNames();
+  const cut = new Date(Date.now() - TICKER_DAYS * 864e5).toISOString().slice(0, 10);
+  const recent = all.filter(i => i.date >= cut).slice(0, 25);
+  const list = recent.length ? recent : all.slice(0, 10);
+  const items = list.map(i => transferItem(i, mine)).join('<span class="tk-sep">·</span>');
+  // ~6 s per item; the delay keeps the position steady when the page re-renders
+  const dur = Math.max(30, list.length * 6);
+  const delay = -((Date.now() / 1000) % dur).toFixed(1);
+  const ticker = `<div class="ticker" role="region" aria-label="Transfer-News">
+    <button class="tk-lbl" id="tkAll" aria-expanded="${lecUi.news}">Transfers ${lecUi.news ? '▴' : '▾'}</button>
+    <div class="tk-vp"><div class="tk-track" style="animation-duration:${dur}s;animation-delay:${delay}s">
+      <div class="tk-run">${items}<span class="tk-sep">·</span></div><div class="tk-run" aria-hidden="true">${items}<span class="tk-sep">·</span></div>
+    </div></div></div>`;
+  if (!lecUi.news) return ticker;
+  const rows = all.slice(0, 60).map(i => `<div class="tk-row${mine.has(i.player.toLowerCase()) ? ' mine' : ''}">${transferItem(i, mine)}</div>`).join('');
+  const when = D.transfers.updated ? new Date(D.transfers.updated).toLocaleString('de-DE', { timeZone: TZ, day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : '';
+  return ticker + `<div style="margin-bottom:14px">${card('Transfers', rows,
+    `<a href="${esc(D.transfers.sourceUrl || 'https://lol.fandom.com/wiki/Portal:Transfers')}" target="_blank" rel="noopener">Leaguepedia</a>${when ? ' · ' + esc(when) : ''}`)}</div>`;
+}
 const TZ = 'Europe/Berlin';
 const dayHead = iso => new Date(iso).toLocaleDateString('de-DE', { timeZone: TZ, weekday: 'long', day: '2-digit', month: 'long' });
 const hm = iso => new Date(iso).toLocaleTimeString('de-DE', { timeZone: TZ, hour: '2-digit', minute: '2-digit' });
@@ -829,7 +875,7 @@ function viewLec() {
   else if (lecUi.tab === 'table') body = lecTable(split);
   else if (lecUi.tab === 'bracket') body = lecBracket(split);
   else body = teamsGrid();
-  return head + splitChips + body;
+  return head + transferTicker() + splitChips + body;
 }
 function lecPlan(split) {
   const mine = myTeams();
@@ -1331,6 +1377,7 @@ function bind() {
   on('lecTeam', 'onchange', e => { lecUi.team = e.target.value; render(); });
   on('lecMine', 'onclick', () => { lecUi.mine = !lecUi.mine; render(); });
   on('lecIcs', 'onclick', () => exportIcs());
+  on('tkAll', 'onclick', () => { lecUi.news = !lecUi.news; render(); });
   on('lecJump', 'onclick', e => { e.preventDefault(); const el = $('lec-next'); if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' }); });
   on('faOut', 'onchange', e => { tx.faOut = e.target.value; render(); });
   on('faQ', 'oninput', e => { tx.faQ = e.target.value; render(); });

@@ -47,11 +47,16 @@ jobs:
         continue-on-error: true
         run: python scripts/fetch_events.py
 
+      - name: Fetch LEC transfers (ticker)
+        continue-on-error: true
+        run: python scripts/fetch_transfers.py
+
       - name: Commit if changed
         run: |
           git config user.name  'lec-fantasy-bot'
           git config user.email 'actions@users.noreply.github.com'
           git add data/teams.json data/players.json data/stats.json data/champions.json data/schedule.json data/season.json data/standings.json
+          [ -f data/transfers.json ] && git add data/transfers.json
           [ -d data/events ] && git add data/events
           if git diff --staged --quiet; then
             echo "no changes"
