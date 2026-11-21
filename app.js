@@ -802,7 +802,7 @@ function viewPlayer(id) {
 }
 
 // ── LEC: schedule, table, playoffs, teams ─────────────────────────────────
-const lecUi = { tab: 'plan', split: null, team: '', mine: false, news: false };
+const lecUi = { tab: 'plan', split: null, team: '', mine: false, tTeam: '', tKind: 'all' };
 
 // ── Transfer ticker (data/transfers.json, from Leaguepedia) ──
 const TICKER_DAYS = 21;
@@ -827,27 +827,39 @@ function transferItem(i, mine) {
   return src ? `<a class="tk-i${hl ? ' mine' : ''}" href="${esc(src.url)}" target="_blank" rel="noopener" title="Quelle: ${esc(src.label || src.domain)}">${inner}</a>`
     : `<span class="tk-i${hl ? ' mine' : ''}">${inner}</span>`;
 }
+function rumorText(r) {
+  const who = `<b>${esc(r.player)}</b>${r.role ? ` <span class="dim">(${esc(r.role)})</span>` : ''}`;
+  const team = (code, name) => code ? `${logo(code, 16)} ${esc(code)}` : esc(name || '?');
+  if (r.stay) return `${who} bleibt bei ${team(r.toTeam, r.to)}`;
+  return `${who} ${team(r.fromTeam, r.from)} → ${team(r.toTeam, r.to)}`;
+}
+const RUMOR_PILL = { rumor: ['Gerücht', 'rum'], confirmed: ['Bestätigt', 'conf'], disproven: ['Dementiert', 'dis'] };
+function rumorTickerItem(r, mine) {
+  const [lab, cls] = RUMOR_PILL[r.status] || RUMOR_PILL.rumor;
+  const hl = mine.has(r.player.toLowerCase());
+  const inner = `<span class="tk-d">${tDate(r.date)}</span> <span class="tk-pill ${cls}">${lab}</span> ${rumorText(r)}${r.sheep ? ' <span class="tk-sheep">🐑 Sheep Esports</span>' : r.site ? ` <span class="dim">· ${esc(r.site)}</span>` : ''}`;
+  return r.url ? `<a class="tk-i${hl ? ' mine' : ''}" href="${esc(r.url)}" target="_blank" rel="noopener">${inner}</a>` : `<span class="tk-i${hl ? ' mine' : ''}">${inner}</span>`;
+}
 function transferTicker() {
   const all = (D.transfers && D.transfers.items) || [];
-  if (!all.length) return '';
+  const rums = ((D.transfers && D.transfers.rumors) || []).filter(r => r.status !== 'disproven');
+  if (!all.length && !rums.length) return '';
   const mine = myPlayerNames();
   const cut = new Date(Date.now() - TICKER_DAYS * 864e5).toISOString().slice(0, 10);
-  const recent = all.filter(i => i.date >= cut).slice(0, 25);
-  const list = recent.length ? recent : all.slice(0, 10);
-  const items = list.map(i => transferItem(i, mine)).join('<span class="tk-sep">·</span>');
+  const mixed = [...all.map(i => ({ d: i.date, h: transferItem(i, mine) })), ...rums.map(r => ({ d: r.date, h: rumorTickerItem(r, mine) }))]
+    .sort((a, b) => b.d.localeCompare(a.d));
+  const recent = mixed.filter(x => x.d >= cut).slice(0, 30);
+  const list = recent.length ? recent : mixed.slice(0, 10);
+  const items = list.map(x => x.h).join('<span class="tk-sep">·</span>');
   // ~6 s per item; the delay keeps the position steady when the page re-renders
   const dur = Math.max(30, list.length * 6);
   const delay = -((Date.now() / 1000) % dur).toFixed(1);
   const ticker = `<div class="ticker" role="region" aria-label="Transfer-News">
-    <button class="tk-lbl" id="tkAll" aria-expanded="${lecUi.news}">Transfers ${lecUi.news ? '▴' : '▾'}</button>
+    <button class="tk-lbl" id="tkAll">Transfers ›</button>
     <div class="tk-vp"><div class="tk-track" style="animation-duration:${dur}s;animation-delay:${delay}s">
       <div class="tk-run">${items}<span class="tk-sep">·</span></div><div class="tk-run" aria-hidden="true">${items}<span class="tk-sep">·</span></div>
     </div></div></div>`;
-  if (!lecUi.news) return ticker;
-  const rows = all.slice(0, 60).map(i => `<div class="tk-row${mine.has(i.player.toLowerCase()) ? ' mine' : ''}">${transferItem(i, mine)}</div>`).join('');
-  const when = D.transfers.updated ? new Date(D.transfers.updated).toLocaleString('de-DE', { timeZone: TZ, day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : '';
-  return ticker + `<div style="margin-bottom:14px">${card('Transfers', rows,
-    `<a href="${esc(D.transfers.sourceUrl || 'https://lol.fandom.com/wiki/Portal:Transfers')}" target="_blank" rel="noopener">Leaguepedia</a>${when ? ' · ' + esc(when) : ''}`)}</div>`;
+  return ticker;
 }
 const TZ = 'Europe/Berlin';
 const dayHead = iso => new Date(iso).toLocaleDateString('de-DE', { timeZone: TZ, weekday: 'long', day: '2-digit', month: 'long' });
@@ -865,18 +877,127 @@ function myTeams() {
 }
 function viewLec() {
   const split = lecUi.split || defaultSplit();
-  const tabs = [['plan', 'Spielplan'], ['table', 'Tabelle'], ['bracket', 'Playoffs'], ['teams', 'Teams']];
+  const tabs = [['plan', 'Spielplan'], ['table', 'Tabelle'], ['bracket', 'Playoffs'], ['teams', 'Teams'], ['transfers', 'Transferfenster']];
   const splits = splitsOfSeason();
   const head = pageHead(esc(D.stats.season ? 'Saison ' + D.stats.season : 'LEC'), 'LEC',
     `<div class="chips">${tabs.map(([k, l]) => `<button class="chip ${lecUi.tab === k ? 'on' : ''}" data-lectab="${k}">${l}</button>`).join('')}</div>`);
-  const splitChips = lecUi.tab === 'teams' ? '' : `<div class="chips" style="margin-bottom:14px">${splits.map(sl => `<button class="chip ${sl === split ? 'on' : ''}" data-lecsplit="${esc(sl)}">${esc(splitLabel(sl))}</button>`).join('')}</div>`;
+  const splitChips = lecUi.tab === 'teams' || lecUi.tab === 'transfers' ? '' : `<div class="chips" style="margin-bottom:14px">${splits.map(sl => `<button class="chip ${sl === split ? 'on' : ''}" data-lecsplit="${esc(sl)}">${esc(splitLabel(sl))}</button>`).join('')}</div>`;
   let body = '';
   if (lecUi.tab === 'plan') body = lecPlan(split);
   else if (lecUi.tab === 'table') body = lecTable(split);
   else if (lecUi.tab === 'bracket') body = lecBracket(split);
+  else if (lecUi.tab === 'transfers') body = lecTransfers();
   else body = teamsGrid();
   return head + transferTicker() + splitChips + body;
 }
+// ── Transferfenster: roster board 2027 + feed of moves, rumours and posts ──
+const ROLE_OF = { Top: 'TOP', Jungle: 'JNG', Mid: 'MID', Bot: 'BOT', Support: 'SUP' };
+const lc = x => String(x || '').toLowerCase();
+// Sheep's article URL carries its headline; put the names' capitals back.
+function sheepHeadline(r) {
+  const m = /\/articles\/([^/?#]+)/.exec(r.url || '');
+  if (!m) return '';
+  let t = decodeURIComponent(m[1]).replace(/-/g, ' ').trim();
+  const names = [r.player, r.from, r.to, ...D.teams.teams.map(x => x.name), 'LEC', 'LCK', 'LPL', 'LTA', 'CBLOL', 'EMEA', 'ERL']
+    .filter(Boolean).sort((a, b) => b.length - a.length);
+  for (const n of names) t = t.replace(new RegExp('\\b' + n.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\b', 'gi'), n);
+  t = t.charAt(0).toUpperCase() + t.slice(1);
+  return t.replace(/^Sources /, 'Sources: ');
+}
+function postBlock(url) {
+  const p = ((D.transfers && D.transfers.posts) || {})[url];
+  if (!p) return '';
+  const text = esc(p.text).replace(/(@\w+|#\w+)/g, '<span class="tw-tag">$1</span>').replace(/\n/g, '<br>');
+  return `<blockquote class="tw-post"><div class="tw-ph"><b>${esc(p.author)}</b> <span class="dim">@${esc(p.handle)}</span>${p.when ? `<span class="dim"> · ${esc(p.when)}</span>` : ''}</div>
+    <div class="tw-pt">${text}</div>${p.media ? '<div class="dim tw-media">🖼 Bild/Video im Original</div>' : ''}
+    <a class="tw-pl" href="${esc(url)}" target="_blank" rel="noopener">Auf X ansehen ↗</a></blockquote>`;
+}
+function teamBoard(code, T) {
+  const t = D.T.get(code);
+  const roster = (D.players.players || []).filter(p => p.team === code);
+  const gone = new Set((T.items || []).filter(i => (i.kind === 'leave' && i.team === code) || (i.kind === 'move' && i.fromTeam === code)).map(i => lc(i.player)));
+  const comeOff = (T.items || []).filter(i => (i.kind === 'join' || i.kind === 'move') && i.team === code && !i.staff);
+  const rums = (T.rumors || []).filter(r => r.status !== 'disproven');
+  const rumOut = new Map(rums.filter(r => r.fromTeam === code && !r.stay).map(r => [lc(r.player), r]));
+  const rumStay = new Set(rums.filter(r => r.stay && r.toTeam === code).map(r => lc(r.player)));
+  // One chip per player: several outlets report the same move; the
+  // confirmed one wins, else the Sheep one, else the newest.
+  const rank = r => (r.status === 'confirmed' ? 2 : 0) + (r.sheep ? 1 : 0);
+  const inBy = new Map();
+  for (const r of rums) {
+    if (r.toTeam !== code || r.stay || comeOff.some(i => lc(i.player) === lc(r.player))) continue;
+    const had = inBy.get(lc(r.player));
+    if (!had || rank(r) > rank(had)) inBy.set(lc(r.player), r);
+  }
+  const rumIn = [...inBy.values()];
+  // a contract only counts for the team it is with
+  const k = Object.fromEntries(Object.entries(T.contracts || {}).filter(([, c]) => c.team === code));
+  const rows = ['TOP', 'JNG', 'MID', 'BOT', 'SUP'].map(role => {
+    const cur = roster.filter(p => p.role === role).map(p => {
+      const n = lc(p.name);
+      const st = gone.has(n) ? 'gone' : rumOut.has(n) ? 'out' : (rumStay.has(n) || k[p.name]) ? 'stay' : '';
+      const tip = gone.has(n) ? 'offiziell weg' : rumOut.has(n) ? `Gerücht: geht zu ${rumOut.get(n).to}`
+        : rumStay.has(n) ? 'bleibt (Bericht)' : k[p.name] ? `Vertrag bis ${k[p.name].end.slice(0, 7)}` : '';
+      return `<span class="tb-p ${st}" title="${esc(tip)}">${esc(p.name)}</span>`;
+    }).join('');
+    const inc = [
+      ...comeOff.filter(i => ROLE_OF[i.role] === role).map(i => `<span class="tb-p in" title="offiziell">＋ ${esc(i.player)}</span>`),
+      ...rumIn.filter(r => ROLE_OF[r.role] === role).map(r => `<span class="tb-p rum${r.status === 'confirmed' ? ' conf' : ''}" title="${esc((r.status === 'confirmed' ? 'bestätigt' : 'Gerücht') + (r.site ? ' · ' + r.site : ''))}">${r.sheep ? '🐑 ' : '? '}${esc(r.player)}</span>`),
+    ].join('');
+    return `<div class="tb-row"><span class="tb-role">${role}</span><span class="tb-cur">${cur || '<span class="dim">—</span>'}</span>${inc ? `<span class="tb-arrow">→</span><span class="tb-in">${inc}</span>` : ''}</div>`;
+  }).join('');
+  const staff = [...rumIn, ...(T.items || []).filter(i => i.team === code && i.staff)].filter(x => !ROLE_OF[x.role]).length;
+  return `<div class="tb-card"><button class="tb-h" data-trteam="${esc(code)}">${logo(code, 26)} <b>${esc(t ? t.name : code)}</b></button>${rows}
+    ${staff ? `<div class="dim small tb-staff">+ ${staff} Trainer-/Staff-Meldung${staff > 1 ? 'en' : ''}</div>` : ''}</div>`;
+}
+function feedCard(x, mine) {
+  const hl = mine.has(lc(x.player)) ? ' mine' : '';
+  if (x.t === 'move') {
+    const i = x.i, src = (i.src || [])[0];
+    const pill = { join: ['Neu', 'in'], leave: ['Abgang', 'out'], move: ['Wechsel', 'mv'] }[i.kind] || ['', ''];
+    return `<article class="tw-card${hl}"><div class="tw-h"><span class="tk-d">${tDate(i.date)}</span> <span class="tk-pill ${pill[1]}">${pill[0]} · offiziell</span></div>
+      <div class="tw-m">${KIND_ICON[i.kind] || ''} ${transferText(i)}</div>
+      ${src ? (postBlock(src.url) || `<a class="tw-pl" href="${esc(src.url)}" target="_blank" rel="noopener">Quelle: ${esc(src.label || src.domain)} ↗</a>`) : ''}</article>`;
+  }
+  const r = x.r;
+  const [lab, cls] = RUMOR_PILL[r.status] || RUMOR_PILL.rumor;
+  const head = r.sheep ? sheepHeadline(r) : '';
+  return `<article class="tw-card rumor ${cls}${hl}"><div class="tw-h"><span class="tk-d">${tDate(r.date)}</span> <span class="tk-pill ${cls}">${lab}</span>
+      ${r.sheep ? '<span class="tk-sheep">🐑 Sheep Esports</span>' : r.site ? `<span class="dim small">${esc(r.site)}</span>` : ''}</div>
+    <div class="tw-m">${rumorText(r)}</div>
+    ${head ? `<a class="tw-sheep" href="${esc(r.url)}" target="_blank" rel="noopener"><span class="tw-sq">„${esc(head)}“</span>${r.authors ? `<span class="dim small">von ${esc(r.authors)}</span>` : ''}<span class="tw-pl">Artikel bei Sheep Esports ↗</span></a>`
+      : r.url ? (postBlock(r.url) || `<a class="tw-pl" href="${esc(r.url)}" target="_blank" rel="noopener">Quelle${r.authors ? ': ' + esc(r.authors) : ''} ↗</a>`) : ''}</article>`;
+}
+function lecTransfers() {
+  const T = D.transfers || {};
+  const items = (T.items || []).map(i => ({ t: 'move', date: i.date, player: i.player, teams: [i.team, i.fromTeam].filter(Boolean), i }));
+  const rums = (T.rumors || []).map(r => ({ t: 'rumor', date: r.date, player: r.player, teams: [r.fromTeam, r.toTeam].filter(Boolean), r }));
+  if (!items.length && !rums.length) return card('Transferfenster', '<div class="empty">Noch keine Transfer-Daten. Sie kommen mit dem nächsten Stats-Update.</div>');
+  const mine = myPlayerNames();
+  const team = lecUi.tTeam, kind = lecUi.tKind;
+  let feed = [...items, ...rums];
+  if (team) feed = feed.filter(x => x.teams.includes(team));
+  if (kind === 'official') feed = feed.filter(x => x.t === 'move');
+  if (kind === 'rumor') feed = feed.filter(x => x.t === 'rumor');
+  if (kind === 'sheep') feed = feed.filter(x => x.t === 'rumor' && x.r.sheep);
+  if (kind === 'mine') feed = feed.filter(x => mine.has(lc(x.player)));
+  feed.sort((a, b) => b.date.localeCompare(a.date) || (a.t === 'rumor') - (b.t === 'rumor'));
+  const nRum = (T.rumors || []).filter(r => r.status !== 'disproven').length, nSheep = (T.rumors || []).filter(r => r.sheep).length;
+  const when = T.updated ? new Date(T.updated).toLocaleString('de-DE', { timeZone: TZ, day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : '';
+  const stats = `<div class="tw-stats"><div><b>${(T.items || []).length}</b><span>offizielle Wechsel</span></div><div><b>${nRum}</b><span>Gerüchte</span></div><div><b>${nSheep}</b><span>von 🐑 Sheep Esports</span></div></div>`;
+  const kinds = [['all', 'Alles'], ['official', 'Offiziell'], ['rumor', 'Gerüchte'], ['sheep', '🐑 Sheep']].concat(loggedIn() ? [['mine', 'Meine Spieler']] : []);
+  const tools = `<div class="row" style="flex-wrap:wrap;gap:10px;margin:14px 0">
+    <select id="trTeam"><option value="">Alle Teams</option>${D.teams.teams.map(t => `<option value="${esc(t.code)}" ${team === t.code ? 'selected' : ''}>${esc(t.name)}</option>`).join('')}</select>
+    <div class="chips">${kinds.map(([k, l]) => `<button class="chip ${kind === k ? 'on' : ''}" data-trkind="${k}">${l}</button>`).join('')}</div></div>`;
+  const codes = team ? [team] : D.teams.teams.map(t => t.code);
+  const legend = `<div class="tb-legend dim small"><span class="tb-p gone">weg</span> offiziell weg · <span class="tb-p out">geht</span> Gerücht: geht · <span class="tb-p in">＋ neu</span> offiziell da · <span class="tb-p rum">🐑 Gerücht</span> soll kommen · <span class="tb-p stay">bleibt</span> Vertrag/Bericht</div>`;
+  const board = card('Kaderbrett 2027', legend + `<div class="tb-grid${team ? ' one' : ''}">${codes.map(c => teamBoard(c, T)).join('')}</div>`,
+    team ? '<a href="#" data-trteam="">alle Teams</a>' : 'Team antippen zum Filtern');
+  const list = feed.length ? feed.slice(0, 80).map(x => feedCard(x, mine)).join('') : '<div class="empty">Nichts zu diesem Filter.</div>';
+  return stats + tools + board + '<div style="height:14px"></div>'
+    + card('Meldungen', `<div class="tw-feed">${list}</div>`, `<a href="${esc(T.sourceUrl || 'https://lol.fandom.com/wiki/Portal:Transfers')}" target="_blank" rel="noopener">Leaguepedia</a>${when ? ' · ' + esc(when) : ''}`);
+}
+
 function lecPlan(split) {
   const mine = myTeams();
   const evs = (D.schedule.events || []).filter(e => e.tournament === split
@@ -1377,7 +1498,10 @@ function bind() {
   on('lecTeam', 'onchange', e => { lecUi.team = e.target.value; render(); });
   on('lecMine', 'onclick', () => { lecUi.mine = !lecUi.mine; render(); });
   on('lecIcs', 'onclick', () => exportIcs());
-  on('tkAll', 'onclick', () => { lecUi.news = !lecUi.news; render(); });
+  on('tkAll', 'onclick', () => { lecUi.tab = 'transfers'; if (path() !== '/lec') location.hash = '#/lec'; else render(); scrollTo(0, 0); });
+  on('trTeam', 'onchange', e => { lecUi.tTeam = e.target.value; render(); });
+  document.querySelectorAll('[data-trkind]').forEach(b => b.onclick = () => { lecUi.tKind = b.dataset.trkind; render(); });
+  document.querySelectorAll('[data-trteam]').forEach(b => b.onclick = e => { e.preventDefault(); lecUi.tTeam = b.dataset.trteam; render(); scrollTo(0, 0); });
   on('lecJump', 'onclick', e => { e.preventDefault(); const el = $('lec-next'); if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' }); });
   on('faOut', 'onchange', e => { tx.faOut = e.target.value; render(); });
   on('faQ', 'oninput', e => { tx.faQ = e.target.value; render(); });

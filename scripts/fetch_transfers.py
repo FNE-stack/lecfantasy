@@ -18,7 +18,7 @@ Never fails the workflow: on any error the old file stays as it is.
     python scripts/fetch_transfers.py
     python scripts/fetch_transfers.py --days 60 --dry-run
 """
-import argparse, datetime, json, os, sys, time, urllib.error, urllib.parse, urllib.request
+import argparse, datetime, html, json, os, re, sys, time, urllib.error, urllib.parse, urllib.request
 
 for _stream in (sys.stdout, sys.stderr):
     if hasattr(_stream, "reconfigure"):
@@ -74,6 +74,37 @@ def parse_source(raw):
     # a Sheep Esports report is credited first if there is one
     out.sort(key=lambda s: not s["sheep"])
     return out
+
+
+RUMOR_STATUS = {"Rumor": "rumor", "Confirmed": "confirmed", "Disproven": "disproven"}
+
+
+def fetch_post(url):
+    """The text of an X post via X's public oEmbed endpoint (no key, no login).
+    Only the words, author and date are kept; nothing of X's is embedded."""
+    m = re.match(r"https?://(?:www\.|mobile\.)?(?:x|twitter)\.com/([^/]+)/status/(\d+)", url)
+    if not m:
+        return None
+    q = urllib.parse.urlencode({"url": f"https://twitter.com/{m.group(1)}/status/{m.group(2)}",
+                                "omit_script": "true", "dnt": "true"})
+    req = urllib.request.Request("https://publish.twitter.com/oembed?" + q, headers={"User-Agent": UA})
+    try:
+        with urllib.request.urlopen(req, timeout=20) as r:
+            j = json.loads(r.read().decode("utf-8"))
+    except (urllib.error.URLError, ValueError, TimeoutError):
+        return None
+    body = re.search(r"<p[^>]*>(.*?)</p>", j.get("html", ""), re.S)
+    if not body:
+        return None
+    t = body.group(1)
+    media = "pic.twitter.com" in t
+    t = re.sub(r"<br\s*/?>", "\n", t)
+    t = re.sub(r"<a [^>]*>(pic\.twitter\.com/\S+?)</a>", "", t)
+    t = re.sub(r"<[^>]+>", "", t)
+    t = html.unescape(t).strip()
+    date = re.search(r"</p>.*?<a [^>]*>([^<]+)</a>\s*</blockquote>", j.get("html", ""), re.S)
+    return {"author": j.get("author_name", ""), "handle": m.group(1), "text": t[:600],
+            "media": media, "when": date.group(1) if date else ""}
 
 
 def clean_player(name):
@@ -180,11 +211,90 @@ def main():
         folded.append(i)
 
     folded.sort(key=lambda i: (i["date"], 0 if i["staff"] else 1), reverse=True)
+
+    # ── rumours: who is said to be going where (mostly Sheep Esports) ──────
+    rr = cargo({
+        "tables": "RosterRumors=R",
+        "fields": "R.Date=Date,R.Status=Status,R.Player=Player,R.TeamStart=TeamStart,R.TeamEnd=TeamEnd,"
+                  "R.RoleStart=RoleStart,R.RoleEnd=RoleEnd,R.SourceSite=SourceSite,R.SourceAuthors=SourceAuthors,"
+                  "R.SourceLink=SourceLink,R.NotHappening=NotHappening,R.IsOver=IsOver",
+        "where": f"R.Date >= '{since}' AND (R.TeamStart IN ({quote_list(code_of)}) OR R.TeamEnd IN ({quote_list(code_of)}))",
+        "order_by": "R.Date DESC",
+    })
+    rumors, rseen = [], set()
+    for r in rr:
+        key = (r["Player"], r.get("TeamEnd"), r.get("SourceSite"), r.get("Date"))
+        if key in rseen:
+            continue
+        rseen.add(key)
+        status = RUMOR_STATUS.get(r.get("Status") or "", "rumor")
+        if r.get("NotHappening") == "1":
+            status = "disproven"
+        url = (r.get("SourceLink") or "").strip()
+        rumors.append({
+            "date": (r.get("Date") or "")[:10],
+            "player": clean_player(r["Player"]),
+            "from": r.get("TeamStart") or "", "fromTeam": code_of.get(r.get("TeamStart")),
+            "to": r.get("TeamEnd") or "", "toTeam": code_of.get(r.get("TeamEnd")),
+            "role": PLAYER_ROLES.get(r.get("RoleEnd") or "", r.get("RoleEnd") or r.get("RoleStart") or ""),
+            "status": status,
+            "stay": (r.get("TeamStart") or "") == (r.get("TeamEnd") or ""),
+            "site": r.get("SourceSite") or "",
+            "authors": r.get("SourceAuthors") or "",
+            "url": url if url.startswith("http") else "",
+            "sheep": "sheep" in ((r.get("SourceSite") or "") + url).lower(),
+        })
+    print(f"{len(rumors)} rumours, {sum(1 for x in rumors if x['sheep'])} from Sheep Esports")
+
+    # ── contracts that run past today (Leaguepedia knows only some) ───────
+    contracts = {}
+    try:
+        for c in cargo({
+            "tables": "Contracts=C", "fields": "C.Player=Player,C.Team=Team,C.ContractEnd=ContractEnd",
+            "where": f"C.Team IN ({quote_list(code_of)}) AND C.ContractEnd > '{datetime.date.today().isoformat()}'",
+        }):
+            contracts[clean_player(c["Player"])] = {"team": code_of.get(c["Team"]), "end": (c.get("ContractEnd") or "")[:10]}
+    except Exception as e:
+        print(f"  contracts skipped: {e}")
+
+    # ── the posts themselves: text of X posts used as a source ────────────
+    old_posts = {}
+    if os.path.exists(OUT):
+        try:
+            old_posts = json.load(open(OUT, encoding="utf-8")).get("posts", {})
+        except ValueError:
+            pass
+    want = []
+    for i in folded[:80]:
+        for s2 in i["src"][:1]:
+            want.append(s2["url"])
+    for r in rumors[:80]:
+        if r["url"]:
+            want.append(r["url"])
+    posts, fetched = {}, 0
+    for u in dict.fromkeys(want):
+        if not re.search(r"(?:x|twitter)\.com/[^/]+/status/", u):
+            continue
+        if u in old_posts:
+            posts[u] = old_posts[u]
+            continue
+        if fetched >= 80:       # polite: the rest comes on the next run
+            continue
+        p = fetch_post(u)
+        fetched += 1
+        if p:
+            posts[u] = p
+        time.sleep(0.4)
+    print(f"{len(posts)} posts ({fetched} fetched now)")
+
     out = {
         "updated": datetime.datetime.now(datetime.timezone.utc).replace(microsecond=0).isoformat(),
         "source": "Leaguepedia",
         "sourceUrl": "https://lol.fandom.com/wiki/Portal:Transfers",
         "items": folded[:80],
+        "rumors": rumors[:120],
+        "contracts": contracts,
+        "posts": posts,
     }
     print(f"{len(folded)} ticker items, {sum(1 for i in folded if any(s['sheep'] for s in i['src']))} via Sheep Esports")
     for i in folded[:8]:
@@ -198,7 +308,7 @@ def main():
         except ValueError:
             pass
     # Do not rewrite (and commit) the file for a new timestamp alone.
-    if old and old.get("items") == out["items"]:
+    if old and all(old.get(k) == out[k] for k in ("items", "rumors", "contracts", "posts")):
         print("no changes")
         return
     with open(OUT, "w", encoding="utf-8", newline="\n") as f:
