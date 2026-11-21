@@ -1,5 +1,5 @@
 {
- "updated": "2026-11-20T20:36:39+00:00",
+ "updated": "2026-11-21T12:27:25+00:00",
  "source": "Leaguepedia",
  "sourceUrl": "https://lol.fandom.com/wiki/Portal:Transfers",
  "items": [
@@ -180,6 +180,24 @@
   },
   {
    "date": "2026-11-17",
+   "player": "Razork",
+   "role": "Jungle",
+   "staff": false,
+   "status": "",
+   "kind": "leave",
+   "team": "FNC",
+   "teamName": "Fnatic",
+   "src": [
+    {
+     "url": "https://x.com/FNATIC/status/2122709529347367398",
+     "label": "Fnatic's X Post",
+     "domain": "x.com",
+     "sheep": false
+    }
+   ]
+  },
+  {
+   "date": "2026-11-17",
    "player": "FIESTA",
    "role": "Mid",
    "staff": false,
@@ -197,18 +215,72 @@
    ]
   },
   {
-   "date": "2026-11-17",
-   "player": "Razork",
-   "role": "Jungle",
+   "date": "2026-11-16",
+   "player": "Mikyx",
+   "role": "Support",
    "staff": false,
    "status": "",
    "kind": "leave",
-   "team": "FNC",
-   "teamName": "Fnatic",
+   "team": "SK",
+   "teamName": "SK Gaming",
    "src": [
     {
-     "url": "https://x.com/FNATIC/status/2122709529347367398",
-     "label": "Fnatic's X Post",
+     "url": "https://x.com/SKGamingLeague/status/2122352896175985025",
+     "label": "SK Gaming's X Post",
+     "domain": "x.com",
+     "sheep": false
+    }
+   ]
+  },
+  {
+   "date": "2026-11-16",
+   "player": "Fleshy",
+   "role": "Support",
+   "staff": false,
+   "status": "",
+   "kind": "leave",
+   "team": "VIT",
+   "teamName": "Team Vitality",
+   "src": [
+    {
+     "url": "https://x.com/TeamVitalityLOL/status/2122366838302491015",
+     "label": "Team Vitality's X Post",
+     "domain": "x.com",
+     "sheep": false
+    }
+   ]
+  },
+  {
+   "date": "2026-11-16",
+   "player": "LIDER",
+   "role": "Mid",
+   "staff": false,
+   "status": "inactive",
+   "kind": "leave",
+   "team": "SK",
+   "teamName": "SK Gaming",
+   "src": [
+    {
+     "url": "https://x.com/SKGamingLeague/status/2122352896175985025",
+     "label": "SK Gaming's X Post",
+     "domain": "x.com",
+     "sheep": false
+    }
+   ]
+  },
+  {
+   "date": "2026-11-16",
+   "player": "Jopa",
+   "role": "Bot",
+   "staff": false,
+   "status": "",
+   "kind": "leave",
+   "team": "SK",
+   "teamName": "SK Gaming",
+   "src": [
+    {
+     "url": "https://x.com/SKGamingLeague/status/2122352896175985025",
+     "label": "SK Gaming's X Post",
      "domain": "x.com",
      "sheep": false
     }
@@ -252,78 +324,6 @@
   },
   {
    "date": "2026-11-16",
-   "player": "Jopa",
-   "role": "Bot",
-   "staff": false,
-   "status": "",
-   "kind": "leave",
-   "team": "SK",
-   "teamName": "SK Gaming",
-   "src": [
-    {
-     "url": "https://x.com/SKGamingLeague/status/2122352896175985025",
-     "label": "SK Gaming's X Post",
-     "domain": "x.com",
-     "sheep": false
-    }
-   ]
-  },
-  {
-   "date": "2026-11-16",
-   "player": "Mikyx",
-   "role": "Support",
-   "staff": false,
-   "status": "",
-   "kind": "leave",
-   "team": "SK",
-   "teamName": "SK Gaming",
-   "src": [
-    {
-     "url": "https://x.com/SKGamingLeague/status/2122352896175985025",
-     "label": "SK Gaming's X Post",
-     "domain": "x.com",
-     "sheep": false
-    }
-   ]
-  },
-  {
-   "date": "2026-11-16",
-   "player": "LIDER",
-   "role": "Mid",
-   "staff": false,
-   "status": "inactive",
-   "kind": "leave",
-   "team": "SK",
-   "teamName": "SK Gaming",
-   "src": [
-    {
-     "url": "https://x.com/SKGamingLeague/status/2122352896175985025",
-     "label": "SK Gaming's X Post",
-     "domain": "x.com",
-     "sheep": false
-    }
-   ]
-  },
-  {
-   "date": "2026-11-16",
-   "player": "Fleshy",
-   "role": "Support",
-   "staff": false,
-   "status": "",
-   "kind": "leave",
-   "team": "VIT",
-   "teamName": "Team Vitality",
-   "src": [
-    {
-     "url": "https://x.com/TeamVitalityLOL/status/2122366838302491015",
-     "label": "Team Vitality's X Post",
-     "domain": "x.com",
-     "sheep": false
-    }
-   ]
-  },
-  {
-   "date": "2026-11-16",
    "player": "Labrov",
    "role": "Support",
    "staff": false,
@@ -335,6 +335,24 @@
     {
      "url": "https://x.com/G2League/status/2122359119571001366",
      "label": "G2 Esports' X Post",
+     "domain": "x.com",
+     "sheep": false
+    }
+   ]
+  },
+  {
+   "date": "2026-11-16",
+   "player": "Duffman",
+   "role": "Assistant Coach",
+   "staff": true,
+   "status": "",
+   "kind": "leave",
+   "team": "SK",
+   "teamName": "SK Gaming",
+   "src": [
+    {
+     "url": "https://x.com/SKGamingLeague/status/2122352896175985025",
+     "label": "SK Gaming's X Post",
      "domain": "x.com",
      "sheep": false
     }
@@ -359,18 +377,18 @@
    ]
   },
   {
-   "date": "2026-11-16",
-   "player": "Duffman",
-   "role": "Assistant Coach",
-   "staff": true,
+   "date": "2026-11-14",
+   "player": "Myrwn",
+   "role": "Top",
+   "staff": false,
    "status": "",
    "kind": "leave",
-   "team": "SK",
-   "teamName": "SK Gaming",
+   "team": "MKOI",
+   "teamName": "Movistar KOI",
    "src": [
     {
-     "url": "https://x.com/SKGamingLeague/status/2122352896175985025",
-     "label": "SK Gaming's X Post",
+     "url": "https://x.com/MovistarKOILoL/status/2121637617363980370",
+     "label": "Movistar KOI's X Post",
      "domain": "x.com",
      "sheep": false
     }
@@ -413,60 +431,6 @@
    ]
   },
   {
-   "date": "2026-11-14",
-   "player": "Myrwn",
-   "role": "Top",
-   "staff": false,
-   "status": "",
-   "kind": "leave",
-   "team": "MKOI",
-   "teamName": "Movistar KOI",
-   "src": [
-    {
-     "url": "https://x.com/MovistarKOILoL/status/2121637617363980370",
-     "label": "Movistar KOI's X Post",
-     "domain": "x.com",
-     "sheep": false
-    }
-   ]
-  },
-  {
-   "date": "2026-11-13",
-   "player": "Carzzy",
-   "role": "Bot",
-   "staff": false,
-   "status": "",
-   "kind": "leave",
-   "team": "VIT",
-   "teamName": "Team Vitality",
-   "src": [
-    {
-     "url": "https://x.com/TeamVitalityLOL/status/2121287025923891354",
-     "label": "Team Vitality's X Post",
-     "domain": "x.com",
-     "sheep": false
-    }
-   ]
-  },
-  {
-   "date": "2026-11-13",
-   "player": "ISMA",
-   "role": "Jungle",
-   "staff": false,
-   "status": "",
-   "kind": "leave",
-   "team": "GX",
-   "teamName": "GIANTX",
-   "src": [
-    {
-     "url": "https://x.com/GIANTXLeague/status/2121272083938255069",
-     "label": "GIANTX's X Post",
-     "domain": "x.com",
-     "sheep": false
-    }
-   ]
-  },
-  {
    "date": "2026-11-13",
    "player": "Noah",
    "role": "Bot",
@@ -487,8 +451,8 @@
   },
   {
    "date": "2026-11-13",
-   "player": "Jun",
-   "role": "Support",
+   "player": "ISMA",
+   "role": "Jungle",
    "staff": false,
    "status": "",
    "kind": "leave",
@@ -516,6 +480,42 @@
     {
      "url": "https://x.com/GIANTXLeague/status/2121272083938255069",
      "label": "GIANTX's X Post",
+     "domain": "x.com",
+     "sheep": false
+    }
+   ]
+  },
+  {
+   "date": "2026-11-13",
+   "player": "Jun",
+   "role": "Support",
+   "staff": false,
+   "status": "",
+   "kind": "leave",
+   "team": "GX",
+   "teamName": "GIANTX",
+   "src": [
+    {
+     "url": "https://x.com/GIANTXLeague/status/2121272083938255069",
+     "label": "GIANTX's X Post",
+     "domain": "x.com",
+     "sheep": false
+    }
+   ]
+  },
+  {
+   "date": "2026-11-13",
+   "player": "Carzzy",
+   "role": "Bot",
+   "staff": false,
+   "status": "",
+   "kind": "leave",
+   "team": "VIT",
+   "teamName": "Team Vitality",
+   "src": [
+    {
+     "url": "https://x.com/TeamVitalityLOL/status/2121287025923891354",
+     "label": "Team Vitality's X Post",
      "domain": "x.com",
      "sheep": false
     }
@@ -596,30 +596,6 @@
   },
   {
    "date": "2026-11-09",
-   "player": "Mac",
-   "role": "Head of Coaching Development",
-   "staff": true,
-   "status": "",
-   "kind": "leave",
-   "team": "VIT",
-   "teamName": "Team Vitality",
-   "src": [
-    {
-     "url": "https://x.com/TeamVitalityLOL/status/2119840932195426659",
-     "label": "Team Vitality's X Post",
-     "domain": "x.com",
-     "sheep": false
-    },
-    {
-     "url": "https://x.com/TeamVitalityLOL/status/2119840935190131188",
-     "label": "Team Vitality's X Post",
-     "domain": "x.com",
-     "sheep": false
-    }
-   ]
-  },
-  {
-   "date": "2026-11-09",
    "player": "Pad",
    "role": "Head Coach",
    "staff": true,
@@ -668,8 +644,8 @@
   },
   {
    "date": "2026-11-09",
-   "player": "Hansen",
-   "role": "Assistant Coach",
+   "player": "Mac",
+   "role": "Head of Coaching Development",
    "staff": true,
    "status": "",
    "kind": "leave",
@@ -693,6 +669,30 @@
   {
    "date": "2026-11-09",
    "player": "Garih",
+   "role": "Assistant Coach",
+   "staff": true,
+   "status": "",
+   "kind": "leave",
+   "team": "VIT",
+   "teamName": "Team Vitality",
+   "src": [
+    {
+     "url": "https://x.com/TeamVitalityLOL/status/2119840932195426659",
+     "label": "Team Vitality's X Post",
+     "domain": "x.com",
+     "sheep": false
+    },
+    {
+     "url": "https://x.com/TeamVitalityLOL/status/2119840935190131188",
+     "label": "Team Vitality's X Post",
+     "domain": "x.com",
+     "sheep": false
+    }
+   ]
+  },
+  {
+   "date": "2026-11-09",
+   "player": "Hansen",
    "role": "Assistant Coach",
    "staff": true,
    "status": "",
