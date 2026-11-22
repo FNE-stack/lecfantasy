@@ -1,5 +1,5 @@
 {
- "updated": "2026-11-22T10:23:03+00:00",
+ "updated": "2026-11-22T12:28:11+00:00",
  "source": "Leaguepedia",
  "sourceUrl": "https://lol.fandom.com/wiki/Portal:Transfers",
  "items": [
@@ -596,56 +596,8 @@
   },
   {
    "date": "2026-11-09",
-   "player": "Mac",
-   "role": "Head of Coaching Development",
-   "staff": true,
-   "status": "",
-   "kind": "leave",
-   "team": "VIT",
-   "teamName": "Team Vitality",
-   "src": [
-    {
-     "url": "https://x.com/TeamVitalityLOL/status/2119840932195426659",
-     "label": "Team Vitality's X Post",
-     "domain": "x.com",
-     "sheep": false
-    },
-    {
-     "url": "https://x.com/TeamVitalityLOL/status/2119840935190131188",
-     "label": "Team Vitality's X Post",
-     "domain": "x.com",
-     "sheep": false
-    }
-   ]
-  },
-  {
-   "date": "2026-11-09",
    "player": "Pad",
    "role": "Head Coach",
-   "staff": true,
-   "status": "",
-   "kind": "leave",
-   "team": "VIT",
-   "teamName": "Team Vitality",
-   "src": [
-    {
-     "url": "https://x.com/TeamVitalityLOL/status/2119840932195426659",
-     "label": "Team Vitality's X Post",
-     "domain": "x.com",
-     "sheep": false
-    },
-    {
-     "url": "https://x.com/TeamVitalityLOL/status/2119840935190131188",
-     "label": "Team Vitality's X Post",
-     "domain": "x.com",
-     "sheep": false
-    }
-   ]
-  },
-  {
-   "date": "2026-11-09",
-   "player": "Arvindir",
-   "role": "Strategic Coach",
    "staff": true,
    "status": "",
    "kind": "leave",
@@ -692,8 +644,56 @@
   },
   {
    "date": "2026-11-09",
+   "player": "Arvindir",
+   "role": "Strategic Coach",
+   "staff": true,
+   "status": "",
+   "kind": "leave",
+   "team": "VIT",
+   "teamName": "Team Vitality",
+   "src": [
+    {
+     "url": "https://x.com/TeamVitalityLOL/status/2119840932195426659",
+     "label": "Team Vitality's X Post",
+     "domain": "x.com",
+     "sheep": false
+    },
+    {
+     "url": "https://x.com/TeamVitalityLOL/status/2119840935190131188",
+     "label": "Team Vitality's X Post",
+     "domain": "x.com",
+     "sheep": false
+    }
+   ]
+  },
+  {
+   "date": "2026-11-09",
    "player": "Garih",
    "role": "Assistant Coach",
+   "staff": true,
+   "status": "",
+   "kind": "leave",
+   "team": "VIT",
+   "teamName": "Team Vitality",
+   "src": [
+    {
+     "url": "https://x.com/TeamVitalityLOL/status/2119840932195426659",
+     "label": "Team Vitality's X Post",
+     "domain": "x.com",
+     "sheep": false
+    },
+    {
+     "url": "https://x.com/TeamVitalityLOL/status/2119840935190131188",
+     "label": "Team Vitality's X Post",
+     "domain": "x.com",
+     "sheep": false
+    }
+   ]
+  },
+  {
+   "date": "2026-11-09",
+   "player": "Mac",
+   "role": "Head of Coaching Development",
    "staff": true,
    "status": "",
    "kind": "leave",
