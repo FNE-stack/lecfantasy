@@ -1,5 +1,5 @@
 {
- "updated": "2026-11-23T18:25:39+00:00",
+ "updated": "2026-11-23T20:23:53+00:00",
  "source": "Leaguepedia",
  "sourceUrl": "https://lol.fandom.com/wiki/Portal:Transfers",
  "items": [
@@ -160,7 +160,8 @@
      "domain": "x.com",
      "sheep": false
     }
-   ]
+   ],
+   "to": "Solary"
   },
   {
    "date": "2026-11-17",
