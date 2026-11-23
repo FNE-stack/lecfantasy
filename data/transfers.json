@@ -1,5 +1,5 @@
 {
- "updated": "2026-11-23T16:25:35+00:00",
+ "updated": "2026-11-23T18:25:39+00:00",
  "source": "Leaguepedia",
  "sourceUrl": "https://lol.fandom.com/wiki/Portal:Transfers",
  "items": [
@@ -15,6 +15,12 @@
    "src": [
     {
      "url": "https://x.com/KarmineCorp/status/2124889153913659639",
+     "label": "Karmine Corp's X Post",
+     "domain": "x.com",
+     "sheep": false
+    },
+    {
+     "url": "https://x.com/KarmineCorp/status/2124911430289760614",
      "label": "Karmine Corp's X Post",
      "domain": "x.com",
      "sheep": false
@@ -79,6 +85,24 @@
   },
   {
    "date": "2026-11-18",
+   "player": "Daglas",
+   "role": "Jungle",
+   "staff": false,
+   "status": "",
+   "kind": "leave",
+   "team": "TH",
+   "teamName": "Team Heretics",
+   "src": [
+    {
+     "url": "https://x.com/HereticsLEC/status/2123083824045371622",
+     "label": "Team Heretics' X Post",
+     "domain": "x.com",
+     "sheep": false
+    }
+   ]
+  },
+  {
+   "date": "2026-11-18",
    "player": "Yike",
    "role": "Jungle",
    "staff": false,
@@ -113,42 +137,6 @@
     }
    ],
    "to": "Solary"
-  },
-  {
-   "date": "2026-11-18",
-   "player": "Daglas",
-   "role": "Jungle",
-   "staff": false,
-   "status": "",
-   "kind": "leave",
-   "team": "TH",
-   "teamName": "Team Heretics",
-   "src": [
-    {
-     "url": "https://x.com/HereticsLEC/status/2123083824045371622",
-     "label": "Team Heretics' X Post",
-     "domain": "x.com",
-     "sheep": false
-    }
-   ]
-  },
-  {
-   "date": "2026-11-17",
-   "player": "Razork",
-   "role": "Jungle",
-   "staff": false,
-   "status": "",
-   "kind": "leave",
-   "team": "FNC",
-   "teamName": "Fnatic",
-   "src": [
-    {
-     "url": "https://x.com/FNATIC/status/2122709529347367398",
-     "label": "Fnatic's X Post",
-     "domain": "x.com",
-     "sheep": false
-    }
-   ]
   },
   {
    "date": "2026-11-17",
@@ -200,6 +188,24 @@
   },
   {
    "date": "2026-11-17",
+   "player": "Supa",
+   "role": "Bot",
+   "staff": false,
+   "status": "",
+   "kind": "leave",
+   "team": "MKOI",
+   "teamName": "Movistar KOI",
+   "src": [
+    {
+     "url": "https://x.com/MovistarKOILoL/status/2122695200619254170",
+     "label": "Movistar KOI's X Post",
+     "domain": "x.com",
+     "sheep": false
+    }
+   ]
+  },
+  {
+   "date": "2026-11-17",
    "player": "FIESTA",
    "role": "Mid",
    "staff": false,
@@ -218,17 +224,17 @@
   },
   {
    "date": "2026-11-17",
-   "player": "Supa",
-   "role": "Bot",
+   "player": "Razork",
+   "role": "Jungle",
    "staff": false,
    "status": "",
    "kind": "leave",
-   "team": "MKOI",
-   "teamName": "Movistar KOI",
+   "team": "FNC",
+   "teamName": "Fnatic",
    "src": [
     {
-     "url": "https://x.com/MovistarKOILoL/status/2122695200619254170",
-     "label": "Movistar KOI's X Post",
+     "url": "https://x.com/FNATIC/status/2122709529347367398",
+     "label": "Fnatic's X Post",
      "domain": "x.com",
      "sheep": false
     }
@@ -236,62 +242,8 @@
   },
   {
    "date": "2026-11-16",
-   "player": "Fleshy",
-   "role": "Support",
-   "staff": false,
-   "status": "",
-   "kind": "leave",
-   "team": "VIT",
-   "teamName": "Team Vitality",
-   "src": [
-    {
-     "url": "https://x.com/TeamVitalityLOL/status/2122366838302491015",
-     "label": "Team Vitality's X Post",
-     "domain": "x.com",
-     "sheep": false
-    }
-   ]
-  },
-  {
-   "date": "2026-11-16",
-   "player": "LIDER",
-   "role": "Mid",
-   "staff": false,
-   "status": "inactive",
-   "kind": "leave",
-   "team": "SK",
-   "teamName": "SK Gaming",
-   "src": [
-    {
-     "url": "https://x.com/SKGamingLeague/status/2122352896175985025",
-     "label": "SK Gaming's X Post",
-     "domain": "x.com",
-     "sheep": false
-    }
-   ]
-  },
-  {
-   "date": "2026-11-16",
-   "player": "Mikyx",
-   "role": "Support",
-   "staff": false,
-   "status": "",
-   "kind": "leave",
-   "team": "SK",
-   "teamName": "SK Gaming",
-   "src": [
-    {
-     "url": "https://x.com/SKGamingLeague/status/2122352896175985025",
-     "label": "SK Gaming's X Post",
-     "domain": "x.com",
-     "sheep": false
-    }
-   ]
-  },
-  {
-   "date": "2026-11-16",
-   "player": "Jopa",
-   "role": "Bot",
+   "player": "Wunder",
+   "role": "Top",
    "staff": false,
    "status": "",
    "kind": "leave",
@@ -326,8 +278,8 @@
   },
   {
    "date": "2026-11-16",
-   "player": "Wunder",
-   "role": "Top",
+   "player": "Jopa",
+   "role": "Bot",
    "staff": false,
    "status": "",
    "kind": "leave",
@@ -337,6 +289,60 @@
     {
      "url": "https://x.com/SKGamingLeague/status/2122352896175985025",
      "label": "SK Gaming's X Post",
+     "domain": "x.com",
+     "sheep": false
+    }
+   ]
+  },
+  {
+   "date": "2026-11-16",
+   "player": "Mikyx",
+   "role": "Support",
+   "staff": false,
+   "status": "",
+   "kind": "leave",
+   "team": "SK",
+   "teamName": "SK Gaming",
+   "src": [
+    {
+     "url": "https://x.com/SKGamingLeague/status/2122352896175985025",
+     "label": "SK Gaming's X Post",
+     "domain": "x.com",
+     "sheep": false
+    }
+   ]
+  },
+  {
+   "date": "2026-11-16",
+   "player": "LIDER",
+   "role": "Mid",
+   "staff": false,
+   "status": "inactive",
+   "kind": "leave",
+   "team": "SK",
+   "teamName": "SK Gaming",
+   "src": [
+    {
+     "url": "https://x.com/SKGamingLeague/status/2122352896175985025",
+     "label": "SK Gaming's X Post",
+     "domain": "x.com",
+     "sheep": false
+    }
+   ]
+  },
+  {
+   "date": "2026-11-16",
+   "player": "Fleshy",
+   "role": "Support",
+   "staff": false,
+   "status": "",
+   "kind": "leave",
+   "team": "VIT",
+   "teamName": "Team Vitality",
+   "src": [
+    {
+     "url": "https://x.com/TeamVitalityLOL/status/2122366838302491015",
+     "label": "Team Vitality's X Post",
      "domain": "x.com",
      "sheep": false
     }
@@ -362,24 +368,6 @@
   },
   {
    "date": "2026-11-16",
-   "player": "Duffman",
-   "role": "Assistant Coach",
-   "staff": true,
-   "status": "",
-   "kind": "leave",
-   "team": "SK",
-   "teamName": "SK Gaming",
-   "src": [
-    {
-     "url": "https://x.com/SKGamingLeague/status/2122352896175985025",
-     "label": "SK Gaming's X Post",
-     "domain": "x.com",
-     "sheep": false
-    }
-   ]
-  },
-  {
-   "date": "2026-11-16",
    "player": "Alphari",
    "role": "Assistant Coach",
    "staff": true,
@@ -397,9 +385,27 @@
    ]
   },
   {
+   "date": "2026-11-16",
+   "player": "Duffman",
+   "role": "Assistant Coach",
+   "staff": true,
+   "status": "",
+   "kind": "leave",
+   "team": "SK",
+   "teamName": "SK Gaming",
+   "src": [
+    {
+     "url": "https://x.com/SKGamingLeague/status/2122352896175985025",
+     "label": "SK Gaming's X Post",
+     "domain": "x.com",
+     "sheep": false
+    }
+   ]
+  },
+  {
    "date": "2026-11-14",
-   "player": "Flakked",
-   "role": "Bot",
+   "player": "Oscarinin",
+   "role": "Top",
    "staff": false,
    "status": "",
    "kind": "leave",
@@ -416,8 +422,8 @@
   },
   {
    "date": "2026-11-14",
-   "player": "Oscarinin",
-   "role": "Top",
+   "player": "Flakked",
+   "role": "Bot",
    "staff": false,
    "status": "",
    "kind": "leave",
@@ -452,25 +458,6 @@
   },
   {
    "date": "2026-11-13",
-   "player": "Noah",
-   "role": "Bot",
-   "staff": false,
-   "status": "inactive",
-   "kind": "leave",
-   "team": "GX",
-   "teamName": "GIANTX",
-   "src": [
-    {
-     "url": "https://x.com/GIANTXLeague/status/2121272083938255069",
-     "label": "GIANTX's X Post",
-     "domain": "x.com",
-     "sheep": false
-    }
-   ],
-   "to": "BNK FEARX"
-  },
-  {
-   "date": "2026-11-13",
    "player": "Carzzy",
    "role": "Bot",
    "staff": false,
@@ -489,8 +476,26 @@
   },
   {
    "date": "2026-11-13",
-   "player": "Lot",
-   "role": "Top",
+   "player": "ISMA",
+   "role": "Jungle",
+   "staff": false,
+   "status": "",
+   "kind": "leave",
+   "team": "GX",
+   "teamName": "GIANTX",
+   "src": [
+    {
+     "url": "https://x.com/GIANTXLeague/status/2121272083938255069",
+     "label": "GIANTX's X Post",
+     "domain": "x.com",
+     "sheep": false
+    }
+   ]
+  },
+  {
+   "date": "2026-11-13",
+   "player": "Noah",
+   "role": "Bot",
    "staff": false,
    "status": "inactive",
    "kind": "leave",
@@ -503,7 +508,8 @@
      "domain": "x.com",
      "sheep": false
     }
-   ]
+   ],
+   "to": "BNK FEARX"
   },
   {
    "date": "2026-11-13",
@@ -525,10 +531,10 @@
   },
   {
    "date": "2026-11-13",
-   "player": "ISMA",
-   "role": "Jungle",
+   "player": "Lot",
+   "role": "Top",
    "staff": false,
-   "status": "",
+   "status": "inactive",
    "kind": "leave",
    "team": "GX",
    "teamName": "GIANTX",
@@ -616,56 +622,8 @@
   },
   {
    "date": "2026-11-09",
-   "player": "Garih",
-   "role": "Assistant Coach",
-   "staff": true,
-   "status": "",
-   "kind": "leave",
-   "team": "VIT",
-   "teamName": "Team Vitality",
-   "src": [
-    {
-     "url": "https://x.com/TeamVitalityLOL/status/2119840932195426659",
-     "label": "Team Vitality's X Post",
-     "domain": "x.com",
-     "sheep": false
-    },
-    {
-     "url": "https://x.com/TeamVitalityLOL/status/2119840935190131188",
-     "label": "Team Vitality's X Post",
-     "domain": "x.com",
-     "sheep": false
-    }
-   ]
-  },
-  {
-   "date": "2026-11-09",
    "player": "Mac",
    "role": "Head of Coaching Development",
-   "staff": true,
-   "status": "",
-   "kind": "leave",
-   "team": "VIT",
-   "teamName": "Team Vitality",
-   "src": [
-    {
-     "url": "https://x.com/TeamVitalityLOL/status/2119840932195426659",
-     "label": "Team Vitality's X Post",
-     "domain": "x.com",
-     "sheep": false
-    },
-    {
-     "url": "https://x.com/TeamVitalityLOL/status/2119840935190131188",
-     "label": "Team Vitality's X Post",
-     "domain": "x.com",
-     "sheep": false
-    }
-   ]
-  },
-  {
-   "date": "2026-11-09",
-   "player": "Arvindir",
-   "role": "Strategic Coach",
    "staff": true,
    "status": "",
    "kind": "leave",
@@ -712,7 +670,55 @@
   },
   {
    "date": "2026-11-09",
+   "player": "Arvindir",
+   "role": "Strategic Coach",
+   "staff": true,
+   "status": "",
+   "kind": "leave",
+   "team": "VIT",
+   "teamName": "Team Vitality",
+   "src": [
+    {
+     "url": "https://x.com/TeamVitalityLOL/status/2119840932195426659",
+     "label": "Team Vitality's X Post",
+     "domain": "x.com",
+     "sheep": false
+    },
+    {
+     "url": "https://x.com/TeamVitalityLOL/status/2119840935190131188",
+     "label": "Team Vitality's X Post",
+     "domain": "x.com",
+     "sheep": false
+    }
+   ]
+  },
+  {
+   "date": "2026-11-09",
    "player": "Hansen",
+   "role": "Assistant Coach",
+   "staff": true,
+   "status": "",
+   "kind": "leave",
+   "team": "VIT",
+   "teamName": "Team Vitality",
+   "src": [
+    {
+     "url": "https://x.com/TeamVitalityLOL/status/2119840932195426659",
+     "label": "Team Vitality's X Post",
+     "domain": "x.com",
+     "sheep": false
+    },
+    {
+     "url": "https://x.com/TeamVitalityLOL/status/2119840935190131188",
+     "label": "Team Vitality's X Post",
+     "domain": "x.com",
+     "sheep": false
+    }
+   ]
+  },
+  {
+   "date": "2026-11-09",
+   "player": "Garih",
    "role": "Assistant Coach",
    "staff": true,
    "status": "",
@@ -2352,6 +2358,13 @@
    "media": true,
    "when": "November 19, 2026"
   },
+  "https://x.com/HereticsLEC/status/2123083824045371622": {
+   "author": "Heretics LEC",
+   "handle": "HereticsLEC",
+   "text": "From Superliga to LES and all the way to the LEC.\n\nThank you for everything, Daglas 🤍\n\n9️⃣0️⃣ games\n1️⃣8️⃣1️⃣ maps\n5️⃣7️⃣ Ws\n🏆 Superliga Winter 2025\n🏆 LES Spring 2026\n🥈 EMEA Masters finalist#ThankYouDaglas #VamosHeretics",
+   "media": true,
+   "when": "November 18, 2026"
+  },
   "https://x.com/KarmineCorp/status/2123099633605820432": {
    "author": "Karmine Corp",
    "handle": "KarmineCorp",
@@ -2366,31 +2379,10 @@
    "media": true,
    "when": "November 18, 2026"
   },
-  "https://x.com/HereticsLEC/status/2123083824045371622": {
-   "author": "Heretics LEC",
-   "handle": "HereticsLEC",
-   "text": "From Superliga to LES and all the way to the LEC.\n\nThank you for everything, Daglas 🤍\n\n9️⃣0️⃣ games\n1️⃣8️⃣1️⃣ maps\n5️⃣7️⃣ Ws\n🏆 Superliga Winter 2025\n🏆 LES Spring 2026\n🥈 EMEA Masters finalist#ThankYouDaglas #VamosHeretics",
-   "media": true,
-   "when": "November 18, 2026"
-  },
-  "https://x.com/FNATIC/status/2122709529347367398": {
-   "author": "FNATIC",
-   "handle": "FNATIC",
-   "text": "You were a youngster with endless ambition when you first joined. Now, you leave as a seasoned jungler who will always be part of our story.\n\nThrough every fight & every moment of joy, you gave this team your heart & soul.\n\nThank you, @RazorkLoL. You'll always have a home here 🧡",
-   "media": true,
-   "when": "November 17, 2026"
-  },
   "https://x.com/NAVILeague/status/2122721431242813879": {
    "author": "NAVI LOL",
    "handle": "NAVILeague",
    "text": "Thank you for everything, @Maynter_LOL! 💛\n\nYou’ve been a great teammate and a consistent presence in the top lane, making history as the first Ukrainian to play in the LEC. We’re grateful to have been part of your journey and to have watched you make your debut in the NAVI…",
-   "media": true,
-   "when": "November 17, 2026"
-  },
-  "https://x.com/TeamVitalityLOL/status/2122753898133729710": {
-   "author": "Team Vitality League",
-   "handle": "TeamVitalityLOL",
-   "text": "Today we’d like to thank @FIESTA0504 for being our midlaner this year, as we part ways ahead of the 2027 season.\n\nWe’re grateful for your hard work, passion and the energy you’ve brought to our roster this summer as well as our first international in a while. We wish you the best…",
    "media": true,
    "when": "November 17, 2026"
   },
@@ -2401,17 +2393,31 @@
    "media": true,
    "when": "November 17, 2026"
   },
-  "https://x.com/TeamVitalityLOL/status/2122366838302491015": {
+  "https://x.com/TeamVitalityLOL/status/2122753898133729710": {
    "author": "Team Vitality League",
    "handle": "TeamVitalityLOL",
-   "text": "From our academy to the international stage, thank you @fleshyylol for proudly representing us for the past two years 💛\n\nWe’re grateful for your dedication and commitment to the team, and wish you the best in the future 🐝",
+   "text": "Today we’d like to thank @FIESTA0504 for being our midlaner this year, as we part ways ahead of the 2027 season.\n\nWe’re grateful for your hard work, passion and the energy you’ve brought to our roster this summer as well as our first international in a while. We wish you the best…",
    "media": true,
-   "when": "November 16, 2026"
+   "when": "November 17, 2026"
+  },
+  "https://x.com/FNATIC/status/2122709529347367398": {
+   "author": "FNATIC",
+   "handle": "FNATIC",
+   "text": "You were a youngster with endless ambition when you first joined. Now, you leave as a seasoned jungler who will always be part of our story.\n\nThrough every fight & every moment of joy, you gave this team your heart & soul.\n\nThank you, @RazorkLoL. You'll always have a home here 🧡",
+   "media": true,
+   "when": "November 17, 2026"
   },
   "https://x.com/SKGamingLeague/status/2122352896175985025": {
    "author": "SK Gaming League of Legends",
    "handle": "SKGamingLeague",
    "text": "From the power of the unction to frustratingly insane Riftbound pulls, there have been so many great moments with you we will forever look back on fondly 💜\n\nThank you for your contributions to the team and to SK this year, stay amazing @wunderlol @Skeanz_lol @LIDERlol @ADCJopa…",
+   "media": true,
+   "when": "November 16, 2026"
+  },
+  "https://x.com/TeamVitalityLOL/status/2122366838302491015": {
+   "author": "Team Vitality League",
+   "handle": "TeamVitalityLOL",
+   "text": "From our academy to the international stage, thank you @fleshyylol for proudly representing us for the past two years 💛\n\nWe’re grateful for your dedication and commitment to the team, and wish you the best in the future 🐝",
    "media": true,
    "when": "November 16, 2026"
   },
@@ -2443,17 +2449,17 @@
    "media": true,
    "when": "November 14, 2026"
   },
-  "https://x.com/GIANTXLeague/status/2121272083938255069": {
-   "author": "GIANTX League of Legends",
-   "handle": "GIANTXLeague",
-   "text": "Almost two years together. That's no small thing in esports 💙\n\nFrom one year to the next, we kept raising the bar and came closer than ever to breaking into the Top 3.\n\nToday, we say goodbye to Jun, Lot, Noah and Isma.\n\nWe wish you all the best.",
-   "media": true,
-   "when": "November 13, 2026"
-  },
   "https://x.com/TeamVitalityLOL/status/2121287025923891354": {
    "author": "Team Vitality League",
    "handle": "TeamVitalityLOL",
    "text": "For the past 5 years, you’ve been a part of Team Vitality’s story on and off the rift. Thank you Matyáš for the laughs, the records, the outplays, and the couple unfortunate deaths on mid waves 💛\n\nWe’re grateful to everything you’ve given this team, and wish you nothing but the…",
+   "media": true,
+   "when": "November 13, 2026"
+  },
+  "https://x.com/GIANTXLeague/status/2121272083938255069": {
+   "author": "GIANTX League of Legends",
+   "handle": "GIANTXLeague",
+   "text": "Almost two years together. That's no small thing in esports 💙\n\nFrom one year to the next, we kept raising the bar and came closer than ever to breaking into the Top 3.\n\nToday, we say goodbye to Jun, Lot, Noah and Isma.\n\nWe wish you all the best.",
    "media": true,
    "when": "November 13, 2026"
   },
