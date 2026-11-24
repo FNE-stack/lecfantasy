@@ -1,5 +1,5 @@
 {
- "updated": "2026-11-24T12:30:43+00:00",
+ "updated": "2026-11-24T22:24:27+00:00",
  "source": "Leaguepedia",
  "sourceUrl": "https://lol.fandom.com/wiki/Portal:Transfers",
  "items": [
@@ -982,6 +982,21 @@
   }
  ],
  "rumors": [
+  {
+   "date": "2026-11-24",
+   "player": "Daglas",
+   "from": "Team Heretics",
+   "fromTeam": "TH",
+   "to": "Shifters",
+   "toTeam": "SHFT",
+   "role": "Jungle",
+   "status": "rumor",
+   "stay": false,
+   "site": "Sheep Esports",
+   "authors": "Brieuc \"LEC Wooloo\" Seeger",
+   "url": "https://www.sheepesports.com/en/articles/sources-daglas-set-to-join-shifters-ahead-of-2027/en",
+   "sheep": true
+  },
   {
    "date": "2026-11-22",
    "player": "Edward",
