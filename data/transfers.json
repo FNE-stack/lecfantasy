@@ -1,5 +1,5 @@
 {
- "updated": "2026-11-24T22:24:27+00:00",
+ "updated": "2026-11-25T00:45:00+00:00",
  "source": "Leaguepedia",
  "sourceUrl": "https://lol.fandom.com/wiki/Portal:Transfers",
  "items": [
@@ -424,6 +424,24 @@
   },
   {
    "date": "2026-11-14",
+   "player": "Oscarinin",
+   "role": "Top",
+   "staff": false,
+   "status": "",
+   "kind": "leave",
+   "team": "GX",
+   "teamName": "GIANTX",
+   "src": [
+    {
+     "url": "https://x.com/GIANTXLeague/status/2121619160212119708",
+     "label": "GIANTX's X Post",
+     "domain": "x.com",
+     "sheep": false
+    }
+   ]
+  },
+  {
+   "date": "2026-11-14",
    "player": "Myrwn",
    "role": "Top",
    "staff": false,
@@ -459,18 +477,18 @@
    ]
   },
   {
-   "date": "2026-11-14",
-   "player": "Oscarinin",
-   "role": "Top",
+   "date": "2026-11-13",
+   "player": "Carzzy",
+   "role": "Bot",
    "staff": false,
    "status": "",
    "kind": "leave",
-   "team": "GX",
-   "teamName": "GIANTX",
+   "team": "VIT",
+   "teamName": "Team Vitality",
    "src": [
     {
-     "url": "https://x.com/GIANTXLeague/status/2121619160212119708",
-     "label": "GIANTX's X Post",
+     "url": "https://x.com/TeamVitalityLOL/status/2121287025923891354",
+     "label": "Team Vitality's X Post",
      "domain": "x.com",
      "sheep": false
     }
@@ -507,24 +525,6 @@
     {
      "url": "https://x.com/GIANTXLeague/status/2121272083938255069",
      "label": "GIANTX's X Post",
-     "domain": "x.com",
-     "sheep": false
-    }
-   ]
-  },
-  {
-   "date": "2026-11-13",
-   "player": "Carzzy",
-   "role": "Bot",
-   "staff": false,
-   "status": "",
-   "kind": "leave",
-   "team": "VIT",
-   "teamName": "Team Vitality",
-   "src": [
-    {
-     "url": "https://x.com/TeamVitalityLOL/status/2121287025923891354",
-     "label": "Team Vitality's X Post",
      "domain": "x.com",
      "sheep": false
     }
@@ -642,6 +642,30 @@
   },
   {
    "date": "2026-11-09",
+   "player": "Garih",
+   "role": "Assistant Coach",
+   "staff": true,
+   "status": "",
+   "kind": "leave",
+   "team": "VIT",
+   "teamName": "Team Vitality",
+   "src": [
+    {
+     "url": "https://x.com/TeamVitalityLOL/status/2119840932195426659",
+     "label": "Team Vitality's X Post",
+     "domain": "x.com",
+     "sheep": false
+    },
+    {
+     "url": "https://x.com/TeamVitalityLOL/status/2119840935190131188",
+     "label": "Team Vitality's X Post",
+     "domain": "x.com",
+     "sheep": false
+    }
+   ]
+  },
+  {
+   "date": "2026-11-09",
    "player": "Arvindir",
    "role": "Strategic Coach",
    "staff": true,
@@ -715,30 +739,6 @@
   {
    "date": "2026-11-09",
    "player": "Hansen",
-   "role": "Assistant Coach",
-   "staff": true,
-   "status": "",
-   "kind": "leave",
-   "team": "VIT",
-   "teamName": "Team Vitality",
-   "src": [
-    {
-     "url": "https://x.com/TeamVitalityLOL/status/2119840932195426659",
-     "label": "Team Vitality's X Post",
-     "domain": "x.com",
-     "sheep": false
-    },
-    {
-     "url": "https://x.com/TeamVitalityLOL/status/2119840935190131188",
-     "label": "Team Vitality's X Post",
-     "domain": "x.com",
-     "sheep": false
-    }
-   ]
-  },
-  {
-   "date": "2026-11-09",
-   "player": "Garih",
    "role": "Assistant Coach",
    "staff": true,
    "status": "",
@@ -957,24 +957,6 @@
     {
      "url": "https://x.com/MovistarKOILoL/status/2082911529175826547",
      "label": "Movistar KOI's X Post",
-     "domain": "x.com",
-     "sheep": false
-    }
-   ]
-  },
-  {
-   "date": "2026-07-27",
-   "player": "YamatoCannon",
-   "role": "Co-Streamer",
-   "staff": true,
-   "status": "",
-   "kind": "join",
-   "team": "SK",
-   "teamName": "SK Gaming",
-   "src": [
-    {
-     "url": "https://x.com/SKGamingLeague/status/2081752902222106960",
-     "label": "SK Gaming's X Post",
      "domain": "x.com",
      "sheep": false
     }
@@ -2477,13 +2459,6 @@
    "media": true,
    "when": "November 16, 2026"
   },
-  "https://x.com/MovistarKOILoL/status/2121637617363980370": {
-   "author": "Movistar KOI League of Legends",
-   "handle": "MovistarKOILoL",
-   "text": "Tres años llenos de alegrías, gritos y momentos que se quedarán con nosotros para siempre.\n\nHa sido un orgullo tenerte defendiendo nuestros colores y siendo parte de nuestra historia.\n\nGracias por todo, Myrwn. Esta siempre será tu casa 💜",
-   "media": true,
-   "when": "November 14, 2026"
-  },
   "https://x.com/GIANTXLeague/status/2121619160212119708": {
    "author": "GIANTX League of Legends",
    "handle": "GIANTXLeague",
@@ -2491,17 +2466,24 @@
    "media": true,
    "when": "November 14, 2026"
   },
-  "https://x.com/GIANTXLeague/status/2121272083938255069": {
-   "author": "GIANTX League of Legends",
-   "handle": "GIANTXLeague",
-   "text": "Almost two years together. That's no small thing in esports 💙\n\nFrom one year to the next, we kept raising the bar and came closer than ever to breaking into the Top 3.\n\nToday, we say goodbye to Jun, Lot, Noah and Isma.\n\nWe wish you all the best.",
+  "https://x.com/MovistarKOILoL/status/2121637617363980370": {
+   "author": "Movistar KOI League of Legends",
+   "handle": "MovistarKOILoL",
+   "text": "Tres años llenos de alegrías, gritos y momentos que se quedarán con nosotros para siempre.\n\nHa sido un orgullo tenerte defendiendo nuestros colores y siendo parte de nuestra historia.\n\nGracias por todo, Myrwn. Esta siempre será tu casa 💜",
    "media": true,
-   "when": "November 13, 2026"
+   "when": "November 14, 2026"
   },
   "https://x.com/TeamVitalityLOL/status/2121287025923891354": {
    "author": "Team Vitality League",
    "handle": "TeamVitalityLOL",
    "text": "For the past 5 years, you’ve been a part of Team Vitality’s story on and off the rift. Thank you Matyáš for the laughs, the records, the outplays, and the couple unfortunate deaths on mid waves 💛\n\nWe’re grateful to everything you’ve given this team, and wish you nothing but the…",
+   "media": true,
+   "when": "November 13, 2026"
+  },
+  "https://x.com/GIANTXLeague/status/2121272083938255069": {
+   "author": "GIANTX League of Legends",
+   "handle": "GIANTXLeague",
+   "text": "Almost two years together. That's no small thing in esports 💙\n\nFrom one year to the next, we kept raising the bar and came closer than ever to breaking into the Top 3.\n\nToday, we say goodbye to Jun, Lot, Noah and Isma.\n\nWe wish you all the best.",
    "media": true,
    "when": "November 13, 2026"
   },
@@ -2609,13 +2591,6 @@
    "text": "Este fin de semana @Slayerloll9 nos acompañará en Berlín. \n\nA su misma vez seguirá compitiendo en la @LESESPORTS junto al equipo de Movistar KOI Fénix. #goMKOI #MKOIWIN",
    "media": true,
    "when": "July 30, 2026"
-  },
-  "https://x.com/SKGamingLeague/status/2081752902222106960": {
-   "author": "SK Gaming League of Legends",
-   "handle": "SKGamingLeague",
-   "text": "Figured it'd be best to make it official:\n\nHe was looking for a way to co-stream LEC, we were able to provide 🤌\n\nPlease welcome our newest professional hatewatcher, @YamatoMebdi 💜#LEC #SKWIN",
-   "media": true,
-   "when": "July 27, 2026"
   },
   "https://x.com/rostermania_lol/status/2120159939616268509": {
    "author": "Rostermania",
