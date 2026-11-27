@@ -1,12 +1,30 @@
 {
- "updated": "2026-11-27T12:30:39+00:00",
+ "updated": "2026-11-27T18:26:33+00:00",
  "source": "Leaguepedia",
  "sourceUrl": "https://lol.fandom.com/wiki/Portal:Transfers",
  "items": [
   {
-   "date": "2026-11-25",
-   "player": "Rooster",
+   "date": "2026-11-27",
+   "player": "BrokenBlade",
    "role": "Top",
+   "staff": false,
+   "status": "",
+   "kind": "leave",
+   "team": "G2",
+   "teamName": "G2 Esports",
+   "src": [
+    {
+     "url": "https://x.com/G2League/status/2126354914427261304",
+     "label": "G2 Esports' X Post",
+     "domain": "x.com",
+     "sheep": false
+    }
+   ]
+  },
+  {
+   "date": "2026-11-25",
+   "player": "Sheo",
+   "role": "Jungle",
    "staff": false,
    "status": "",
    "kind": "leave",
@@ -29,8 +47,8 @@
   },
   {
    "date": "2026-11-25",
-   "player": "Sheo",
-   "role": "Jungle",
+   "player": "Rooster",
+   "role": "Top",
    "staff": false,
    "status": "",
    "kind": "leave",
@@ -2391,6 +2409,13 @@
   }
  },
  "posts": {
+  "https://x.com/G2League/status/2126354914427261304": {
+   "author": "G2 League of Legends",
+   "handle": "G2League",
+   "text": "5 years, 554 games, 12 trophies.\n\nFrom motivational speeches to god-tier ragebaiting and award worthy acting, you’ll always be our favorite yapper.\nThank you for everything Topfather @BrokenBlade 🌹",
+   "media": true,
+   "when": "November 27, 2026"
+  },
   "https://x.com/ShiftersGG/status/2125605445926559877": {
    "author": "Shifters",
    "handle": "ShiftersGG",
