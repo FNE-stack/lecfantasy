@@ -1,5 +1,5 @@
 {
- "updated": "2026-11-27T20:23:59+00:00",
+ "updated": "2026-11-28T00:42:03+00:00",
  "source": "Leaguepedia",
  "sourceUrl": "https://lol.fandom.com/wiki/Portal:Transfers",
  "items": [
@@ -170,21 +170,22 @@
   },
   {
    "date": "2026-11-18",
-   "player": "Yike",
+   "player": "Boukada",
    "role": "Jungle",
    "staff": false,
    "status": "",
    "kind": "leave",
-   "team": "KC",
-   "teamName": "Karmine Corp",
+   "team": "SHFT",
+   "teamName": "Shifters",
    "src": [
     {
-     "url": "https://x.com/KarmineCorp/status/2123099633605820432",
-     "label": "Karmine Corp's X Post",
+     "url": "https://x.com/SolaryTV/status/2123098912341045402",
+     "label": "Solary's X Post",
      "domain": "x.com",
      "sheep": false
     }
-   ]
+   ],
+   "to": "Solary"
   },
   {
    "date": "2026-11-18",
@@ -206,22 +207,21 @@
   },
   {
    "date": "2026-11-18",
-   "player": "Boukada",
+   "player": "Yike",
    "role": "Jungle",
    "staff": false,
    "status": "",
    "kind": "leave",
-   "team": "SHFT",
-   "teamName": "Shifters",
+   "team": "KC",
+   "teamName": "Karmine Corp",
    "src": [
     {
-     "url": "https://x.com/SolaryTV/status/2123098912341045402",
-     "label": "Solary's X Post",
+     "url": "https://x.com/KarmineCorp/status/2123099633605820432",
+     "label": "Karmine Corp's X Post",
      "domain": "x.com",
      "sheep": false
     }
-   ],
-   "to": "Solary"
+   ]
   },
   {
    "date": "2026-11-17",
@@ -242,6 +242,24 @@
     {
      "url": "https://x.com/NAVILeague/status/2122745331272290756",
      "label": "Natus Vincere's X Post",
+     "domain": "x.com",
+     "sheep": false
+    }
+   ]
+  },
+  {
+   "date": "2026-11-17",
+   "player": "Supa",
+   "role": "Bot",
+   "staff": false,
+   "status": "",
+   "kind": "leave",
+   "team": "MKOI",
+   "teamName": "Movistar KOI",
+   "src": [
+    {
+     "url": "https://x.com/MovistarKOILoL/status/2122695200619254170",
+     "label": "Movistar KOI's X Post",
      "domain": "x.com",
      "sheep": false
     }
@@ -285,24 +303,6 @@
     {
      "url": "https://x.com/TeamVitalityLOL/status/2122753898133729710",
      "label": "Team Vitality's X Post",
-     "domain": "x.com",
-     "sheep": false
-    }
-   ]
-  },
-  {
-   "date": "2026-11-17",
-   "player": "Supa",
-   "role": "Bot",
-   "staff": false,
-   "status": "",
-   "kind": "leave",
-   "team": "MKOI",
-   "teamName": "Movistar KOI",
-   "src": [
-    {
-     "url": "https://x.com/MovistarKOILoL/status/2122695200619254170",
-     "label": "Movistar KOI's X Post",
      "domain": "x.com",
      "sheep": false
     }
@@ -454,24 +454,6 @@
   },
   {
    "date": "2026-11-16",
-   "player": "Alphari",
-   "role": "Assistant Coach",
-   "staff": true,
-   "status": "",
-   "kind": "leave",
-   "team": "MKOI",
-   "teamName": "Movistar KOI",
-   "src": [
-    {
-     "url": "https://x.com/MovistarKOILoL/status/2122315584868122904",
-     "label": "Movistar KOI's X Post",
-     "domain": "x.com",
-     "sheep": false
-    }
-   ]
-  },
-  {
-   "date": "2026-11-16",
    "player": "Duffman",
    "role": "Assistant Coach",
    "staff": true,
@@ -483,6 +465,24 @@
     {
      "url": "https://x.com/SKGamingLeague/status/2122352896175985025",
      "label": "SK Gaming's X Post",
+     "domain": "x.com",
+     "sheep": false
+    }
+   ]
+  },
+  {
+   "date": "2026-11-16",
+   "player": "Alphari",
+   "role": "Assistant Coach",
+   "staff": true,
+   "status": "",
+   "kind": "leave",
+   "team": "MKOI",
+   "teamName": "Movistar KOI",
+   "src": [
+    {
+     "url": "https://x.com/MovistarKOILoL/status/2122315584868122904",
+     "label": "Movistar KOI's X Post",
      "domain": "x.com",
      "sheep": false
     }
@@ -581,6 +581,24 @@
   },
   {
    "date": "2026-11-13",
+   "player": "ISMA",
+   "role": "Jungle",
+   "staff": false,
+   "status": "",
+   "kind": "leave",
+   "team": "GX",
+   "teamName": "GIANTX",
+   "src": [
+    {
+     "url": "https://x.com/GIANTXLeague/status/2121272083938255069",
+     "label": "GIANTX's X Post",
+     "domain": "x.com",
+     "sheep": false
+    }
+   ]
+  },
+  {
+   "date": "2026-11-13",
    "player": "Lot",
    "role": "Top",
    "staff": false,
@@ -601,24 +619,6 @@
    "date": "2026-11-13",
    "player": "Jun",
    "role": "Support",
-   "staff": false,
-   "status": "",
-   "kind": "leave",
-   "team": "GX",
-   "teamName": "GIANTX",
-   "src": [
-    {
-     "url": "https://x.com/GIANTXLeague/status/2121272083938255069",
-     "label": "GIANTX's X Post",
-     "domain": "x.com",
-     "sheep": false
-    }
-   ]
-  },
-  {
-   "date": "2026-11-13",
-   "player": "ISMA",
-   "role": "Jungle",
    "staff": false,
    "status": "",
    "kind": "leave",
@@ -708,30 +708,6 @@
   },
   {
    "date": "2026-11-09",
-   "player": "Hansen",
-   "role": "Assistant Coach",
-   "staff": true,
-   "status": "",
-   "kind": "leave",
-   "team": "VIT",
-   "teamName": "Team Vitality",
-   "src": [
-    {
-     "url": "https://x.com/TeamVitalityLOL/status/2119840932195426659",
-     "label": "Team Vitality's X Post",
-     "domain": "x.com",
-     "sheep": false
-    },
-    {
-     "url": "https://x.com/TeamVitalityLOL/status/2119840935190131188",
-     "label": "Team Vitality's X Post",
-     "domain": "x.com",
-     "sheep": false
-    }
-   ]
-  },
-  {
-   "date": "2026-11-09",
    "player": "Garih",
    "role": "Assistant Coach",
    "staff": true,
@@ -806,6 +782,30 @@
    "date": "2026-11-09",
    "player": "Pad",
    "role": "Head Coach",
+   "staff": true,
+   "status": "",
+   "kind": "leave",
+   "team": "VIT",
+   "teamName": "Team Vitality",
+   "src": [
+    {
+     "url": "https://x.com/TeamVitalityLOL/status/2119840932195426659",
+     "label": "Team Vitality's X Post",
+     "domain": "x.com",
+     "sheep": false
+    },
+    {
+     "url": "https://x.com/TeamVitalityLOL/status/2119840935190131188",
+     "label": "Team Vitality's X Post",
+     "domain": "x.com",
+     "sheep": false
+    }
+   ]
+  },
+  {
+   "date": "2026-11-09",
+   "player": "Hansen",
+   "role": "Assistant Coach",
    "staff": true,
    "status": "",
    "kind": "leave",
@@ -1009,24 +1009,6 @@
    "team": "NAVI",
    "teamName": "Natus Vincere",
    "src": []
-  },
-  {
-   "date": "2026-07-30",
-   "player": "NightSlayer",
-   "role": "Top",
-   "staff": false,
-   "status": "",
-   "kind": "join",
-   "team": "MKOI",
-   "teamName": "Movistar KOI",
-   "src": [
-    {
-     "url": "https://x.com/MovistarKOILoL/status/2082911529175826547",
-     "label": "Movistar KOI's X Post",
-     "domain": "x.com",
-     "sheep": false
-    }
-   ]
   }
  ],
  "rumors": [
@@ -2458,10 +2440,10 @@
    "media": true,
    "when": "November 19, 2026"
   },
-  "https://x.com/KarmineCorp/status/2123099633605820432": {
-   "author": "Karmine Corp",
-   "handle": "KarmineCorp",
-   "text": "Une aventure exceptionnelle couronnée d'un trophée et de multiples succès, tant sur la scène européenne que mondiale.\n\nMerci pour tout @YikeLoL, much love 💙",
+  "https://x.com/SolaryTV/status/2123098912341045402": {
+   "author": "Solary",
+   "handle": "SolaryTV",
+   "text": "On a eu 1 Boukada pour le prix de 0 Boukada, c'est le casse du siècle.\n\nPas besoin de présentation pour un joueur que tout le monde connaît aussi bien en France qu'en Europe !\n\nBienvenue à @Boukadaaa qui est officiellement le jungler de l'équipe Solary League of Legends 2027.…",
    "media": true,
    "when": "November 18, 2026"
   },
@@ -2472,10 +2454,10 @@
    "media": true,
    "when": "November 18, 2026"
   },
-  "https://x.com/SolaryTV/status/2123098912341045402": {
-   "author": "Solary",
-   "handle": "SolaryTV",
-   "text": "On a eu 1 Boukada pour le prix de 0 Boukada, c'est le casse du siècle.\n\nPas besoin de présentation pour un joueur que tout le monde connaît aussi bien en France qu'en Europe !\n\nBienvenue à @Boukadaaa qui est officiellement le jungler de l'équipe Solary League of Legends 2027.…",
+  "https://x.com/KarmineCorp/status/2123099633605820432": {
+   "author": "Karmine Corp",
+   "handle": "KarmineCorp",
+   "text": "Une aventure exceptionnelle couronnée d'un trophée et de multiples succès, tant sur la scène européenne que mondiale.\n\nMerci pour tout @YikeLoL, much love 💙",
    "media": true,
    "when": "November 18, 2026"
   },
@@ -2486,17 +2468,17 @@
    "media": true,
    "when": "November 17, 2026"
   },
-  "https://x.com/TeamVitalityLOL/status/2122753898133729710": {
-   "author": "Team Vitality League",
-   "handle": "TeamVitalityLOL",
-   "text": "Today we’d like to thank @FIESTA0504 for being our midlaner this year, as we part ways ahead of the 2027 season.\n\nWe’re grateful for your hard work, passion and the energy you’ve brought to our roster this summer as well as our first international in a while. We wish you the best…",
-   "media": true,
-   "when": "November 17, 2026"
-  },
   "https://x.com/MovistarKOILoL/status/2122695200619254170": {
    "author": "Movistar KOI League of Legends",
    "handle": "MovistarKOILoL",
    "text": "Casi toda una carrera junto a nosotros, compartiendo equipo, ilusiones y celebraciones.\n\nHa sido un honor verte competir con nuestros colores. Eres parte de la historia de este club.\n\nGracias por todo, Supa. Mucha suerte en lo que venga, esta siempre será tu casa.",
+   "media": true,
+   "when": "November 17, 2026"
+  },
+  "https://x.com/TeamVitalityLOL/status/2122753898133729710": {
+   "author": "Team Vitality League",
+   "handle": "TeamVitalityLOL",
+   "text": "Today we’d like to thank @FIESTA0504 for being our midlaner this year, as we part ways ahead of the 2027 season.\n\nWe’re grateful for your hard work, passion and the energy you’ve brought to our roster this summer as well as our first international in a while. We wish you the best…",
    "media": true,
    "when": "November 17, 2026"
   },
@@ -2660,13 +2642,6 @@
    "text": "🚨 NEW COSTREAMER 🚨\n\nWelcome (back) @kiittwy to G2 as one of our official costreamers!",
    "media": true,
    "when": "August 8, 2026"
-  },
-  "https://x.com/MovistarKOILoL/status/2082911529175826547": {
-   "author": "Movistar KOI League of Legends",
-   "handle": "MovistarKOILoL",
-   "text": "Este fin de semana @Slayerloll9 nos acompañará en Berlín. \n\nA su misma vez seguirá compitiendo en la @LESESPORTS junto al equipo de Movistar KOI Fénix. #goMKOI #MKOIWIN",
-   "media": true,
-   "when": "July 30, 2026"
   },
   "https://x.com/rostermania_lol/status/2120159939616268509": {
    "author": "Rostermania",
