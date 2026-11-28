@@ -1,5 +1,5 @@
 {
- "updated": "2026-11-28T00:42:03+00:00",
+ "updated": "2026-11-28T16:23:55+00:00",
  "source": "Leaguepedia",
  "sourceUrl": "https://lol.fandom.com/wiki/Portal:Transfers",
  "items": [
@@ -23,8 +23,8 @@
   },
   {
    "date": "2026-11-25",
-   "player": "Rooster",
-   "role": "Top",
+   "player": "Sheo",
+   "role": "Jungle",
    "staff": false,
    "status": "",
    "kind": "leave",
@@ -47,8 +47,8 @@
   },
   {
    "date": "2026-11-25",
-   "player": "Sheo",
-   "role": "Jungle",
+   "player": "Rooster",
+   "role": "Top",
    "staff": false,
    "status": "",
    "kind": "leave",
@@ -170,6 +170,24 @@
   },
   {
    "date": "2026-11-18",
+   "player": "Yike",
+   "role": "Jungle",
+   "staff": false,
+   "status": "",
+   "kind": "leave",
+   "team": "KC",
+   "teamName": "Karmine Corp",
+   "src": [
+    {
+     "url": "https://x.com/KarmineCorp/status/2123099633605820432",
+     "label": "Karmine Corp's X Post",
+     "domain": "x.com",
+     "sheep": false
+    }
+   ]
+  },
+  {
+   "date": "2026-11-18",
    "player": "Boukada",
    "role": "Jungle",
    "staff": false,
@@ -206,18 +224,18 @@
    ]
   },
   {
-   "date": "2026-11-18",
-   "player": "Yike",
-   "role": "Jungle",
+   "date": "2026-11-17",
+   "player": "Supa",
+   "role": "Bot",
    "staff": false,
    "status": "",
    "kind": "leave",
-   "team": "KC",
-   "teamName": "Karmine Corp",
+   "team": "MKOI",
+   "teamName": "Movistar KOI",
    "src": [
     {
-     "url": "https://x.com/KarmineCorp/status/2123099633605820432",
-     "label": "Karmine Corp's X Post",
+     "url": "https://x.com/MovistarKOILoL/status/2122695200619254170",
+     "label": "Movistar KOI's X Post",
      "domain": "x.com",
      "sheep": false
     }
@@ -242,24 +260,6 @@
     {
      "url": "https://x.com/NAVILeague/status/2122745331272290756",
      "label": "Natus Vincere's X Post",
-     "domain": "x.com",
-     "sheep": false
-    }
-   ]
-  },
-  {
-   "date": "2026-11-17",
-   "player": "Supa",
-   "role": "Bot",
-   "staff": false,
-   "status": "",
-   "kind": "leave",
-   "team": "MKOI",
-   "teamName": "Movistar KOI",
-   "src": [
-    {
-     "url": "https://x.com/MovistarKOILoL/status/2122695200619254170",
-     "label": "Movistar KOI's X Post",
      "domain": "x.com",
      "sheep": false
     }
@@ -292,24 +292,6 @@
   },
   {
    "date": "2026-11-17",
-   "player": "FIESTA",
-   "role": "Mid",
-   "staff": false,
-   "status": "",
-   "kind": "leave",
-   "team": "VIT",
-   "teamName": "Team Vitality",
-   "src": [
-    {
-     "url": "https://x.com/TeamVitalityLOL/status/2122753898133729710",
-     "label": "Team Vitality's X Post",
-     "domain": "x.com",
-     "sheep": false
-    }
-   ]
-  },
-  {
-   "date": "2026-11-17",
    "player": "Razork",
    "role": "Jungle",
    "staff": false,
@@ -327,9 +309,81 @@
    ]
   },
   {
+   "date": "2026-11-17",
+   "player": "FIESTA",
+   "role": "Mid",
+   "staff": false,
+   "status": "",
+   "kind": "leave",
+   "team": "VIT",
+   "teamName": "Team Vitality",
+   "src": [
+    {
+     "url": "https://x.com/TeamVitalityLOL/status/2122753898133729710",
+     "label": "Team Vitality's X Post",
+     "domain": "x.com",
+     "sheep": false
+    }
+   ]
+  },
+  {
    "date": "2026-11-16",
-   "player": "Wunder",
-   "role": "Top",
+   "player": "Mikyx",
+   "role": "Support",
+   "staff": false,
+   "status": "",
+   "kind": "leave",
+   "team": "SK",
+   "teamName": "SK Gaming",
+   "src": [
+    {
+     "url": "https://x.com/SKGamingLeague/status/2122352896175985025",
+     "label": "SK Gaming's X Post",
+     "domain": "x.com",
+     "sheep": false
+    }
+   ]
+  },
+  {
+   "date": "2026-11-16",
+   "player": "Fleshy",
+   "role": "Support",
+   "staff": false,
+   "status": "",
+   "kind": "leave",
+   "team": "VIT",
+   "teamName": "Team Vitality",
+   "src": [
+    {
+     "url": "https://x.com/TeamVitalityLOL/status/2122366838302491015",
+     "label": "Team Vitality's X Post",
+     "domain": "x.com",
+     "sheep": false
+    }
+   ]
+  },
+  {
+   "date": "2026-11-16",
+   "player": "LIDER",
+   "role": "Mid",
+   "staff": false,
+   "status": "inactive",
+   "kind": "leave",
+   "team": "SK",
+   "teamName": "SK Gaming",
+   "src": [
+    {
+     "url": "https://x.com/SKGamingLeague/status/2122352896175985025",
+     "label": "SK Gaming's X Post",
+     "domain": "x.com",
+     "sheep": false
+    }
+   ]
+  },
+  {
+   "date": "2026-11-16",
+   "player": "Jopa",
+   "role": "Bot",
    "staff": false,
    "status": "",
    "kind": "leave",
@@ -364,46 +418,10 @@
   },
   {
    "date": "2026-11-16",
-   "player": "Jopa",
-   "role": "Bot",
+   "player": "Wunder",
+   "role": "Top",
    "staff": false,
    "status": "",
-   "kind": "leave",
-   "team": "SK",
-   "teamName": "SK Gaming",
-   "src": [
-    {
-     "url": "https://x.com/SKGamingLeague/status/2122352896175985025",
-     "label": "SK Gaming's X Post",
-     "domain": "x.com",
-     "sheep": false
-    }
-   ]
-  },
-  {
-   "date": "2026-11-16",
-   "player": "Mikyx",
-   "role": "Support",
-   "staff": false,
-   "status": "",
-   "kind": "leave",
-   "team": "SK",
-   "teamName": "SK Gaming",
-   "src": [
-    {
-     "url": "https://x.com/SKGamingLeague/status/2122352896175985025",
-     "label": "SK Gaming's X Post",
-     "domain": "x.com",
-     "sheep": false
-    }
-   ]
-  },
-  {
-   "date": "2026-11-16",
-   "player": "LIDER",
-   "role": "Mid",
-   "staff": false,
-   "status": "inactive",
    "kind": "leave",
    "team": "SK",
    "teamName": "SK Gaming",
@@ -429,24 +447,6 @@
     {
      "url": "https://x.com/G2League/status/2122359119571001366",
      "label": "G2 Esports' X Post",
-     "domain": "x.com",
-     "sheep": false
-    }
-   ]
-  },
-  {
-   "date": "2026-11-16",
-   "player": "Fleshy",
-   "role": "Support",
-   "staff": false,
-   "status": "",
-   "kind": "leave",
-   "team": "VIT",
-   "teamName": "Team Vitality",
-   "src": [
-    {
-     "url": "https://x.com/TeamVitalityLOL/status/2122366838302491015",
-     "label": "Team Vitality's X Post",
      "domain": "x.com",
      "sheep": false
     }
@@ -490,17 +490,17 @@
   },
   {
    "date": "2026-11-14",
-   "player": "Flakked",
-   "role": "Bot",
+   "player": "Myrwn",
+   "role": "Top",
    "staff": false,
    "status": "",
    "kind": "leave",
-   "team": "GX",
-   "teamName": "GIANTX",
+   "team": "MKOI",
+   "teamName": "Movistar KOI",
    "src": [
     {
-     "url": "https://x.com/GIANTXLeague/status/2121619160212119708",
-     "label": "GIANTX's X Post",
+     "url": "https://x.com/MovistarKOILoL/status/2121637617363980370",
+     "label": "Movistar KOI's X Post",
      "domain": "x.com",
      "sheep": false
     }
@@ -526,17 +526,17 @@
   },
   {
    "date": "2026-11-14",
-   "player": "Myrwn",
-   "role": "Top",
+   "player": "Flakked",
+   "role": "Bot",
    "staff": false,
    "status": "",
    "kind": "leave",
-   "team": "MKOI",
-   "teamName": "Movistar KOI",
+   "team": "GX",
+   "teamName": "GIANTX",
    "src": [
     {
-     "url": "https://x.com/MovistarKOILoL/status/2121637617363980370",
-     "label": "Movistar KOI's X Post",
+     "url": "https://x.com/GIANTXLeague/status/2121619160212119708",
+     "label": "GIANTX's X Post",
      "domain": "x.com",
      "sheep": false
     }
@@ -555,6 +555,24 @@
     {
      "url": "https://x.com/TeamVitalityLOL/status/2121287025923891354",
      "label": "Team Vitality's X Post",
+     "domain": "x.com",
+     "sheep": false
+    }
+   ]
+  },
+  {
+   "date": "2026-11-13",
+   "player": "ISMA",
+   "role": "Jungle",
+   "staff": false,
+   "status": "",
+   "kind": "leave",
+   "team": "GX",
+   "teamName": "GIANTX",
+   "src": [
+    {
+     "url": "https://x.com/GIANTXLeague/status/2121272083938255069",
+     "label": "GIANTX's X Post",
      "domain": "x.com",
      "sheep": false
     }
@@ -581,8 +599,8 @@
   },
   {
    "date": "2026-11-13",
-   "player": "ISMA",
-   "role": "Jungle",
+   "player": "Jun",
+   "role": "Support",
    "staff": false,
    "status": "",
    "kind": "leave",
@@ -603,24 +621,6 @@
    "role": "Top",
    "staff": false,
    "status": "inactive",
-   "kind": "leave",
-   "team": "GX",
-   "teamName": "GIANTX",
-   "src": [
-    {
-     "url": "https://x.com/GIANTXLeague/status/2121272083938255069",
-     "label": "GIANTX's X Post",
-     "domain": "x.com",
-     "sheep": false
-    }
-   ]
-  },
-  {
-   "date": "2026-11-13",
-   "player": "Jun",
-   "role": "Support",
-   "staff": false,
-   "status": "",
    "kind": "leave",
    "team": "GX",
    "teamName": "GIANTX",
@@ -708,54 +708,6 @@
   },
   {
    "date": "2026-11-09",
-   "player": "Garih",
-   "role": "Assistant Coach",
-   "staff": true,
-   "status": "",
-   "kind": "leave",
-   "team": "VIT",
-   "teamName": "Team Vitality",
-   "src": [
-    {
-     "url": "https://x.com/TeamVitalityLOL/status/2119840932195426659",
-     "label": "Team Vitality's X Post",
-     "domain": "x.com",
-     "sheep": false
-    },
-    {
-     "url": "https://x.com/TeamVitalityLOL/status/2119840935190131188",
-     "label": "Team Vitality's X Post",
-     "domain": "x.com",
-     "sheep": false
-    }
-   ]
-  },
-  {
-   "date": "2026-11-09",
-   "player": "Mac",
-   "role": "Head of Coaching Development",
-   "staff": true,
-   "status": "",
-   "kind": "leave",
-   "team": "VIT",
-   "teamName": "Team Vitality",
-   "src": [
-    {
-     "url": "https://x.com/TeamVitalityLOL/status/2119840932195426659",
-     "label": "Team Vitality's X Post",
-     "domain": "x.com",
-     "sheep": false
-    },
-    {
-     "url": "https://x.com/TeamVitalityLOL/status/2119840935190131188",
-     "label": "Team Vitality's X Post",
-     "domain": "x.com",
-     "sheep": false
-    }
-   ]
-  },
-  {
-   "date": "2026-11-09",
    "player": "Arvindir",
    "role": "Strategic Coach",
    "staff": true,
@@ -806,6 +758,54 @@
    "date": "2026-11-09",
    "player": "Hansen",
    "role": "Assistant Coach",
+   "staff": true,
+   "status": "",
+   "kind": "leave",
+   "team": "VIT",
+   "teamName": "Team Vitality",
+   "src": [
+    {
+     "url": "https://x.com/TeamVitalityLOL/status/2119840932195426659",
+     "label": "Team Vitality's X Post",
+     "domain": "x.com",
+     "sheep": false
+    },
+    {
+     "url": "https://x.com/TeamVitalityLOL/status/2119840935190131188",
+     "label": "Team Vitality's X Post",
+     "domain": "x.com",
+     "sheep": false
+    }
+   ]
+  },
+  {
+   "date": "2026-11-09",
+   "player": "Garih",
+   "role": "Assistant Coach",
+   "staff": true,
+   "status": "",
+   "kind": "leave",
+   "team": "VIT",
+   "teamName": "Team Vitality",
+   "src": [
+    {
+     "url": "https://x.com/TeamVitalityLOL/status/2119840932195426659",
+     "label": "Team Vitality's X Post",
+     "domain": "x.com",
+     "sheep": false
+    },
+    {
+     "url": "https://x.com/TeamVitalityLOL/status/2119840935190131188",
+     "label": "Team Vitality's X Post",
+     "domain": "x.com",
+     "sheep": false
+    }
+   ]
+  },
+  {
+   "date": "2026-11-09",
+   "player": "Mac",
+   "role": "Head of Coaching Development",
    "staff": true,
    "status": "",
    "kind": "leave",
@@ -2440,6 +2440,13 @@
    "media": true,
    "when": "November 19, 2026"
   },
+  "https://x.com/KarmineCorp/status/2123099633605820432": {
+   "author": "Karmine Corp",
+   "handle": "KarmineCorp",
+   "text": "Une aventure exceptionnelle couronnée d'un trophée et de multiples succès, tant sur la scène européenne que mondiale.\n\nMerci pour tout @YikeLoL, much love 💙",
+   "media": true,
+   "when": "November 18, 2026"
+  },
   "https://x.com/SolaryTV/status/2123098912341045402": {
    "author": "Solary",
    "handle": "SolaryTV",
@@ -2454,20 +2461,6 @@
    "media": true,
    "when": "November 18, 2026"
   },
-  "https://x.com/KarmineCorp/status/2123099633605820432": {
-   "author": "Karmine Corp",
-   "handle": "KarmineCorp",
-   "text": "Une aventure exceptionnelle couronnée d'un trophée et de multiples succès, tant sur la scène européenne que mondiale.\n\nMerci pour tout @YikeLoL, much love 💙",
-   "media": true,
-   "when": "November 18, 2026"
-  },
-  "https://x.com/NAVILeague/status/2122721431242813879": {
-   "author": "NAVI LOL",
-   "handle": "NAVILeague",
-   "text": "Thank you for everything, @Maynter_LOL! 💛\n\nYou’ve been a great teammate and a consistent presence in the top lane, making history as the first Ukrainian to play in the LEC. We’re grateful to have been part of your journey and to have watched you make your debut in the NAVI…",
-   "media": true,
-   "when": "November 17, 2026"
-  },
   "https://x.com/MovistarKOILoL/status/2122695200619254170": {
    "author": "Movistar KOI League of Legends",
    "handle": "MovistarKOILoL",
@@ -2475,10 +2468,10 @@
    "media": true,
    "when": "November 17, 2026"
   },
-  "https://x.com/TeamVitalityLOL/status/2122753898133729710": {
-   "author": "Team Vitality League",
-   "handle": "TeamVitalityLOL",
-   "text": "Today we’d like to thank @FIESTA0504 for being our midlaner this year, as we part ways ahead of the 2027 season.\n\nWe’re grateful for your hard work, passion and the energy you’ve brought to our roster this summer as well as our first international in a while. We wish you the best…",
+  "https://x.com/NAVILeague/status/2122721431242813879": {
+   "author": "NAVI LOL",
+   "handle": "NAVILeague",
+   "text": "Thank you for everything, @Maynter_LOL! 💛\n\nYou’ve been a great teammate and a consistent presence in the top lane, making history as the first Ukrainian to play in the LEC. We’re grateful to have been part of your journey and to have watched you make your debut in the NAVI…",
    "media": true,
    "when": "November 17, 2026"
   },
@@ -2489,17 +2482,17 @@
    "media": true,
    "when": "November 17, 2026"
   },
+  "https://x.com/TeamVitalityLOL/status/2122753898133729710": {
+   "author": "Team Vitality League",
+   "handle": "TeamVitalityLOL",
+   "text": "Today we’d like to thank @FIESTA0504 for being our midlaner this year, as we part ways ahead of the 2027 season.\n\nWe’re grateful for your hard work, passion and the energy you’ve brought to our roster this summer as well as our first international in a while. We wish you the best…",
+   "media": true,
+   "when": "November 17, 2026"
+  },
   "https://x.com/SKGamingLeague/status/2122352896175985025": {
    "author": "SK Gaming League of Legends",
    "handle": "SKGamingLeague",
    "text": "From the power of the unction to frustratingly insane Riftbound pulls, there have been so many great moments with you we will forever look back on fondly 💜\n\nThank you for your contributions to the team and to SK this year, stay amazing @wunderlol @Skeanz_lol @LIDERlol @ADCJopa…",
-   "media": true,
-   "when": "November 16, 2026"
-  },
-  "https://x.com/G2League/status/2122359119571001366": {
-   "author": "G2 League of Legends",
-   "handle": "G2League",
-   "text": "From stacking trophies and gapping bot lanes to waterboarding yourself in a bowl of ice, you’ve done it all Labrov James 🏀\n\nThank you and see you on the Rift, @Labrov12! 🐐",
    "media": true,
    "when": "November 16, 2026"
   },
@@ -2510,6 +2503,13 @@
    "media": true,
    "when": "November 16, 2026"
   },
+  "https://x.com/G2League/status/2122359119571001366": {
+   "author": "G2 League of Legends",
+   "handle": "G2League",
+   "text": "From stacking trophies and gapping bot lanes to waterboarding yourself in a bowl of ice, you’ve done it all Labrov James 🏀\n\nThank you and see you on the Rift, @Labrov12! 🐐",
+   "media": true,
+   "when": "November 16, 2026"
+  },
   "https://x.com/MovistarKOILoL/status/2122315584868122904": {
    "author": "Movistar KOI League of Legends",
    "handle": "MovistarKOILoL",
@@ -2517,17 +2517,17 @@
    "media": true,
    "when": "November 16, 2026"
   },
-  "https://x.com/GIANTXLeague/status/2121619160212119708": {
-   "author": "GIANTX League of Legends",
-   "handle": "GIANTXLeague",
-   "text": "El split de verano nos trajo nuevos compañeros de viaje y hoy toca despedirnos de @OscarininXD @Flakked_LoL. \n\nSiempre es especial contar con talento español en el equipo. Gracias por formar parte de GIANTX durante este split y por todos los buenos momentos, el trabajo y el buen…",
-   "media": true,
-   "when": "November 14, 2026"
-  },
   "https://x.com/MovistarKOILoL/status/2121637617363980370": {
    "author": "Movistar KOI League of Legends",
    "handle": "MovistarKOILoL",
    "text": "Tres años llenos de alegrías, gritos y momentos que se quedarán con nosotros para siempre.\n\nHa sido un orgullo tenerte defendiendo nuestros colores y siendo parte de nuestra historia.\n\nGracias por todo, Myrwn. Esta siempre será tu casa 💜",
+   "media": true,
+   "when": "November 14, 2026"
+  },
+  "https://x.com/GIANTXLeague/status/2121619160212119708": {
+   "author": "GIANTX League of Legends",
+   "handle": "GIANTXLeague",
+   "text": "El split de verano nos trajo nuevos compañeros de viaje y hoy toca despedirnos de @OscarininXD @Flakked_LoL. \n\nSiempre es especial contar con talento español en el equipo. Gracias por formar parte de GIANTX durante este split y por todos los buenos momentos, el trabajo y el buen…",
    "media": true,
    "when": "November 14, 2026"
   },
